@@ -106,7 +106,7 @@ class MemTraceDriverImp(outer: MemTraceDriver, trace_file: String, threads : Int
     // Creating N indepdent behaving thread modules
     val vec_sim = Seq.tabulate(threads) { i =>
       val ith_file_name = trace_file + (i+1).toString
-      Module(new SimMemTrace(trace_file=ith_file_name))
+      Module(new SimMemTrace(trace_file=ith_file_name, 4))
     }
 
     // Connect each sim module to its respective TL connection
@@ -115,10 +115,6 @@ class MemTraceDriverImp(outer: MemTraceDriver, trace_file: String, threads : Int
         sim.io.clock := clock
         sim.io.reset := reset.asBool
         sim.io.trace_read.ready := true.B
-
-        when(sim.io.trace_read.valid) {
-            println("sim.io.valid!")
-        }
 
         val (tl_out, edgesOut) = outer.vec_trace_node(i).out(0)
         tl_out.a.valid := sim.io.trace_read.valid
@@ -146,16 +142,18 @@ class MemTraceDriverImp(outer: MemTraceDriver, trace_file: String, threads : Int
 
 
 
-class SimMemTrace(val trace_file: String) extends BlackBox(Map("TRACE_FILE" -> trace_file)) with HasBlackBoxResource {
+class SimMemTrace(val trace_file: String, num_threads: Int) extends BlackBox(Map("TRACE_FILE" -> trace_file)) with HasBlackBoxResource {
   val io = IO(new Bundle {
     val clock = Input(Clock())
     val reset = Input(Bool())
 
     val trace_read = new Bundle {
-      val valid = Output(Bool())
       val ready = Input(Bool())
-      val cycle = Output(UInt(64.W))
-      val address = Output(UInt(64.W))
+      val valid = Output(UInt(num_threads.W))
+      // Chisel can't interface with Verilog 2D port, so flatten all lanes into
+      // single wide 1D array.
+      val address = Output(UInt((64 * num_threads).W))
+      val finished = Output(Bool())
     }
   })
 
