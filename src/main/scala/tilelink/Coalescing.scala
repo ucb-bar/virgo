@@ -39,14 +39,10 @@ class MemTraceDriver(implicit p: Parameters) extends LazyModule {
 
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) with UnitTestModule {
-    val sim = Module(new SimMemTrace(2))
+    val sim = Module(new SimMemTrace(4))
     sim.io.clock := clock
     sim.io.reset := reset.asBool
     sim.io.trace_read.ready := true.B
-
-    when(sim.io.trace_read.valid) {
-      println("sim.io.valid!")
-    }
 
     // we're finished when there is no more memtrace to read
     io.finished := sim.io.trace_read.finished
@@ -62,7 +58,7 @@ class SimMemTrace(num_threads: Int)
 
     val trace_read = new Bundle {
       val ready = Input(Bool())
-      val valid = Output(Bool())
+      val valid = Output(UInt(num_threads.W))
       val address = Output(UInt((64 * num_threads).W))
       val finished = Output(Bool())
     }
@@ -76,7 +72,7 @@ class SimMemTrace(num_threads: Int)
 class CoalescingUnitTest(txns: Int = 5000, timeout: Int = 500000)(implicit
     p: Parameters
 ) extends UnitTest(timeout) {
-  val coal = Module(LazyModule(new CoalescingUnit(txns)).module)
+  // val coal = Module(LazyModule(new CoalescingUnit(txns)).module)
   val driver = Module(LazyModule(new MemTraceDriver).module)
   driver.io.start := io.start
 
