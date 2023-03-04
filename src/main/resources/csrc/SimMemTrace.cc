@@ -1,50 +1,34 @@
+#ifndef NO_VPI
 #include <vpi_user.h>
 #include <svdpi.h>
-#include <memory>
+#endif
 #include <string>
-#include <fstream>
 #include <cstdio>
+#include <cassert>
 #include <unistd.h>
+#include "SimMemTrace.h"
 
-class MemTraceReader;
-
-// Global singleton instance of MemTraceReader
-static std::unique_ptr<MemTraceReader> reader;
-
-struct MemTraceLine {
-  bool valid = false;
-  unsigned long cycle = 0;
-  char loadstore[10];
-  int core_id = 0;
-  int thread_id = 0;
-  unsigned long address = 0;
-  unsigned long data = 0;
-  int data_size = 0;
-};
-
-class MemTraceReader {
-public:
-  MemTraceReader(const std::string &filename) {
-    char cwd[4096];
-    if (getcwd(cwd, sizeof(cwd))) {
-        printf("MemTraceReader: current working dir: %s\n", cwd);
-    }
-
-    infile.open(filename);
-    if (infile.fail()) {
-        fprintf(stderr, "failed to open file %s\n", filename);
-    }
+MemTraceReader::MemTraceReader(const std::string &filename) {
+  char cwd[4096];
+  if (getcwd(cwd, sizeof(cwd))) {
+    printf("MemTraceReader: current working dir: %s\n", cwd);
   }
-  ~MemTraceReader() {
-    infile.close();
-    printf("MemTraceReader destroyed\n");
+
+  infile.open(filename);
+  if (infile.fail()) {
+    fprintf(stderr, "failed to open file %s\n", filename.c_str());
   }
-  MemTraceLine tick();
+}
 
-  std::ifstream infile;
-};
+MemTraceReader::~MemTraceReader() {
+  infile.close();
+  printf("MemTraceReader destroyed\n");
+}
 
-MemTraceLine MemTraceReader::tick() {
+// Parse trace file in its entirety and store it into internal structure.
+// TODO: might block for a long time when the trace gets big, check if need to
+// be broken down
+void MemTraceReader::parse() {
   MemTraceLine line;
 
   printf("MemTraceReader: started parsing\n");
@@ -60,9 +44,9 @@ MemTraceLine MemTraceReader::tick() {
   printf("MemTraceReader: finished parsing\n");
 }
 
-// Try to read a memory request that might have happened at a given cycle, on a
-// given SIMD lane (= "thread").  In case no request happened at that point,
-// return an empty line with .valid = false.
+// Try to read a memory request that might have happened at a given cycle, on
+// given thread.  In case no request happened at that point, return an empty
+// line with .valid = false.
 MemTraceLine MemTraceReader::read_trace_at(const long cycle,
                                            const int thread_id) {
   MemTraceLine line;
@@ -75,16 +59,14 @@ MemTraceLine MemTraceReader::read_trace_at(const long cycle,
   }
 
   line = *read_pos;
-  // It should always be guaranteed that we consumed all of the past lines, and
-  // the next line is in the future.
+  // It should always be guaranteed that the next line is not read yet.
   if (line.cycle < cycle) {
     fprintf(stderr, "line.cycle=%ld, cycle=%ld\n", line.cycle, cycle);
     assert(false && "some trace lines are left unread in the past");
   }
 
   if (line.cycle > cycle) {
-    // We haven't reached the cycle mark specified in this line yet, so we don't
-    // read it right now.
+    // It's not ready to read this line yet.
     return MemTraceLine{};
   } else if (line.cycle == cycle) {
     printf("fire! cycle=%ld, valid=%d\n", cycle, line.valid);
@@ -99,11 +81,13 @@ MemTraceLine MemTraceReader::read_trace_at(const long cycle,
 }
 
 extern "C" void memtrace_init(const char *filename) {
-  reader = std::make_unique<MemTraceReader>(filename);
   printf("memtrace_init: filename=[%s]\n", filename);
+
+  reader = std::make_unique<MemTraceReader>(filename);
+  // parse file upfront
+  reader->parse();
 }
 
-// TODO: accept core_id as well
 extern "C" void memtrace_query(unsigned char trace_read_ready,
                                unsigned long trace_read_cycle,
                                int trace_read_thread_id,
@@ -113,9 +97,16 @@ extern "C" void memtrace_query(unsigned char trace_read_ready,
   printf("memtrace_query(cycle=%ld, tid=%d)\n", trace_read_cycle,
          trace_read_thread_id);
 
+  if (!trace_read_ready) {
+    return;
+  }
+
+  auto line = reader->read_trace_at(trace_read_cycle, trace_read_thread_id);
   *trace_read_valid = line.valid;
-  *trace_read_cycle = line.cycle;
   *trace_read_address = line.address;
+  // This means finished and valid will go up at the same cycle.  Need to
+  // handle this without skipping the last line.
+  *trace_read_finished = reader->finished();
 
   return;
 }

@@ -159,6 +159,7 @@ class SimMemTrace(val trace_file: String, num_threads: Int) extends BlackBox(Map
 
   addResource("/vsrc/SimMemTrace.v")
   addResource("/csrc/SimMemTrace.cc")
+  addResource("/csrc/SimMemTrace.h")
 }
 
 

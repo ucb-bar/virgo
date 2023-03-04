@@ -1,65 +1,103 @@
 `define DATA_WIDTH 64
+`define MAX_NUM_THREADS 32
 
 import "DPI-C" function void memtrace_init(
-    input  string  filename
+  input  string  filename
 );
 
-import "DPI-C" function void memtrace_tick
+// Make sure to sync the parameters for:
+// (1) import "DPI-C" declaration
+// (2) C function declaration
+// (3) DPI function calls inside initial/always blocks
+import "DPI-C" function void memtrace_query
 (
-    output bit     trace_read_valid,
-    input  bit     trace_read_ready,
-    output longint trace_read_cycle,
-    output longint trace_read_address
+  input  bit     trace_read_ready,
+  input  longint trace_read_cycle,
+  input  int     trace_read_tid,
+  output bit     trace_read_valid,
+  output longint trace_read_address,
+  output bit     trace_read_finished
 );
 
-module SimMemTrace  (
-    input              clock,
-    input              reset,
+module SimMemTrace #(parameter NUM_THREADS = 4) (
+  input              clock,
+  input              reset,
 
-    output                   trace_read_valid,
-    input                    trace_read_ready,
-    output [`DATA_WIDTH-1:0] trace_read_cycle,
-    output [`DATA_WIDTH-1:0] trace_read_address
+  // These have to match the IO port of the Chisel wrapper module.
+  input                    trace_read_ready,
+  output [NUM_THREADS-1:0] trace_read_valid,
+  output [`DATA_WIDTH*NUM_THREADS-1:0] trace_read_address,
+  output                   trace_read_finished
 );
+  bit __in_valid[NUM_THREADS-1:0];
+  longint __in_address[NUM_THREADS-1:0];
+  bit __in_finished;
+  string __uartlog;
 
-    bit __in_valid;
-    longint __in_cycle;
-    longint __in_address;
-    string __uartlog;
-    int __uartno;
+  // Cycle counter that is used to query C parser whether we have a request
+  // coming in at the current cycle.
+  reg [`DATA_WIDTH-1:0] cycle_counter;
+  wire [`DATA_WIDTH-1:0] next_cycle_counter;
+  assign next_cycle_counter = cycle_counter + 1'b1;
 
-    initial begin
-        $value$plusargs("uartlog=%s", __uartlog);
-        memtrace_init("vecadd.core1.thread4.trace");
+  // registers that stage outputs of the C parser
+  reg [NUM_THREADS-1:0] __in_valid_reg;
+  reg [`DATA_WIDTH-1:0] __in_address_reg [NUM_THREADS-1:0];
+  reg __in_finished_reg;
+
+  genvar g;
+
+  generate
+    for (g = 0; g < NUM_THREADS; g = g + 1) begin
+      assign trace_read_valid[g] = __in_valid_reg[g];
+      assign trace_read_address[`DATA_WIDTH*(g+1)-1:`DATA_WIDTH*g]  = __in_address_reg[g];
     end
+  endgenerate
+  assign trace_read_finished = __in_finished_reg;
 
-    reg __in_valid_reg;
-    reg [`DATA_WIDTH-1:0] __in_cycle_reg;
-    reg [`DATA_WIDTH-1:0] __in_address_reg;
+  initial begin
+      /* $value$plusargs("uartlog=%s", __uartlog); */
+      memtrace_init("vecadd.core1.thread4.trace");
+  end
 
-    assign trace_read_valid   = __in_valid_reg;
-    assign trace_read_cycle   = __in_cycle_reg;
-    assign trace_read_address = __in_address_reg;
+  // Evaluate the signals on the positive edge
+  always @(posedge clock) begin
+    if (reset) begin
+      for (integer tid = 0; tid < NUM_THREADS; tid = tid + 1) begin
+        __in_valid[tid] = 1'b0;
+        __in_address[tid] = `DATA_WIDTH'b0;
+      end
+      __in_finished = 1'b0;
 
-    // Evaluate the signals on the positive edge
-    always @(posedge clock) begin
-        if (reset) begin
-            __in_valid = 1'b0;
+      cycle_counter <= `DATA_WIDTH'b0;
 
-            __in_valid_reg <= 1'b0;
-            __in_cycle_reg <= `DATA_WIDTH'b0;
-        end else begin
-            memtrace_tick(
-                __in_valid,
-                trace_read_ready,
-                __in_cycle,
-                __in_address
-            );
+      for (integer tid = 0; tid < NUM_THREADS; tid = tid + 1) begin
+        __in_valid_reg[tid] <= 1'b0;
+        __in_address_reg[tid] <= `DATA_WIDTH'b0;
+      end
+      __in_finished_reg <= 1'b0;
+    end else begin
+      cycle_counter <= next_cycle_counter;
 
-            __in_valid_reg   <= __in_valid;
-            __in_cycle_reg   <= __in_cycle;
-            __in_address_reg <= __in_address;
-        end
+      for (integer tid = 0; tid < NUM_THREADS; tid = tid + 1) begin
+        memtrace_query(
+          trace_read_ready,
+          // Since parsed results are latched to the output on the next
+          // cycle due to staging registers, we need to pass in the next cycle
+          // to sync up.
+          next_cycle_counter,
+          tid,
+          __in_valid[tid],
+          __in_address[tid],
+          __in_finished
+        );
+      end
+
+      for (integer tid = 0; tid < NUM_THREADS; tid = tid + 1) begin
+        __in_valid_reg[tid]   <= __in_valid[tid];
+        __in_address_reg[tid] <= __in_address[tid];
+      end
+      __in_finished_reg <= __in_finished;
     end
-
+  end
 endmodule
