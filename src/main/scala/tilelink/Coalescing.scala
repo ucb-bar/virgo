@@ -39,7 +39,7 @@ class MemTraceDriver(implicit p: Parameters) extends LazyModule {
 
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) with UnitTestModule {
-    val sim = Module(new SimMemTrace)
+    val sim = Module(new SimMemTrace(2))
     sim.io.clock := clock
     sim.io.reset := reset.asBool
     sim.io.trace_read.ready := true.B
@@ -49,11 +49,13 @@ class MemTraceDriver(implicit p: Parameters) extends LazyModule {
     }
 
     // we're finished when there is no more memtrace to read
-    io.finished := !sim.io.trace_read.valid
+    io.finished := sim.io.trace_read.finished
   }
 }
 
-class SimMemTrace extends BlackBox with HasBlackBoxResource {
+class SimMemTrace(num_threads: Int)
+    extends BlackBox(Map("NUM_THREADS" -> num_threads))
+    with HasBlackBoxResource {
   val io = IO(new Bundle {
     val clock = Input(Clock())
     val reset = Input(Bool())
@@ -62,12 +64,14 @@ class SimMemTrace extends BlackBox with HasBlackBoxResource {
       val valid = Output(Bool())
       val ready = Input(Bool())
       val cycle = Output(UInt(64.W))
-      val address = Output(UInt(64.W))
+      val address = Output(UInt((64 * num_threads).W))
+      val finished = Output(Bool())
     }
   })
 
   addResource("/vsrc/SimMemTrace.v")
   addResource("/csrc/SimMemTrace.cc")
+  addResource("/csrc/SimMemTrace.h")
 }
 
 class CoalescingUnitTest(txns: Int = 5000, timeout: Int = 500000)(implicit
