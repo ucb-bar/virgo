@@ -56,7 +56,7 @@ class CoalescingUnitImp(outer: CoalescingUnit, numLanes: Int) extends LazyModule
   val wordSize = 4
 
   val reqQueueDepth = 4 // FIXME test
-  val respQueueDepth = 2 // FIXME test
+  val respQueueDepth = 4 // FIXME test
 
   val sourceWidth = outer.node.in(1)._1.params.sourceBits
   val addressWidth = outer.node.in(1)._1.params.addressBits
@@ -240,11 +240,13 @@ class CoalescingUnitImp(outer: CoalescingUnit, numLanes: Int) extends LazyModule
   val newEntry = Wire(
     new InflightCoalReqTableEntry(numLanes, numPerLaneReqs, sourceWidth, offsetBits, sizeBits)
   )
+  println(s"=========== table sourceWidth: ${sourceWidth}")
   newEntry.source := coalSourceId
   newEntry.lanes.foreach { l =>
-    l.reqs.foreach { r =>
+    l.reqs.zipWithIndex.foreach { case (r, i) =>
       // TODO: this part needs the actual coalescing logic to work
       r.valid := false.B
+      r.source := i.U //FIXME bogus
       r.offset := 1.U
       r.size := 2.U
     }
@@ -272,6 +274,10 @@ class CoalescingUnitImp(outer: CoalescingUnit, numLanes: Int) extends LazyModule
   uncoalescer.io.coalRespValid := tlCoal.d.valid
   uncoalescer.io.coalRespSrcId := tlCoal.d.bits.source
   uncoalescer.io.coalRespData := tlCoal.d.bits.data
+
+  // TODO: multibeat TL requests. Currently tlCoal.d.bits.data is fixed to 64b
+  // width
+  println(s"=========== coalRespData width: ${tlCoal.d.bits.data.widthOption.get}")
 
   // Queue up synthesized uncoalesced responses into each lane's response queue
   (respQueues zip uncoalescer.io.uncoalResps).foreach { case (q, lanes) =>
@@ -354,23 +360,22 @@ class UncoalescingUnit(
 
   // Un-coalesce responses back to individual lanes
   val found = inflightTable.io.lookup.bits
-  (found.lanes zip io.uncoalResps).foreach { case (lane, ioLane) =>
-    lane.reqs.zipWithIndex.foreach { case (req, i) =>
-      val ioReq = ioLane(i)
+  (found.lanes zip io.uncoalResps).foreach { case (perLane, ioPerLane) =>
+    perLane.reqs.zipWithIndex.foreach { case (oldReq, i) =>
+      val ioOldReq = ioPerLane(i)
 
       // FIXME: only looking at 0th srcId entry
 
-      ioReq.valid := false.B
-      ioReq.bits := DontCare
+      ioOldReq.valid := false.B
+      ioOldReq.bits := DontCare
 
       when(inflightTable.io.lookup.valid) {
-        ioReq.valid := req.valid
-        ioReq.bits.source := 0.U
-
+        ioOldReq.valid := oldReq.valid
+        ioOldReq.bits.source := oldReq.source
         // FIXME: disregard size enum for now
         val byteSize = 4
-        ioReq.bits.data :=
-          getCoalescedDataChunk(io.coalRespData, coalDataWidth, req.offset, byteSize)
+        ioOldReq.bits.data :=
+          getCoalescedDataChunk(io.coalRespData, coalDataWidth, oldReq.offset, byteSize)
       }
     }
   }
@@ -414,6 +419,8 @@ class InflightCoalReqTable(
       table(i).valid := false.B
       table(i).bits.lanes.foreach { l =>
         l.reqs.foreach { r =>
+          r.valid := false.B
+          r.source := 0.U
           r.offset := 0.U
           r.size := 0.U
         }
@@ -467,14 +474,16 @@ class InflightCoalReqTableEntry(
     val offsetBits: Int,
     val sizeBits: Int
 ) extends Bundle {
-  class CoreReq extends Bundle {
+  class PerCoreReq extends Bundle {
     val valid = Bool()
+    // FIXME: oldId and newId shares the same width
+    val source = UInt(sourceWidth.W)
     val offset = UInt(offsetBits.W)
     val size = UInt(sizeBits.W)
   }
   class PerLane extends Bundle {
     // FIXME: if numPerLaneReqs != 2 ** sourceWidth, we need to store srcId as well
-    val reqs = Vec(numPerLaneReqs, new CoreReq)
+    val reqs = Vec(numPerLaneReqs, new PerCoreReq)
   }
   // sourceId of the coalesced response that just came back.  This will be the
   // key that queries the table.
@@ -570,7 +579,9 @@ class CoalShiftQueue[T <: Data](
   io.count := PopCount(io.mask)
 }
 
-class MemTraceDriver(numLanes: Int = 4, traceFile : String = "vecadd.core1.thread4.trace")(implicit p: Parameters) extends LazyModule {
+class MemTraceDriver(numLanes: Int = 4, traceFile: String = "vecadd.core1.thread4.trace")(implicit
+    p: Parameters
+) extends LazyModule {
 
   // Create N client nodes together
   val laneNodes = Seq.tabulate(numLanes) { i =>
@@ -600,7 +611,7 @@ class TraceReq extends Bundle {
   val data = UInt(64.W)
 }
 
-class MemTraceDriverImp(outer: MemTraceDriver, numLanes: Int, traceFile : String)
+class MemTraceDriverImp(outer: MemTraceDriver, numLanes: Int, traceFile: String)
     extends LazyModuleImp(outer)
     with UnitTestModule {
   val sim = Module(
@@ -630,11 +641,11 @@ class MemTraceDriverImp(outer: MemTraceDriver, numLanes: Int, traceFile : String
   val sourceIdCounter = RegInit(0.U(64.W))
   sourceIdCounter := sourceIdCounter + 1.U
 
-  //Issue here is that Vortex mem range is not within Chipyard Mem range
-  //In default setting, all mem-req for program data must be within 0X80000000 -> 0X90000000
-  //
-  def hashToValidPhyAddr(addr : UInt) : UInt = {
-    Cat(8.U(4.W), addr(27, 3), 0.U(3.W) )
+  // Issue here is that Vortex mem range is not within Chipyard Mem range
+  // In default setting, all mem-req for program data must be within
+  // 0X80000000 -> 0X90000000
+  def hashToValidPhyAddr(addr: UInt): UInt = {
+    Cat(8.U(4.W), addr(27, 3), 0.U(3.W))
   }
 
   // Connect each lane to its respective TL node.
@@ -668,8 +679,11 @@ class MemTraceDriverImp(outer: MemTraceDriver, numLanes: Int, traceFile : String
   }
 
   io.finished := sim.io.trace_read.finished
-  when(io.finished){
-    assert(false.B, "\n\n\nsimulation Successfully finished\n\n\n (this assertion intentional fail upon MemTracer termination)")
+  when(io.finished) {
+    assert(
+      false.B,
+      "\n\n\nsimulation Successfully finished\n\n\n (this assertion intentional fail upon MemTracer termination)"
+    )
   }
 
   // Clock Counter, for debugging purpose
