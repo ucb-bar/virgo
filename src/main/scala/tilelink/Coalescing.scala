@@ -587,7 +587,6 @@ class CoalShiftQueue[T <: Data](
 class MemTraceDriver(numLanes: Int = 4, filename: String = "vecadd.core1.thread4.trace")(implicit
     p: Parameters
 ) extends LazyModule {
-
   // Create N client nodes together
   val laneNodes = Seq.tabulate(numLanes) { i =>
     val clientParam = Seq(
@@ -612,7 +611,7 @@ class TraceReq extends Bundle {
   val valid = Bool()
   val address = UInt(64.W)
   val is_store = Bool()
-  val mask = UInt(8.W)
+  val size = UInt(32.W)
   val data = UInt(64.W)
 }
 
@@ -634,7 +633,8 @@ class MemTraceDriverImp(outer: MemTraceDriver, numLanes: Int, traceFile: String)
     req.valid := sim.io.trace_read.valid(i)
     req.address := sim.io.trace_read.address(64 * i + 63, 64 * i)
     req.is_store := sim.io.trace_read.is_store(i)
-    req.mask := sim.io.trace_read.store_mask(8 * i + 7, 8 * i)
+    req.size := sim.io.trace_read.size(32 * i + 31, 32 * i)
+    printf("========= req.size=%d\n", req.size)
     req.data := sim.io.trace_read.data(64 * i + 63, 64 * i)
   }
 
@@ -655,16 +655,17 @@ class MemTraceDriverImp(outer: MemTraceDriver, numLanes: Int, traceFile: String)
   (outer.laneNodes zip laneReqs).foreach { case (node, req) =>
     val (tlOut, edge) = node.out(0)
 
+    val size = 4.U // TODO: get proper size from the trace
     val (plegal, pbits) = edge.Put(
       fromSource = sourceIdCounter,
       toAddress = hashToValidPhyAddr(req.address),
-      lgSize = 3.U,
+      lgSize = Log2(size),
       data = req.data
     )
     val (glegal, gbits) = edge.Get(
       fromSource = sourceIdCounter,
       toAddress = hashToValidPhyAddr(req.address),
-      lgSize = 3.U
+      lgSize = Log2(size),
     )
     val legal = Mux(req.is_store, plegal, glegal)
     val bits = Mux(req.is_store, pbits, gbits)
@@ -676,6 +677,8 @@ class MemTraceDriverImp(outer: MemTraceDriver, numLanes: Int, traceFile: String)
     tlOut.c.valid := false.B
     tlOut.d.ready := true.B
     tlOut.e.valid := false.B
+
+    println(s"======= MemTraceDriver: TL data width: ${tlOut.params.dataBits}")
 
     dontTouch(tlOut.a)
     dontTouch(tlOut.d)
@@ -714,7 +717,7 @@ class SimMemTrace(filename: String, numLanes: Int)
       // TODO: assumes 64-bit address.
       val address = Output(UInt((64 * numLanes).W))
       val is_store = Output(UInt(numLanes.W))
-      val store_mask = Output(UInt((8 * numLanes).W))
+      val size = Output(UInt((32 * numLanes).W))
       val data = Output(UInt((64 * numLanes).W))
       val finished = Output(Bool())
     }
@@ -762,7 +765,8 @@ class MemTraceLogger(numLanes: Int = 4, filename: String = "vecadd.core1.thread4
       req.address := tlIn.a.bits.address
       req.data := tlIn.a.bits.data
       req.is_store := false.B // FIXME: take is_store from TL
-      req.mask := tlIn.a.bits.mask
+      req.size := tlIn.a.bits.size
+      printf("========= logger: req.size=%d\n", tlIn.a.bits.size)
     }
 
     val laneValid = Wire(Vec(numLanes, Bool()))
@@ -794,7 +798,7 @@ class SimMemTraceLogger(filename: String, numLanes: Int)
       // val ready = Output(Bool())
       // TODO: assumes 64-bit address.
       // val is_store = Output(UInt(numLanes.W))
-      // val store_mask = Output(UInt((8 * numLanes).W))
+      // val size = Output(UInt((8 * numLanes).W))
       // val data = Output(UInt((64 * numLanes).W))
       // val finished = Output(Bool())
     }
@@ -805,7 +809,7 @@ class SimMemTraceLogger(filename: String, numLanes: Int)
   addResource("/csrc/SimMemTraceLogger.h")
 }
 
-// synthesizable unit tests
+// Synthesizable unit tests
 
 // tracedriver --> coalescer --> tracelogger --> tlram
 class TLRAMCoalescerLogger(implicit p: Parameters) extends LazyModule {
@@ -816,7 +820,9 @@ class TLRAMCoalescerLogger(implicit p: Parameters) extends LazyModule {
   val logger = LazyModule(new MemTraceLogger(numLanes))
   val rams = Seq.fill(numLanes)( // +1 for coalesced edge
     LazyModule(
-      // FIXME: properly propagate beatBytes?
+      // NOTE: beatBytes here sets the data bitwidth of the upstream TileLink
+      // edges globally, by way of Diplomacy communicating the TL slave
+      // parameters to the upstream nodes.
       new TLRAM(address = AddressSet(0x0000, 0xffffff), beatBytes = 8)
     )
   )
@@ -847,7 +853,9 @@ class TLRAMCoalescer(implicit p: Parameters) extends LazyModule {
   val driver = LazyModule(new MemTraceDriver(numLanes))
   val rams = Seq.fill(numLanes + 1)( // +1 for coalesced edge
     LazyModule(
-      // FIXME: properly propagate beatBytes?
+      // NOTE: beatBytes here sets the data bitwidth of the upstream TileLink
+      // edges globally, by way of Diplomacy communicating the TL slave
+      // parameters to the upstream nodes.
       new TLRAM(address = AddressSet(0x0000, 0xffffff), beatBytes = 8)
     )
   )
