@@ -37,14 +37,21 @@ class CoalescingUnit(numLanes: Int = 1)(implicit p: Parameters) extends LazyModu
   lazy val module = new CoalescingUnitImp(this, numLanes)
 }
 
-class ReqQueueEntry(val sourceWidth: Int, val addressWidth: Int) extends Bundle {
+// FIXME: this overlaps a lot with HasTraceLine
+class ReqQueueEntry(val sourceWidth: Int, val addressWidth: Int, val sizeWidth: Int)
+    extends Bundle {
   val source = UInt(sourceWidth.W)
+  val isStore = Bool()
   val address = UInt(addressWidth.W)
+  val size = UInt(sizeWidth.W) // log(sizeInBytes)
   val data = UInt(64.W /* FIXME hardcoded */ ) // write data
 }
 
-class RespQueueEntry(val sourceWidth: Int, val dataWidthInBits: Int) extends Bundle {
+class RespQueueEntry(val sourceWidth: Int, val dataWidthInBits: Int, val sizeWidth: Int)
+    extends Bundle {
   val source = UInt(sourceWidth.W)
+  val isStore = Bool()
+  val size = UInt(sizeWidth.W) // log(sizeInBytes)
   val data = UInt(dataWidthInBits.W) // read data
 }
 
@@ -53,6 +60,7 @@ class CoalescingUnitImp(outer: CoalescingUnit, numLanes: Int) extends LazyModule
   // coalescer TL master node
   assert(outer.node.in.length >= 2)
 
+  // 32-bit system. FIXME hardcoded
   val wordSize = 4
 
   val reqQueueDepth = 1
@@ -60,7 +68,8 @@ class CoalescingUnitImp(outer: CoalescingUnit, numLanes: Int) extends LazyModule
 
   val sourceWidth = outer.node.in(1)._1.params.sourceBits
   val addressWidth = outer.node.in(1)._1.params.addressBits
-  val reqQueueEntryT = new ReqQueueEntry(sourceWidth, addressWidth)
+  val sizeWidth = outer.node.in(1)._1.params.sizeBits
+  val reqQueueEntryT = new ReqQueueEntry(sourceWidth, addressWidth, sizeWidth)
   val reqQueues = Seq.tabulate(numLanes) { _ =>
     Module(new CoalShiftQueue(reqQueueEntryT, reqQueueDepth))
   }
@@ -69,7 +78,7 @@ class CoalescingUnitImp(outer: CoalescingUnit, numLanes: Int) extends LazyModule
   // coalesced request.  Upper bound is request queue depth.
   val numPerLaneReqs = 1
 
-  val respQueueEntryT = new RespQueueEntry(sourceWidth, wordSize * 8)
+  val respQueueEntryT = new RespQueueEntry(sourceWidth, wordSize * 8, sizeWidth)
   val respQueues = Seq.tabulate(numLanes) { _ =>
     Module(
       new MultiPortQueue(
@@ -122,7 +131,9 @@ class CoalescingUnitImp(outer: CoalescingUnit, numLanes: Int) extends LazyModule
       val reqQueue = reqQueues(lane)
       val req = Wire(reqQueueEntryT)
       req.source := tlIn.a.bits.source
+      req.isStore := TLUtils.AOpcodeIsStore(tlIn.a.bits.opcode)
       req.address := tlIn.a.bits.address
+      req.size := tlIn.a.bits.size
       req.data := tlIn.a.bits.data
 
       assert(reqQueue.io.enq.ready, "reqQueue is supposed to be always ready")
@@ -139,15 +150,22 @@ class CoalescingUnitImp(outer: CoalescingUnit, numLanes: Int) extends LazyModule
       tlOut.a.valid := reqQueue.io.deq.valid && !invalidate
 
       val reqHead = reqQueue.io.deq.bits
-      // FIXME: generate Get or Put according to read/write
-      val (reqLegal, reqBits) = edgeOut.Get(
+      val (plegal, pbits) = edgeOut.Put(
         fromSource = reqHead.source,
-        // `toAddress` should be aligned to 2**lgSize
         toAddress = reqHead.address,
-        lgSize = 0.U
+        lgSize = reqHead.size,
+        // data should be aligned to beatBytes
+        data = reqHead.data
       )
-      assert(reqLegal, "unhandled illegal TL req gen")
-      tlOut.a.bits := reqBits
+      val (glegal, gbits) = edgeOut.Get(
+        fromSource = reqHead.source,
+        toAddress = reqHead.address,
+        lgSize = reqHead.size
+      )
+      val legal = Mux(reqHead.isStore, plegal, glegal)
+      val bits = Mux(reqHead.isStore, pbits, gbits)
+      assert(legal, "unhandled illegal TL req gen")
+      tlOut.a.bits := bits
 
       // Response queue
       //
@@ -156,8 +174,9 @@ class CoalescingUnitImp(outer: CoalescingUnit, numLanes: Int) extends LazyModule
       val respQueue = respQueues(lane)
       val resp = Wire(respQueueEntryT)
       resp.source := tlOut.d.bits.source
+      resp.isStore := TLUtils.DOpcodeIsStore(tlOut.d.bits.opcode)
+      resp.size := tlOut.d.bits.size
       resp.data := tlOut.d.bits.data
-      // TODO: read/write bit?
 
       // Queue up responses that didn't get coalesced originally ("noncoalesced" responses).
       // Coalesced (but uncoalesced back) responses will also be enqueued into the same queue.
@@ -172,6 +191,7 @@ class CoalescingUnitImp(outer: CoalescingUnit, numLanes: Int) extends LazyModule
 
       tlIn.d.valid := respQueue.io.deq(respQueueNoncoalPort).valid
       val respHead = respQueue.io.deq(respQueueNoncoalPort).bits
+      // TODO: AccessAckData for Get
       val respBits = edgeIn.AccessAck(
         toSource = respHead.source,
         lgSize = 0.U,
@@ -271,6 +291,7 @@ class CoalescingUnitImp(outer: CoalescingUnit, numLanes: Int) extends LazyModule
       numLanes,
       numPerLaneReqs,
       sourceWidth,
+      sizeWidth,
       coalDataWidth,
       outer.numInflightCoalRequests
     )
@@ -313,6 +334,7 @@ class UncoalescingUnit(
     val numLanes: Int,
     val numPerLaneReqs: Int,
     val sourceWidth: Int,
+    val sizeWidth: Int,
     val coalDataWidth: Int,
     val numInflightCoalRequests: Int
 ) extends Module {
@@ -328,7 +350,10 @@ class UncoalescingUnit(
     val coalRespSrcId = Input(UInt(sourceWidth.W))
     val coalRespData = Input(UInt(coalDataWidth.W))
     val uncoalResps = Output(
-      Vec(numLanes, Vec(numPerLaneReqs, ValidIO(new RespQueueEntry(sourceWidth, wordSize * 8))))
+      Vec(
+        numLanes,
+        Vec(numPerLaneReqs, ValidIO(new RespQueueEntry(sourceWidth, wordSize * 8, sizeWidth)))
+      )
     )
   })
 
@@ -692,7 +717,7 @@ class MemTraceDriverImp(outer: MemTraceDriver, numLanes: Int, traceFile: String)
       fromSource = sourceIdCounter,
       toAddress = hashToValidPhyAddr(req.address),
       lgSize = req.size, // trace line already holds log2(size)
-      // Need to construct data that is correctly aligned to beatBytes
+      // data should be aligned to beatBytes
       data = (req.data << (8.U * (req.address % edge.manager.beatBytes.U)))
     )
     val (glegal, gbits) = edge.Get(
