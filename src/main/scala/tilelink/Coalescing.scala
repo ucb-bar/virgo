@@ -125,13 +125,12 @@ class CoalescingUnitImp(outer: CoalescingUnit, numLanes: Int) extends LazyModule
       req.address := tlIn.a.bits.address
       req.data := tlIn.a.bits.data
 
+      assert(reqQueue.io.enq.ready, "reqQueue is supposed to be always ready")
       reqQueue.io.enq.valid := tlIn.a.valid
       reqQueue.io.enq.bits := req
       // TODO: deq.ready should respect downstream ready
       reqQueue.io.deq.ready := true.B
       reqQueue.io.invalidate := 0.U
-
-      printf(s"reqQueue(${lane}).count=%d\n", reqQueue.io.count)
 
       // Invalidate coalesced requests
       // FIXME: hardcoded lanes
@@ -208,8 +207,9 @@ class CoalescingUnitImp(outer: CoalescingUnit, numLanes: Int) extends LazyModule
   coalReqAddress := (0xabcd.U + coalSourceId) << 4
   // FIXME: bogus coalescing logic: coalesce whenever all 4 lanes have valid
   // queue head
-  coalReqValid := reqQueues(0).io.deq.valid && reqQueues(1).io.deq.valid &&
-    reqQueues(2).io.deq.valid && reqQueues(3).io.deq.valid
+  // coalReqValid := reqQueues(0).io.deq.valid && reqQueues(1).io.deq.valid &&
+  //   reqQueues(2).io.deq.valid && reqQueues(3).io.deq.valid
+  coalReqValid := false.B
   when(coalReqValid) {
     // invalidate original requests due to coalescing
     // FIXME: bogus
@@ -245,7 +245,9 @@ class CoalescingUnitImp(outer: CoalescingUnit, numLanes: Int) extends LazyModule
   val newEntry = Wire(
     new InflightCoalReqTableEntry(numLanes, numPerLaneReqs, sourceWidth, offsetBits, sizeBits)
   )
+
   println(s"=========== table sourceWidth: ${sourceWidth}")
+
   newEntry.source := coalSourceId
   newEntry.lanes.foreach { l =>
     l.reqs.zipWithIndex.foreach { case (r, i) =>
@@ -535,11 +537,12 @@ class CoalShiftQueue[T <: Data](
   def paddedUsed = pad({ i: Int => used(i) })
   def validAfterInv(i: Int) = valid(i) && !io.invalidate(i)
 
-  val shift = io.deq.ready || (used =/= 0.U) && !validAfterInv(0)
+  val shift = (used =/= 0.U) && (io.deq.ready || !validAfterInv(0))
   for (i <- 0 until entries) {
     val wdata = if (i == entries - 1) io.enq.bits else Mux(!used(i + 1), io.enq.bits, elts(i + 1))
     val wen = Mux(
       shift,
+      // enqueue to the top entry which will be shifted down and make space
       (io.enq.fire && !paddedUsed(i + 1) && used(i)) || pad(validAfterInv)(i + 1),
       // enqueue to the first empty slot above the top
       (io.enq.fire && paddedUsed(i - 1) && !used(i)) || !validAfterInv(i)
