@@ -102,7 +102,6 @@ class ReqQueueEntry(sourceWidth: Int, sizeWidth: Int, addressWidth: Int, maxSize
       toAddress = this.address,
       lgSize = this.size,
       data = this.data,
-      mask = this.mask
     )
     val (glegal, gbits) = edgeOut.Get(
       fromSource = this.source,
@@ -303,6 +302,11 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig) extends 
       req.address := tlIn.a.bits.address
       req.data := tlIn.a.bits.data
       req.size := tlIn.a.bits.size
+      // FIXME: req.data is still containing TL-aligned data.  This is fine if
+      // we're simply passing through this data out the other end, but not if
+      // the outgoing TL edge (tlOut) has different data width from the incoming
+      // edge (tlIn).  Possible TODO to only store the relevant portion of the
+      // data, at the cost of re-aligning at the outgoing end.
       req.mask := tlIn.a.bits.mask
 
       assert(reqQueue.io.queue.enq.ready, "reqQueue is supposed to be always ready")
@@ -689,6 +693,7 @@ class InflightCoalReqTableEntry(
 
 object TLUtils {
   def AOpcodeIsStore(opcode: UInt): Bool = {
+    // 0: PutFullData, 1: PutPartialData, 4: Get
     assert(
       opcode === TLMessages.PutFullData || opcode === TLMessages.Get,
       "unhandled TL A opcode found"
