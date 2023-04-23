@@ -87,7 +87,7 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
       c.io.invalidate.poke(0.U)
 
       // prepare
-      c.io.deq.ready.poke(false.B)
+      c.io.deq.ready.poke(true.B)
       c.io.enq.ready.expect(true.B)
       c.io.enq.valid.poke(true.B)
       c.io.enq.bits.poke(0x12.U)
@@ -105,6 +105,45 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
       c.io.enq.valid.poke(false.B)
       c.io.deq.valid.expect(true.B)
       c.io.deq.bits.expect(0x34.U)
+      c.clock.step()
+      // make sure is empty
+      c.io.deq.ready.poke(true.B)
+      c.io.enq.valid.poke(false.B)
+      c.io.deq.valid.expect(false.B)
+    }
+  }
+
+  it should "work when enqueing and dequeueing simultaneously to a full queue" in {
+    test(new CoalShiftQueue(UInt(8.W), 1)) { c =>
+      c.io.invalidate.poke(0.U)
+
+      // prepare
+      c.io.deq.ready.poke(true.B)
+      c.io.enq.ready.expect(true.B)
+      c.io.enq.valid.poke(true.B)
+      c.io.enq.bits.poke(0x12.U)
+      c.clock.step()
+      // enqueue and dequeue simultaneously
+      c.io.deq.ready.poke(true.B)
+      c.io.enq.ready.expect(true.B)
+      c.io.enq.valid.poke(true.B)
+      c.io.enq.bits.poke(0x34.U)
+      c.io.deq.valid.expect(true.B)
+      c.io.deq.bits.expect(0x12.U)
+      c.clock.step()
+      // enqueue and dequeue simultaneously once more
+      c.io.deq.ready.poke(true.B)
+      c.io.enq.ready.expect(true.B)
+      c.io.enq.valid.poke(true.B)
+      c.io.enq.bits.poke(0x56.U)
+      c.io.deq.valid.expect(true.B)
+      c.io.deq.bits.expect(0x34.U)
+      c.clock.step()
+      // dequeueing back-to-back should work without any holes in the middle
+      c.io.deq.ready.poke(true.B)
+      c.io.enq.valid.poke(false.B)
+      c.io.deq.valid.expect(true.B)
+      c.io.deq.bits.expect(0x56.U)
       c.clock.step()
       // make sure is empty
       c.io.deq.ready.poke(true.B)
@@ -216,6 +255,7 @@ class UncoalescingUnitTest extends AnyFlatSpec with ChiselScalatestTester {
   val numLanes = 4
   val numPerLaneReqs = 2
   val sourceWidth = 2
+  val sizeWidth = 2
   // 16B coalescing size
   val coalDataWidth = 128
   val numInflightCoalRequests = 4
@@ -226,8 +266,9 @@ class UncoalescingUnitTest extends AnyFlatSpec with ChiselScalatestTester {
         numLanes,
         numPerLaneReqs,
         sourceWidth,
+        sizeWidth,
         coalDataWidth,
-        numInflightCoalRequests
+        numInflightCoalRequests,
       )
     )
     // vcs helps with simulation time, but sometimes errors with
@@ -238,15 +279,19 @@ class UncoalescingUnitTest extends AnyFlatSpec with ChiselScalatestTester {
       c.io.coalReqValid.poke(true.B)
       c.io.newEntry.source.poke(sourceId)
       c.io.newEntry.lanes(0).reqs(0).valid.poke(true.B)
+      c.io.newEntry.lanes(0).reqs(0).source.poke(1.U)
       c.io.newEntry.lanes(0).reqs(0).offset.poke(1.U)
       c.io.newEntry.lanes(0).reqs(0).size.poke(2.U)
       c.io.newEntry.lanes(0).reqs(1).valid.poke(true.B)
+      c.io.newEntry.lanes(0).reqs(1).source.poke(2.U)
       c.io.newEntry.lanes(0).reqs(1).offset.poke(1.U)
       c.io.newEntry.lanes(0).reqs(1).size.poke(2.U)
       c.io.newEntry.lanes(2).reqs(0).valid.poke(true.B)
+      c.io.newEntry.lanes(2).reqs(0).source.poke(1.U)
       c.io.newEntry.lanes(2).reqs(0).offset.poke(2.U)
       c.io.newEntry.lanes(2).reqs(0).size.poke(1.U)
       c.io.newEntry.lanes(2).reqs(1).valid.poke(true.B)
+      c.io.newEntry.lanes(2).reqs(1).source.poke(2.U)
       c.io.newEntry.lanes(2).reqs(1).offset.poke(0.U)
       c.io.newEntry.lanes(2).reqs(1).size.poke(2.U)
 
@@ -268,13 +313,13 @@ class UncoalescingUnitTest extends AnyFlatSpec with ChiselScalatestTester {
       c.io.uncoalResps(3)(0).valid.expect(false.B)
 
       c.io.uncoalResps(0)(0).bits.data.expect(0x89abcdefL.U)
-      c.io.uncoalResps(0)(0).bits.source.expect(0.U)
+      c.io.uncoalResps(0)(0).bits.source.expect(1.U)
       c.io.uncoalResps(0)(1).bits.data.expect(0x89abcdefL.U)
-      c.io.uncoalResps(0)(1).bits.source.expect(0.U)
+      c.io.uncoalResps(0)(1).bits.source.expect(2.U)
       c.io.uncoalResps(2)(0).bits.data.expect(0x5ca1ab1eL.U)
-      c.io.uncoalResps(2)(0).bits.source.expect(0.U)
+      c.io.uncoalResps(2)(0).bits.source.expect(1.U)
       c.io.uncoalResps(2)(1).bits.data.expect(0x01234567L.U)
-      c.io.uncoalResps(2)(1).bits.source.expect(0.U)
+      c.io.uncoalResps(2)(1).bits.source.expect(2.U)
     }
   }
 }
