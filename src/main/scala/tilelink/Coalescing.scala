@@ -185,7 +185,7 @@ class CoalShiftQueue[T <: Data](
     if (i == -1) true.B else if (i == entries) false.B else mask(i)
   }
   def paddedUsed = pad({ i: Int => used(i) })
-  def validAfterInv(i: Int) = valid(i) && !io.invalidate.bits(i)
+  def validAfterInv(i: Int) = valid(i) && (!io.invalidate.valid || !io.invalidate.bits(i))
 
   val shift = (used =/= 0.U) && (io.queue.deq.ready || !validAfterInv(0))
   for (i <- 0 until entries) {
@@ -598,7 +598,7 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig) extends 
       numPerLaneReqs,
       sourceWidth,
       offsetBits,
-      config.SizeEnum.getWidth
+      config.SizeEnum
     )
   )
   println(s"=========== table sourceWidth: ${sourceWidth}")
@@ -617,7 +617,7 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig) extends 
       r.valid := false.B
       r.source := origReqs(i).source
       r.offset := (origReqs(i).address % (1 << config.MAX_SIZE).U) >> config.WORD_WIDTH
-      r.sizeEnum := config.SizeEnum.logSizeToEnum(origReqs(i).size).asUInt
+      r.sizeEnum := config.SizeEnum.logSizeToEnum(origReqs(i).size)
     }
   }
   newEntry.lanes(0).reqs(0).valid := true.B
@@ -753,7 +753,7 @@ class UncoalescingUnit(config: CoalescerConfig) extends Module {
       when(inflightTable.io.lookup.valid && oldReq.valid) {
         ioOldReq.valid := oldReq.valid
         ioOldReq.bits.source := oldReq.source
-        val logSize = config.SizeEnum.enumToLogSize(config.SizeEnum(oldReq.sizeEnum))
+        val logSize = found.sizeEnumT.enumToLogSize(oldReq.sizeEnum)
         ioOldReq.bits.size := logSize
         ioOldReq.bits.data :=
           getCoalescedDataChunk(
@@ -780,7 +780,7 @@ class InflightCoalReqTable(config: CoalescerConfig) extends Module {
     config.DEPTH,
     log2Ceil(config.NUM_OLD_IDS),
     config.MAX_SIZE,
-    config.SizeEnum.getWidth
+    config.SizeEnum
   )
 
   val entries = config.NUM_NEW_IDS
@@ -810,7 +810,7 @@ class InflightCoalReqTable(config: CoalescerConfig) extends Module {
           r.valid := false.B
           r.source := 0.U
           r.offset := 0.U
-          r.sizeEnum := config.SizeEnum.INVALID.asUInt
+          r.sizeEnum := config.SizeEnum.INVALID
         }
       }
     }
@@ -858,14 +858,14 @@ class InflightCoalReqTableEntry(
     val numPerLaneReqs: Int,
     val sourceWidth: Int,
     val offsetBits: Int,
-    val sizeEnumBits: Int
+    val sizeEnumT: InFlightTableSizeEnum
 ) extends Bundle {
   class PerCoreReq extends Bundle {
     val valid = Bool() // FIXME: delete this
     // FIXME: oldId and newId shares the same width
     val source = UInt(sourceWidth.W)
     val offset = UInt(offsetBits.W)
-    val sizeEnum = UInt(sizeEnumBits.W)
+    val sizeEnum = sizeEnumT()
   }
   class PerLane extends Bundle {
     val reqs = Vec(numPerLaneReqs, new PerCoreReq)
