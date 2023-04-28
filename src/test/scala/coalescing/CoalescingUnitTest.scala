@@ -224,6 +224,7 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
   it should "work like normal shiftqueue when no invalidate" in {
     test(new CoalShiftQueue(UInt(8.W), 4)) { c =>
       c.io.queue.deq.ready.poke(false.B)
+      c.io.allowShift.poke(true.B)
 
       c.io.queue.enq.ready.expect(true.B)
       c.io.queue.enq.valid.poke(true.B)
@@ -272,6 +273,7 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
   it should "work when enqueing and dequeueing simultaneously" in {
     test(new CoalShiftQueue(UInt(8.W), 4)) { c =>
       c.io.invalidate.valid.poke(false.B)
+      c.io.allowShift.poke(true.B)
 
       // prepare
       c.io.queue.deq.ready.poke(true.B)
@@ -303,6 +305,7 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
   it should "work when enqueing and dequeueing simultaneously to a full queue" in {
     test(new CoalShiftQueue(UInt(8.W), 1)) { c =>
       c.io.invalidate.valid.poke(false.B)
+      c.io.allowShift.poke(true.B)
 
       // prepare
       c.io.queue.deq.ready.poke(true.B)
@@ -342,6 +345,7 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
   it should "invalidate head being dequeued" in {
     test(new CoalShiftQueue(UInt(8.W), 4)) { c =>
       c.io.invalidate.valid.poke(false.B)
+      c.io.allowShift.poke(true.B)
 
       // prepare
       c.io.queue.deq.ready.poke(false.B)
@@ -374,6 +378,7 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
   it should "dequeue invalidated entries by itself" in {
     test(new CoalShiftQueue(gen = UInt(8.W), entries = 4)) { c =>
       c.io.invalidate.valid.poke(false.B)
+      c.io.allowShift.poke(true.B)
 
       // prepare
       c.io.queue.deq.ready.poke(false.B)
@@ -414,6 +419,7 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
     test(new CoalShiftQueue(UInt(8.W), 4)) { c =>
       c.io.invalidate.valid.poke(false.B)
       c.io.invalidate.bits.poke(0.U)
+      c.io.allowShift.poke(true.B)
 
       // prepare
       c.io.queue.deq.ready.poke(false.B)
