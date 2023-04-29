@@ -35,26 +35,46 @@ class MultiPortQueueUnitTest extends AnyFlatSpec with ChiselScalatestTester {
 
 class DummyCoalescingUnitTB(implicit p: Parameters) extends LazyModule {
   val cpuNodes = Seq.tabulate(testConfig.numLanes) { _ =>
-    TLClientNode(Seq(TLMasterPortParameters.v1(Seq(TLClientParameters(
-      name = "processor-nodes",
-      sourceId = IdRange(0, testConfig.numOldSrcIds),
-//      requestFifo = true,
-      visibility = Seq(AddressSet(0x0, 0xffffff))))))) // 24 bit address space (TODO probably use testConfig)
+    TLClientNode(
+      Seq(
+        TLMasterPortParameters.v1(
+          Seq(
+            TLClientParameters(
+              name = "processor-nodes",
+              sourceId = IdRange(0, testConfig.numOldSrcIds),
+              visibility = Seq(AddressSet(0x0, 0xffffff))
+            )
+          )
+        )
+      )
+    ) // 24 bit address space (TODO probably use testConfig)
   }
 
   val device = new SimpleDevice("dummy", Seq("dummy"))
   val beatBytes = 1 << testConfig.dataBusWidth // 256 bit bus
   val l2Nodes = Seq.tabulate(5) { _ =>
-    TLManagerNode(Seq(TLSlavePortParameters.v1(Seq(TLManagerParameters(
-      address = Seq(AddressSet(0x0, 0xffffff)), // should be matching cpuNode
-      resources = device.reg,
-      regionType = RegionType.UNCACHED,
-      executable = true,
-      supportsGet = TransferSizes(1, beatBytes),
-      supportsPutFull = TransferSizes(1, beatBytes),
-      supportsPutPartial = TransferSizes(1, beatBytes),
-      supportsHint = TransferSizes(1, beatBytes),
-      fifoId = Some(0))), beatBytes)))
+    TLManagerNode(
+      Seq(
+        TLSlavePortParameters.v1(
+          Seq(
+            TLManagerParameters(
+              address = Seq(AddressSet(0x0, 0xffffff)), // should be matching cpuNode
+              resources = device.reg,
+              regionType = RegionType.UNCACHED,
+              executable = true,
+              supportsArithmetic = TransferSizes(1, beatBytes),
+              supportsLogical = TransferSizes(1, beatBytes),
+              supportsGet = TransferSizes(1, beatBytes),
+              supportsPutFull = TransferSizes(1, beatBytes),
+              supportsPutPartial = TransferSizes(1, beatBytes),
+              supportsHint = TransferSizes(1, beatBytes),
+              fifoId = Some(0)
+            )
+          ),
+          beatBytes
+        )
+      )
+    )
   }
 
   val dut = LazyModule(new CoalescingUnit(testConfig))
@@ -81,84 +101,116 @@ class DummyCoalescingUnitTBImp(outer: DummyCoalescingUnitTB) extends LazyModuleI
 //  val coalMasterNode = coal.coalescerNode.makeIOs()
 }
 
+object testConfig extends CoalescerConfig(
+  numLanes = 4,
+  queueDepth = 1,
+  waitTimeout = 8,
+  addressWidth = 24,
+  dataBusWidth = 5,
+  // watermark = 2,
+  wordSizeInBytes = 4,
+  wordWidth = 2,
+  numOldSrcIds = 16,
+  numNewSrcIds = 4,
+  respQueueDepth = 4,
+  coalLogSizes = Seq(3),
+  sizeEnum = DefaultInFlightTableSizeEnum
+)
+
 class CoalescerUnitTest extends AnyFlatSpec with ChiselScalatestTester {
   behavior of "multi- and mono-coalescers"
 
-  it should "coalesce fully consecutive accesses at size 4, only once" in {
-    implicit val p: Parameters = Parameters.empty
+  implicit val p: Parameters = Parameters.empty
 
-    val tb = LazyModule(new DummyCoalescingUnitTB())
-//    val outer = LazyModule(new CoalescingUnit(testConfig))
-
-    val coal = tb.dut
-
-    test(tb.module).withAnnotations(Seq(VcsBackendAnnotation, WriteFsdbAnnotation)) { c =>
-      val nodes = c.coalIOs.map(_.head)
-//      val nodes = c.cpuNodesImp.map(_.out.head._1)
-//      val nodes = c.coal.node.in.map(_._1)
-//      val nodes = c.mitmNodesImp.map(_.in.head._1)
-
-      def pokeA(nodes: Seq[TLBundle], idx: Int, op: Int, size: Int, source: Int, addr: Int, mask: Int, data: Int): Unit = {
-        val node = nodes(idx)
+  def pokeA(
+      nodes: Seq[TLBundle],
+      idx: Int,
+      op: Int,
+      size: Int,
+      source: Int,
+      addr: Int,
+      mask: Int,
+      data: Int
+  ): Unit = {
+    val node = nodes(idx)
 //        node.a.ready.expect(true.B) // FIXME: this fails currently
-        node.a.bits.opcode.poke(if (op == 1) TLMessages.PutFullData else TLMessages.Get)
-        node.a.bits.param.poke(0.U)
-        node.a.bits.size.poke(size.U)
-        node.a.bits.source.poke(source.U)
-        node.a.bits.address.poke(addr.U)
-        node.a.bits.mask.poke(mask.U)
-        node.a.bits.data.poke(data.U)
-        node.a.bits.corrupt.poke(false.B)
-        node.a.valid.poke(true.B)
-      }
+    node.a.bits.opcode.poke(if (op == 1) TLMessages.PutFullData else TLMessages.Get)
+    node.a.bits.param.poke(0.U)
+    node.a.bits.size.poke(size.U)
+    node.a.bits.source.poke(source.U)
+    node.a.bits.address.poke(addr.U)
+    node.a.bits.mask.poke(mask.U)
+    node.a.bits.data.poke(data.U)
+    node.a.bits.corrupt.poke(false.B)
+    node.a.valid.poke(true.B)
+  }
 
-      def unsetA(): Unit = {
-        nodes.foreach { node =>
-          node.a.valid.poke(false.B)
-        }
-      }
+  def unsetA(nodes: Seq[TLBundle]): Unit = {
+    nodes.foreach { node =>
+      node.a.valid.poke(false.B)
+    }
+  }
 
-      // always ready to take coalesced requests
-//      c.coalMasterNode.head.a.ready.poke(true.B)
-//      c.coal.module.coalescer.io.outReq.ready.poke(true.B)
+  // it should "coalesce fully consecutive accesses at size 4, only once" in {
+  //   test(makeTb().module)
+  //   .withAnnotations(Seq(VcsBackendAnnotation, WriteFsdbAnnotation))
+  //   { c =>
+  //     println(s"coalIO length = ${c.coalIOs(0).length}")
+  //     val nodes = c.coalIOs.map(_.head)
+// //      val nodes = c.cpuNodesImp.map(_.out.head._1)
+// //      val nodes = c.coal.node.in.map(_._1)
+// //      val nodes = c.mitmNodesImp.map(_.in.head._1)
 
-      pokeA(nodes, idx=0, op=1, size=2, source=0, addr=0x10, mask=0xf, data=0x1111)
-      pokeA(nodes, idx=1, op=1, size=2, source=0, addr=0x14, mask=0xf, data=0x2222)
-      pokeA(nodes, idx=2, op=1, size=2, source=0, addr=0x18, mask=0xf, data=0x3333)
-      pokeA(nodes, idx=3, op=1, size=2, source=0, addr=0x1c, mask=0xf, data=0x4444)
+  //     // always ready to take coalesced requests
+// //      c.coalMasterNode.head.a.ready.poke(true.B)
+// //      c.coal.module.coalescer.io.outReq.ready.poke(true.B)
+
+  //     pokeA(nodes, idx = 0, op = 1, size = 2, source = 0, addr = 0x10, mask = 0xf, data = 0x1111)
+  //     pokeA(nodes, idx = 1, op = 1, size = 2, source = 0, addr = 0x14, mask = 0xf, data = 0x2222)
+  //     pokeA(nodes, idx = 2, op = 1, size = 2, source = 0, addr = 0x18, mask = 0xf, data = 0x3333)
+  //     pokeA(nodes, idx = 3, op = 1, size = 2, source = 0, addr = 0x1c, mask = 0xf, data = 0x4444)
+
+  //     c.clock.step()
+
+  //     unsetA(nodes)
+
+  //     c.clock.step()
+  //     c.clock.step()
+  //   }
+  // }
+
+  it should "coalesce identical addresses (stride of 0)" in {
+    test(LazyModule(new DummyCoalescingUnitTB()).module)
+    .withAnnotations(Seq(VcsBackendAnnotation))
+    { c =>
+      println(s"coalIO length = ${c.coalIOs(0).length}")
+      val nodes = c.coalIOs.map(_.head)
+
+      pokeA(nodes, idx = 0, op = 1, size = 2, source = 0, addr = 0x18, mask = 0xf, data = 0x1111)
+      pokeA(nodes, idx = 1, op = 1, size = 2, source = 0, addr = 0x18, mask = 0xf, data = 0x2222)
+      pokeA(nodes, idx = 2, op = 1, size = 2, source = 0, addr = 0x18, mask = 0xf, data = 0x3333)
+      pokeA(nodes, idx = 3, op = 1, size = 2, source = 0, addr = 0x18, mask = 0xf, data = 0x4444)
 
       c.clock.step()
 
-      unsetA()
+      unsetA(nodes)
 
       c.clock.step()
       c.clock.step()
     }
   }
 
-  it should "coalesce strided accesses at size 6" in {
+  it should "coalesce strided accesses at size 6" in {}
 
-  }
+  it should "coalesce the coalescable chunk and leave 2 uncoalescable requests" in {}
 
-  it should "coalesce the coalescable chunk and leave 2 uncoalescable requests" in {
+  it should "not touch uncoalescable requests" in {}
 
-  }
+  it should "allow temporal coalescing when depth >=2" in {}
 
-  it should "not touch uncoalescable requests" in {
+  it should "select the most coverage mono-coalescer" in {}
 
-  }
-
-  it should "allow temporal coalescing when depth >=2" in {
-
-  }
-
-  it should "select the most coverage mono-coalescer" in {
-
-  }
-
-  it should "resort to the backup policy when coverage is below average" in {
-
-  }
+  it should "resort to the backup policy when coverage is below average" in {}
 }
 
 class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
@@ -167,6 +219,7 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
   it should "work like normal shiftqueue when no invalidate" in {
     test(new CoalShiftQueue(UInt(8.W), 4)) { c =>
       c.io.queue.deq.ready.poke(false.B)
+      c.io.allowShift.poke(true.B)
 
       c.io.queue.enq.ready.expect(true.B)
       c.io.queue.enq.valid.poke(true.B)
@@ -215,6 +268,7 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
   it should "work when enqueing and dequeueing simultaneously" in {
     test(new CoalShiftQueue(UInt(8.W), 4)) { c =>
       c.io.invalidate.valid.poke(false.B)
+      c.io.allowShift.poke(true.B)
 
       // prepare
       c.io.queue.deq.ready.poke(true.B)
@@ -243,9 +297,47 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
     }
   }
 
-  it should "work when enqueing and dequeueing simultaneously to a full queue" in {
+  it should "not shift entries when allowShift is false" in {
+    test(new CoalShiftQueue(UInt(8.W), 4)) { c =>
+      c.io.invalidate.valid.poke(false.B)
+      c.io.queue.deq.ready.poke(false.B)
+
+      c.io.allowShift.poke(false.B)
+
+      // prepare
+      c.io.queue.enq.ready.expect(true.B)
+      c.io.queue.enq.valid.poke(true.B)
+      c.io.queue.enq.bits.poke(0x12.U)
+      c.clock.step()
+      c.io.queue.enq.ready.expect(true.B)
+      c.io.queue.enq.valid.poke(true.B)
+      c.io.queue.enq.bits.poke(0x34.U)
+      c.clock.step()
+      c.io.queue.enq.valid.poke(false.B)
+
+      // dequeueing should work normally when allowShift is false...
+      c.io.queue.deq.ready.poke(true.B)
+      c.io.queue.deq.valid.expect(true.B)
+      c.io.queue.deq.bits.expect(0x12.U)
+      c.clock.step()
+      // but should stop there and not dequeue the next entry
+      c.io.queue.deq.ready.poke(true.B)
+      c.io.queue.deq.valid.expect(false.B)
+      c.clock.step()
+      // when allowShift is back one, dequeueing should start working from next
+      // cycle
+      c.io.allowShift.poke(true.B)
+      c.clock.step()
+      c.io.queue.deq.ready.poke(true.B)
+      c.io.queue.deq.valid.expect(true.B)
+      c.io.queue.deq.bits.expect(0x34.U)
+    }
+  }
+
+  it should "work when enqueing and dequeueing simultaneously to a depth=1 queue" in {
     test(new CoalShiftQueue(UInt(8.W), 1)) { c =>
       c.io.invalidate.valid.poke(false.B)
+      c.io.allowShift.poke(true.B)
 
       // prepare
       c.io.queue.deq.ready.poke(true.B)
@@ -282,9 +374,47 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
     }
   }
 
-  it should "invalidate head being dequeued" in {
+  it should "work when invalidating and enqueueing to a depth=1 queue" in {
+    test(new CoalShiftQueue(UInt(8.W), 1)) { c =>
+      c.io.invalidate.valid.poke(false.B)
+      c.io.allowShift.poke(true.B)
+      // no dequeueing
+      c.io.queue.deq.ready.poke(false.B)
+
+      // prepare
+      c.io.queue.enq.ready.expect(true.B)
+      c.io.queue.enq.valid.poke(true.B)
+      c.io.queue.enq.bits.poke(0x12.U)
+      c.clock.step()
+      // invalidate, but don't allow shift
+      c.io.allowShift.poke(false.B)
+      c.io.invalidate.valid.poke(true.B)
+      c.io.invalidate.bits.poke(0x1.U)
+      // TODO: we might be able to enqueue to a full depth=1 queue whose only
+      // entry just got invalidated, so that enq.ready is true here, but
+      // it is a niche case
+      c.io.queue.enq.ready.expect(false.B)
+      c.clock.step()
+      // now try enqueueing now that we have space
+      c.io.allowShift.poke(true.B)
+      c.io.invalidate.valid.poke(false.B)
+      c.io.queue.enq.ready.expect(true.B)
+      c.io.queue.enq.valid.poke(true.B)
+      c.io.queue.enq.bits.poke(0x34.U)
+      c.io.queue.deq.valid.expect(false.B)
+      c.clock.step()
+      // see if it comes out right next cycle
+      c.io.queue.enq.valid.poke(false.B)
+      c.io.queue.deq.ready.poke(true.B)
+      c.io.queue.deq.valid.expect(true.B)
+      c.io.queue.deq.bits.expect(0x34.U)
+    }
+  }
+
+  it should "invalidate head that is also being dequeued" in {
     test(new CoalShiftQueue(UInt(8.W), 4)) { c =>
       c.io.invalidate.valid.poke(false.B)
+      c.io.allowShift.poke(true.B)
 
       // prepare
       c.io.queue.deq.ready.poke(false.B)
@@ -300,12 +430,11 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
       c.io.queue.enq.valid.poke(false.B)
 
       // invalidate should work for the head just being dequeued at the same
-      // cycle.  However, it should not change deq.valid right away to avoid
-      // combinational cycles (see definition).
+      // cycle
       c.io.invalidate.valid.poke(true.B)
       c.io.invalidate.bits.poke(0x1.U)
       c.io.queue.deq.ready.poke(true.B)
-      c.io.queue.deq.valid.expect(true.B)
+      c.io.queue.deq.valid.expect(false.B)
       c.clock.step()
       // 0x12 should have been dequeued
       c.io.invalidate.valid.poke(false.B)
@@ -315,9 +444,11 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
     }
   }
 
-  it should "dequeue invalidated entries by itself" in {
+  it should "dequeue invalidated head on its own when allowShift" in {
     test(new CoalShiftQueue(gen = UInt(8.W), entries = 4)) { c =>
       c.io.invalidate.valid.poke(false.B)
+
+      c.io.allowShift.poke(true.B)
 
       // prepare
       c.io.queue.deq.ready.poke(false.B)
@@ -338,19 +469,33 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
       // invalidate two entries at head
       c.io.invalidate.valid.poke(true.B)
       c.io.invalidate.bits.poke(0x3.U)
+      c.io.queue.deq.ready.poke(false.B)
       // [ 0x56 | 0x34(inv) | 0x12(inv) ]
       c.clock.step()
-      // [ 0x56 | 0x34(inv) ]
+      //             [ 0x56 | 0x34(inv) ]
       c.io.invalidate.valid.poke(false.B)
       c.io.queue.deq.ready.poke(false.B)
       c.clock.step()
-      // [ 0x56 ]
+      //                         [ 0x56 ]
       c.io.queue.deq.ready.poke(true.B)
       c.io.queue.deq.valid.expect(true.B)
       c.io.queue.deq.bits.expect(0x56.U)
       c.clock.step()
       c.io.queue.deq.ready.poke(true.B)
       c.io.queue.deq.valid.expect(false.B)
+      c.clock.step()
+
+      // do one more enqueue-then-dequeue to see if used bit was properly cleared
+      c.io.queue.deq.ready.poke(false.B)
+      c.io.queue.enq.ready.expect(true.B)
+      c.io.queue.enq.valid.poke(true.B)
+      c.io.queue.enq.bits.poke(0x78.U)
+      c.clock.step()
+      // should dequeue right away
+      c.io.queue.enq.valid.poke(false.B)
+      c.io.queue.deq.ready.poke(true.B)
+      c.io.queue.deq.valid.expect(true.B)
+      c.io.queue.deq.bits.expect(0x78.U)
     }
   }
 
@@ -358,6 +503,7 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
     test(new CoalShiftQueue(UInt(8.W), 4)) { c =>
       c.io.invalidate.valid.poke(false.B)
       c.io.invalidate.bits.poke(0.U)
+      c.io.allowShift.poke(true.B)
 
       // prepare
       c.io.queue.deq.ready.poke(false.B)
@@ -383,24 +529,23 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
   }
 }
 
-object testConfig extends CoalescerConfig(
-  maxSize = 5,
+object uncoalescerTestConfig extends CoalescerConfig(
+  numLanes = 4,
   queueDepth = 2,
   waitTimeout = 8,
   addressWidth = 24,
   dataBusWidth = 5,
-  numLanes = 4,
   // watermark = 2,
   wordSizeInBytes = 4,
   wordWidth = 2,
   numOldSrcIds = 16,
   numNewSrcIds = 4,
   respQueueDepth = 4,
-  coalSizes = Seq(4, 5),
+  coalLogSizes = Seq(4),
   sizeEnum = DefaultInFlightTableSizeEnum
 )
 
-class UncoalescingUnitTest extends AnyFlatSpec with ChiselScalatestTester {
+class UncoalescerUnitTest extends AnyFlatSpec with ChiselScalatestTester {
   behavior of "uncoalescer"
   val numLanes = 4
   val numPerLaneReqs = 2
@@ -410,8 +555,8 @@ class UncoalescingUnitTest extends AnyFlatSpec with ChiselScalatestTester {
   val coalDataWidth = 128
   val numInflightCoalRequests = 4
 
-  it should "work" in {
-    test(new UncoalescingUnit(testConfig))
+  it should "work in general case" in {
+    test(new Uncoalescer(uncoalescerTestConfig))
     // vcs helps with simulation time, but sometimes errors with
     // "mutation occurred during iteration" java error
     // .withAnnotations(Seq(VcsBackendAnnotation))
@@ -426,7 +571,7 @@ class UncoalescingUnitTest extends AnyFlatSpec with ChiselScalatestTester {
       c.io.newEntry.lanes(0).reqs(0).sizeEnum.poke(four)
       c.io.newEntry.lanes(0).reqs(1).valid.poke(true.B)
       c.io.newEntry.lanes(0).reqs(1).source.poke(2.U)
-      c.io.newEntry.lanes(0).reqs(1).offset.poke(0.U)
+      c.io.newEntry.lanes(0).reqs(1).offset.poke(1.U) // same offset to different lanes
       c.io.newEntry.lanes(0).reqs(1).sizeEnum.poke(four)
       c.io.newEntry.lanes(1).reqs(0).valid.poke(false.B)
       c.io.newEntry.lanes(2).reqs(0).valid.poke(true.B)
@@ -460,12 +605,73 @@ class UncoalescingUnitTest extends AnyFlatSpec with ChiselScalatestTester {
       // offset is counting from LSB
       c.io.uncoalResps(0)(0).bits.data.expect(0x5ca1ab1eL.U)
       c.io.uncoalResps(0)(0).bits.source.expect(1.U)
-      c.io.uncoalResps(0)(1).bits.data.expect(0xdeadbeefL.U)
+      c.io.uncoalResps(0)(1).bits.data.expect(0x5ca1ab1eL.U)
       c.io.uncoalResps(0)(1).bits.source.expect(2.U)
       c.io.uncoalResps(2)(0).bits.data.expect(0x89abcdefL.U)
       c.io.uncoalResps(2)(0).bits.source.expect(2.U)
       c.io.uncoalResps(2)(1).bits.data.expect(0x01234567L.U)
       c.io.uncoalResps(2)(1).bits.source.expect(2.U)
+    }
+  }
+
+  it should "uncoalesce when coalesced to the same word offset" in {
+    test(new Uncoalescer(uncoalescerTestConfig))
+    // .withAnnotations(Seq(VcsBackendAnnotation))
+    { c =>
+      val sourceId = 0.U
+      val four = c.io.newEntry.sizeEnumT.FOUR
+      c.io.coalReqValid.poke(true.B)
+      c.io.newEntry.source.poke(sourceId)
+      c.io.newEntry.lanes(0).reqs(0).valid.poke(true.B)
+      c.io.newEntry.lanes(0).reqs(0).source.poke(0.U)
+      c.io.newEntry.lanes(0).reqs(0).offset.poke(1.U)
+      c.io.newEntry.lanes(0).reqs(0).sizeEnum.poke(four)
+      c.io.newEntry.lanes(0).reqs(1).valid.poke(false.B)
+      c.io.newEntry.lanes(1).reqs(0).valid.poke(true.B)
+      c.io.newEntry.lanes(1).reqs(0).source.poke(1.U)
+      c.io.newEntry.lanes(1).reqs(0).offset.poke(1.U)
+      c.io.newEntry.lanes(1).reqs(0).sizeEnum.poke(four)
+      c.io.newEntry.lanes(1).reqs(1).valid.poke(false.B)
+      c.io.newEntry.lanes(2).reqs(0).valid.poke(true.B)
+      c.io.newEntry.lanes(2).reqs(0).source.poke(2.U)
+      c.io.newEntry.lanes(2).reqs(0).offset.poke(1.U)
+      c.io.newEntry.lanes(2).reqs(0).sizeEnum.poke(four)
+      c.io.newEntry.lanes(2).reqs(1).valid.poke(false.B)
+      c.io.newEntry.lanes(3).reqs(0).valid.poke(true.B)
+      c.io.newEntry.lanes(3).reqs(0).source.poke(3.U)
+      c.io.newEntry.lanes(3).reqs(0).offset.poke(1.U)
+      c.io.newEntry.lanes(3).reqs(0).sizeEnum.poke(four)
+      c.io.newEntry.lanes(3).reqs(1).valid.poke(false.B)
+
+      c.clock.step()
+
+      c.io.coalReqValid.poke(false.B)
+
+      c.clock.step()
+
+      c.io.coalResp.valid.poke(true.B)
+      c.io.coalResp.bits.source.poke(sourceId)
+      val lit = (BigInt(0x0123456789abcdefL) << 64) | BigInt(0x5ca1ab1edeadbeefL)
+      c.io.coalResp.bits.data.poke(lit.U)
+
+      // table lookup is combinational at the same cycle
+      // offset is counting from LSB
+      c.io.uncoalResps(0)(0).valid.expect(true.B)
+      c.io.uncoalResps(0)(0).bits.data.expect(0x5ca1ab1eL.U)
+      c.io.uncoalResps(0)(0).bits.source.expect(0.U)
+      c.io.uncoalResps(0)(1).valid.expect(false.B)
+      c.io.uncoalResps(1)(0).valid.expect(true.B)
+      c.io.uncoalResps(1)(0).bits.data.expect(0x5ca1ab1eL.U)
+      c.io.uncoalResps(1)(0).bits.source.expect(1.U)
+      c.io.uncoalResps(1)(1).valid.expect(false.B)
+      c.io.uncoalResps(2)(0).valid.expect(true.B)
+      c.io.uncoalResps(2)(0).bits.data.expect(0x5ca1ab1eL.U)
+      c.io.uncoalResps(2)(0).bits.source.expect(2.U)
+      c.io.uncoalResps(2)(1).valid.expect(false.B)
+      c.io.uncoalResps(3)(0).valid.expect(true.B)
+      c.io.uncoalResps(3)(0).bits.data.expect(0x5ca1ab1eL.U)
+      c.io.uncoalResps(3)(0).bits.source.expect(3.U)
+      c.io.uncoalResps(3)(1).valid.expect(false.B)
     }
   }
 }
