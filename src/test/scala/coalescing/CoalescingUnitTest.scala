@@ -169,6 +169,7 @@ class DummyCoalescingUnitTBImp(outer: DummyCoalescingUnitTB) extends LazyModuleI
 }
 
 object testConfig extends CoalescerConfig(
+  enable = true,
   numLanes = 4,
   queueDepth = 1,
   waitTimeout = 8,
@@ -646,6 +647,7 @@ class CoalShiftQueueTest extends AnyFlatSpec with ChiselScalatestTester {
 }
 
 object uncoalescerTestConfig extends CoalescerConfig(
+  enable = true,
   numLanes = 4,
   queueDepth = 2,
   waitTimeout = 8,
