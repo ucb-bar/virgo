@@ -58,6 +58,7 @@ case class CoalescerConfig(
   def maxCoalLogSize: Int = coalLogSizes.max
 }
 
+
 object defaultConfig extends CoalescerConfig(
   numLanes = 4,
   queueDepth = 1,
@@ -991,7 +992,7 @@ class MemTraceDriver(config: CoalescerConfig, filename: String)(implicit
     val clientParam = Seq(
       TLMasterParameters.v1(
         name = "MemTraceDriver" + i.toString,
-        sourceId = IdRange(0, 0x10)
+        sourceId = IdRange(0, 0x100)
         // visibility = Seq(AddressSet(0x0000, 0xffffff))
       )
     )
@@ -1030,21 +1031,25 @@ class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, traceFil
     extends LazyModuleImp(outer)
     with UnitTestModule {
 
-  val globalClkCounter = RegInit(0.U(64.W))
-  val traceReadCycle   = RegInit(0.U(64.W))
-  globalClkCounter    := globalClkCounter + 1.U
-  traceReadCycle      := traceReadCycle + 1.U
+  val globalClkCounter    = RegInit(1.U(64.W))
+  val traceReadCycle      = RegInit(1.U(64.W))
+  val downstreamSQready   = WireInit(true.B)
 
+  //make the downstream only ready 1/4 of the time
+  //This is to test Tracer System's ability to hold on requests
+  //FIXME
+  downstreamSQready       := (globalClkCounter(1,0) =/= 0.U)
+  //Connect Signals to Verilog BlackBox
   val sim = Module(new SimMemTrace(traceFile, config.numLanes))
   sim.io.clock := clock
   sim.io.reset := reset.asBool
-  // <FIX ME>, change ready to be base on down stream
-  sim.io.trace_read.ready := true.B  
+  sim.io.trace_read.ready := downstreamSQready
+  //FIXME - 1.U hardcoded, currently there is a delay between chisel and verilog
   sim.io.trace_read.cycle := traceReadCycle
 
-  // Split output of SimMemTrace, which is flattened across all lanes,
-  // back to each lane's.
 
+  // Read output from Verilog BlackBox
+  // Split output of SimMemTrace, which is flattened across all lanes,back to each lane's.
   val laneReqs = Wire(Vec(config.numLanes, new TraceLine))
   val addrW = laneReqs(0).address.getWidth
   val sizeW = laneReqs(0).size.getWidth
@@ -1057,6 +1062,20 @@ class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, traceFil
     req.is_store := sim.io.trace_read.is_store(i)
     req.size := sim.io.trace_read.size(sizeW * (i + 1) - 1, sizeW * i)
     req.data := sim.io.trace_read.data(dataW * (i + 1) - 1, dataW * i)
+  }
+
+  globalClkCounter       := globalClkCounter + 1.U
+  val existValidReq       = WireInit(false.B)
+  existValidReq          := laneReqs.map(_.valid).reduce(_||_)
+  val validReqBlocked     = WireInit(false.B)
+  validReqBlocked        := !downstreamSQready && existValidReq
+  //Debug
+  dontTouch(downstreamSQready)
+  dontTouch(existValidReq)
+  dontTouch(validReqBlocked)
+  // Do Not Update TraceReadCycle if downstream is blocking
+  when(!validReqBlocked){
+    traceReadCycle       := traceReadCycle + 1.U
   }
 
   // To prevent collision of sourceId with a current in-flight message,
@@ -1160,6 +1179,7 @@ class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, traceFil
   //   )
   // }
 }
+
 
 class SimMemTrace(filename: String, numLanes: Int)
     extends BlackBox(
