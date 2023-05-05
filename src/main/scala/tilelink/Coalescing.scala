@@ -247,8 +247,7 @@ class CoalShiftQueue[T <: Data](gen: T, entries: Int, config: CoalescerConfig) e
     // dequeue is valid when:
     // head entry is valid, has not been processed by downstream, and is not coalescable
     deq.bits := elts.map(_.head.bits)(i)
-    deq.valid := elts.map(_.head.valid)(i) && !deqDone(i) &&
-                 (!io.invalidate.valid || !io.coalescable(i))
+    deq.valid := elts.map(_.head.valid)(i) && !deqDone(i) && !io.coalescable(i)
 
     // can take new entries if not empty, or if full but shifting
     enq.ready := (!ctrl.full) || ctrl.shift
@@ -546,6 +545,7 @@ class MultiCoalescer(windowT: CoalShiftQueue[ReqQueueEntry], coalReqT: ReqQueueE
   def disable = {
     io.coalReq.valid := false.B
     io.invalidate.valid := false.B
+    io.coalescable.foreach { _ := false.B }
   }
   if (!config.enable) disable
 }
