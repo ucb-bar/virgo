@@ -209,6 +209,18 @@ class CoalShiftQueue[T <: Data](gen: T, entries: Int, config: CoalescerConfig) e
   val writePtr = RegInit(VecInit(Seq.fill(config.numLanes)(0.asUInt(log2Ceil(entries + 1).W))))
   val deqDone = RegInit(VecInit(Seq.fill(config.numLanes)(false.B)))
 
+  private def resetElts = {
+    elts.foreach { laneQ =>
+      laneQ.foreach { entry =>
+        entry.valid := false.B
+        entry.bits := DontCare
+      }
+    }
+  }
+  when (reset.asBool) {
+    resetElts
+  }
+
   val controlSignals = Wire(Vec(config.numLanes, new Bundle {
     val shift = Bool()
     val full = Bool()
@@ -590,10 +602,31 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig) extends 
       deq.ready := true.B // TODO: deq.ready should respect downstream arbiter
       tlOut.a.valid := deq.valid
       tlOut.a.bits := deq.bits.toTLA(edgeOut)
+
+      // debug
+      // when (tlIn.a.valid) {
+      //   TLPrintf(s"tlIn(${lane}).a",
+      //     tlIn.a.bits.address,
+      //     tlIn.a.bits.size,
+      //     tlIn.a.bits.mask,
+      //     TLUtils.AOpcodeIsStore(tlIn.a.bits.opcode),
+      //     tlIn.a.bits.data,
+      //     0.U
+      //   )
+      // }
+      // when (tlOut.a.valid) {
+      //   TLPrintf(s"tlOut(${lane}).a",
+      //     tlOut.a.bits.address,
+      //     tlOut.a.bits.size,
+      //     tlOut.a.bits.mask,
+      //     TLUtils.AOpcodeIsStore(tlOut.a.bits.opcode),
+      //     tlOut.a.bits.data,
+      //     0.U
+      //   )
+      // }
   }
 
   val (tlCoal, edgeCoal) = outer.coalescerNode.out.head
-
   tlCoal.a.valid := coalescer.io.coalReq.valid
   tlCoal.a.bits := coalescer.io.coalReq.bits.toTLA(edgeCoal)
   coalescer.io.coalReq.ready := tlCoal.a.ready
@@ -1149,7 +1182,7 @@ class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, traceFil
     val bits = Mux(req.is_store, pbits, gbits)
 
     when(tlOut.a.valid) {
-      TracePrintf(
+      TLPrintf(
         "MemTraceDriver",
         tlOut.a.bits.address,
         tlOut.a.bits.size,
@@ -1342,8 +1375,8 @@ class MemTraceLogger(
         // }
 
         when(req.valid) {
-          TracePrintf(
-            "MemTraceLogger",
+          TLPrintf(
+            s"MemTraceLogger (${loggerName}:downstream)",
             tlIn.a.bits.address,
             tlIn.a.bits.size,
             tlIn.a.bits.mask,
@@ -1472,9 +1505,9 @@ class SimMemTraceLogger(isResponse: Boolean, filename: String, numLanes: Int)
   addResource("/csrc/SimMemTrace.h")
 }
 
-class TracePrintf {}
+class TLPrintf {}
 
-object TracePrintf {
+object TLPrintf {
   def apply(
       printer: String,
       address: UInt,
