@@ -293,6 +293,9 @@ class CoalShiftQueue[T <: Data](gen: T, entries: Int, config: CoalescerConfig) e
     }
   }
 
+  // When doing spatial-only coalescing, queues should never drift from each
+  // other, i.e. the queue heads should always contain mem requests from the
+  // same instruction.
   val queueInSync = controlSignals.map(_ === controlSignals.head).reduce(_ && _) &&
     writePtr.map(_ === writePtr.head).reduce(_ && _)
   assert(queueInSync, "shift queue lanes are not in sync")
@@ -326,23 +329,15 @@ class MonoCoalescer(coalLogSize: Int, windowT: CoalShiftQueue[ReqQueueEntry],
   val leaders = io.window.elts.map(_.head)
   val leadersValid = io.window.mask.map(_.asBools.head)
 
-  // When doing spatial-only coalescing, queues should never drift from each
-  // other, i.e. the queue heads should always contain mem requests from the
-  // same instruction.
-  // FIXME: This relies on the MemTraceDriver's behavior of generating TL
-  // requests with full source info even when the corresponding lane is not
-  // active.
-  def testNoQueueDrift: Bool = leaders.map(_.source === leaders.head.source).reduce(_ || _)
   def printQueueHeads = {
     leaders.zipWithIndex.foreach{ case (head, i) =>
       printf(s"ReqQueueEntry[${i}].head = v:%d, source:%d, addr:%x\n",
         leadersValid(i), head.source, head.address)
     }
   }
-  when (leadersValid.reduce(_ || _)) {
-    assert(testNoQueueDrift, "unexpected drift between lane request queues")
-    // printQueueHeads
-  }
+  // when (leadersValid.reduce(_ || _)) {
+  //   printQueueHeads
+  // }
 
   val size = coalLogSize
   val addrMask = (((1 << config.addressWidth) - 1) - ((1 << size) - 1)).U
@@ -578,11 +573,14 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig) extends 
   reqQueues.io.coalescable := coalescer.io.coalescable
   reqQueues.io.invalidate := coalescer.io.invalidate
 
-  // Per-lane request and response queues
+  // ===========================================================================
+  // Request flow
+  // ===========================================================================
   //
   // Override IdentityNode implementation so that we can instantiate
   // queues between input and output edges to buffer requests and responses.
   // See IdentityNode definition in `diplomacy/Nodes.scala`.
+  //
   (outer.cpuNode.in zip outer.cpuNode.out).zipWithIndex.foreach {
     case (((tlIn, _), (tlOut, edgeOut)), lane) =>
       // Request queue
@@ -641,11 +639,12 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig) extends 
   tlCoal.e.valid := false.B
 
 
-  // ==================================================================
-  // ******************************************************************
-  // ************************* REORG BOUNDARY *************************
-  // ******************************************************************
-  // ==================================================================
+  // ===========================================================================
+  // Response flow
+  // ===========================================================================
+  //
+  // Connect uncoalescer output and noncoalesced response ports to the response
+  // queues.
 
   // The maximum number of requests from a single lane that can go into a
   // coalesced request.  Upper bound is min(DEPTH, 2**sourceWidth).
@@ -1358,27 +1357,6 @@ class MemTraceLogger(
         // originally requested, so no postprocessing required
         req.address := tlIn.a.bits.address
 
-        // TL data
-        //
-        // When tlIn.a.bits.size is smaller than the data bus width, need to
-        // figure out which byte lanes we actually accessed so that
-        // we can write that to the memory trace.
-        // See Section 4.5 Byte Lanes in spec 1.8.1
-
-        // This assert only holds true for PutFullData and not PutPartialData,
-        // where HIGH bits in the mask may not be contiguous.
-        assert(
-          PopCount(tlIn.a.bits.mask) === (1.U << tlIn.a.bits.size),
-          "mask HIGH bits do not match the TL size.  This should have been handled by the TL generator logic"
-        )
-        val trailingZerosInMask = trailingZeros(tlIn.a.bits.mask)
-        val dataW = tlIn.params.dataBits
-        val mask = ~(~(0.U(dataW.W)) << ((1.U << tlIn.a.bits.size) * 8.U))
-        req.data := mask & (tlIn.a.bits.data >> (trailingZerosInMask * 8.U))
-        // when (req.valid) {
-        //   printf("trailingZerosInMask=%d, mask=%x, data=%x\n", trailingZerosInMask, mask, req.data)
-        // }
-
         when(req.valid) {
           TLPrintf(
             s"MemTraceLogger (${loggerName}:downstream)",
@@ -1390,6 +1368,28 @@ class MemTraceLogger(
             req.data
           )
         }
+
+        // TL data
+        //
+        // When tlIn.a.bits.size is smaller than the data bus width, need to
+        // figure out which byte lanes we actually accessed so that
+        // we can write that to the memory trace.
+        // See Section 4.5 Byte Lanes in spec 1.8.1
+
+        // This assert only holds true for PutFullData and not PutPartialData,
+        // where HIGH bits in the mask may not be contiguous.
+        assert(
+          PopCount(tlIn.a.bits.mask) === (1.U << tlIn.a.bits.size),
+          "mask HIGH popcount do not match the TL size. " +
+          "Partial masks are not allowed for PutFull"
+        )
+        val trailingZerosInMask = trailingZeros(tlIn.a.bits.mask)
+        val dataW = tlIn.params.dataBits
+        val mask = ~(~(0.U(dataW.W)) << ((1.U << tlIn.a.bits.size) * 8.U))
+        req.data := mask & (tlIn.a.bits.data >> (trailingZerosInMask * 8.U))
+        // when (req.valid) {
+        //   printf("trailingZerosInMask=%d, mask=%x, data=%x\n", trailingZerosInMask, mask, req.data)
+        // }
 
         // responses on TL D channel
         //
@@ -1813,6 +1813,4 @@ class CoalArbiterImpl(outer: CoalArbiter,
       val coalResp      = Decoupled(respCoalBundleT)
       }
     )
-
-
 }
