@@ -233,11 +233,13 @@ class CoalShiftQueue[T <: Data](gen: T, entries: Int, config: CoalescerConfig) e
   }))
 
   // shift hint is when the heads have no more coalescable left this or next cycle
-  val shiftHint = !(io.coalescable zip io.invalidate.bits.map(_(0))).map { case (c, i) =>
-    c && !(io.invalidate.valid && i)
+  val shiftHint = !(io.coalescable zip io.invalidate.bits.map(_(0))).map { case (c, inv) =>
+    c && !(io.invalidate.valid && inv)
   }.reduce(_ || _)
   val syncedEnqValid = io.queue.enq.map(_.valid).reduce(_ || _)
-  val syncedDeqValid = io.queue.deq.map(x => x.valid && !x.ready).reduce(_ || _) // valid and not fire
+  // syncedDeqValidNextCycle being true means the arbiter has completed
+  // processing all of the ready-to-go requests.
+  val syncedDeqValidNextCycle = io.queue.deq.map(x => x.valid && !x.ready).reduce(_ || _) // valid and not fire
 
   for (i <- 0 until config.numLanes) {
     val enq = io.queue.enq(i)
@@ -247,7 +249,7 @@ class CoalShiftQueue[T <: Data](gen: T, entries: Int, config: CoalescerConfig) e
     ctrl.full := writePtr(i) === entries.U
     ctrl.empty := writePtr(i) === 0.U
     // shift when no outstanding dequeue, no more coalescable chunks, and not empty
-    ctrl.shift := !syncedDeqValid && shiftHint && !ctrl.empty
+    ctrl.shift := !syncedDeqValidNextCycle && shiftHint && !ctrl.empty
 
     // dequeue is valid when:
     // head entry is valid, has not been processed by downstream, and is not coalescable
@@ -293,6 +295,9 @@ class CoalShiftQueue[T <: Data](gen: T, entries: Int, config: CoalescerConfig) e
     }
   }
 
+  // When doing spatial-only coalescing, queues should never drift from each
+  // other, i.e. the queue heads should always contain mem requests from the
+  // same instruction.
   val queueInSync = controlSignals.map(_ === controlSignals.head).reduce(_ && _) &&
     writePtr.map(_ === writePtr.head).reduce(_ && _)
   assert(queueInSync, "shift queue lanes are not in sync")
@@ -326,23 +331,15 @@ class MonoCoalescer(coalLogSize: Int, windowT: CoalShiftQueue[ReqQueueEntry],
   val leaders = io.window.elts.map(_.head)
   val leadersValid = io.window.mask.map(_.asBools.head)
 
-  // When doing spatial-only coalescing, queues should never drift from each
-  // other, i.e. the queue heads should always contain mem requests from the
-  // same instruction.
-  // FIXME: This relies on the MemTraceDriver's behavior of generating TL
-  // requests with full source info even when the corresponding lane is not
-  // active.
-  def testNoQueueDrift: Bool = leaders.map(_.source === leaders.head.source).reduce(_ || _)
   def printQueueHeads = {
     leaders.zipWithIndex.foreach{ case (head, i) =>
       printf(s"ReqQueueEntry[${i}].head = v:%d, source:%d, addr:%x\n",
         leadersValid(i), head.source, head.address)
     }
   }
-  when (leadersValid.reduce(_ || _)) {
-    assert(testNoQueueDrift, "unexpected drift between lane request queues")
-    // printQueueHeads
-  }
+  // when (leadersValid.reduce(_ || _)) {
+  //   printQueueHeads
+  // }
 
   val size = coalLogSize
   val addrMask = (((1 << config.addressWidth) - 1) - ((1 << size) - 1)).U
@@ -375,14 +372,21 @@ class MonoCoalescer(coalLogSize: Int, windowT: CoalShiftQueue[ReqQueueEntry],
            .reduce(_ +& _))
   val canCoalesce = matchCounts.map(_ > 1.U)
 
-  // Elect the leader out of all potential leaders that have matchCounts > 1.
+  // Elect the leader that has the most match counts.
   // TODO: potentially expensive: magnitude comparator
-  // Maybe choose leftmost leader (priority encoder) instead of argmax
-  val chosenLeaderIdx = matchCounts.zipWithIndex.map {
-    case (c, i) => (c, i.U)
-  }.reduce[(UInt, UInt)] { case ((c0, i), (c1, j)) =>
-    (Mux(c0 >= c1, c0, c1), Mux(c0 >= c1, i, j))
-  }._2
+  def chooseLeaderArgMax(matchCounts: Seq[UInt]): UInt = {
+    matchCounts.zipWithIndex.map {
+      case (c, i) => (c, i.U)
+    }.reduce[(UInt, UInt)] { case ((c0, i), (c1, j)) =>
+        (Mux(c0 >= c1, c0, c1), Mux(c0 >= c1, i, j))
+    }._2
+  }
+  // Elect leader by choosing the smallest-index lane that has a valid
+  // match, i.e. using priority encoder.
+  def chooseLeaderPriorityEncoder(matchCounts: Seq[UInt]): UInt = {
+    PriorityEncoder(matchCounts.map(_ > 1.U))
+  }
+  val chosenLeaderIdx = chooseLeaderPriorityEncoder(matchCounts)
 
   val chosenLeader = VecInit(leaders)(chosenLeaderIdx)
   // matchTable for the chosen lane, but converted to a Vec[UInt]
@@ -578,11 +582,14 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig) extends 
   reqQueues.io.coalescable := coalescer.io.coalescable
   reqQueues.io.invalidate := coalescer.io.invalidate
 
-  // Per-lane request and response queues
+  // ===========================================================================
+  // Request flow
+  // ===========================================================================
   //
   // Override IdentityNode implementation so that we can instantiate
   // queues between input and output edges to buffer requests and responses.
   // See IdentityNode definition in `diplomacy/Nodes.scala`.
+  //
   (outer.cpuNode.in zip outer.cpuNode.out).zipWithIndex.foreach {
     case (((tlIn, _), (tlOut, edgeOut)), lane) =>
       // Request queue
@@ -604,7 +611,10 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig) extends 
       val deq = reqQueues.io.queue.deq(lane)
       enq.valid := tlIn.a.valid
       enq.bits := req
-      deq.ready := true.B // TODO: deq.ready should respect downstream arbiter
+      // TODO: deq.ready should respect downstream arbiter
+      deq.ready := true.B
+      // Stall upstream core or memtrace driver when shiftqueue is not ready
+      tlIn.a.ready := enq.ready
       tlOut.a.valid := deq.valid
       tlOut.a.bits := deq.bits.toTLA(edgeOut)
 
@@ -641,11 +651,12 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig) extends 
   tlCoal.e.valid := false.B
 
 
-  // ==================================================================
-  // ******************************************************************
-  // ************************* REORG BOUNDARY *************************
-  // ******************************************************************
-  // ==================================================================
+  // ===========================================================================
+  // Response flow
+  // ===========================================================================
+  //
+  // Connect uncoalescer output and noncoalesced response ports to the response
+  // queues.
 
   // The maximum number of requests from a single lane that can go into a
   // coalesced request.  Upper bound is min(DEPTH, 2**sourceWidth).
@@ -1083,23 +1094,17 @@ class TraceLine extends Bundle with HasTraceLine {
 class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, traceFile: String)
     extends LazyModuleImp(outer)
     with UnitTestModule {
+  // Current cycle mark to read from trace
+  val traceReadCycle = RegInit(1.U(64.W))
 
-  val globalClkCounter    = RegInit(1.U(64.W))
-  val traceReadCycle      = RegInit(1.U(64.W))
-  val downstreamSQready   = WireInit(true.B)
+  // If any of the downstream lane is not ready, hold on from advancing
+  val downstreamReady = outer.laneNodes.map(_.out(0)._1.a.ready).reduce(_ && _)
 
-  //make the downstream only ready 1/4 of the time
-  //This is to test Tracer System's ability to hold on requests
-  //FIXME
-  downstreamSQready       := (globalClkCounter(1,0) =/= 0.U)
-  //Connect Signals to Verilog BlackBox
   val sim = Module(new SimMemTrace(traceFile, config.numLanes))
   sim.io.clock := clock
   sim.io.reset := reset.asBool
-  sim.io.trace_read.ready := downstreamSQready
-  //FIXME - 1.U hardcoded, currently there is a delay between chisel and verilog
+  sim.io.trace_read.ready := downstreamReady
   sim.io.trace_read.cycle := traceReadCycle
-
 
   // Read output from Verilog BlackBox
   // Split output of SimMemTrace, which is flattened across all lanes,back to each lane's.
@@ -1109,26 +1114,28 @@ class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, traceFil
   val dataW = laneReqs(0).data.getWidth
   laneReqs.zipWithIndex.foreach { case (req, i) =>
     req.valid := sim.io.trace_read.valid(i)
-    // TODO: driver trace doesn't contain source id
-    req.source := 0.U
+    req.source := 0.U // driver trace doesn't contain source id
     req.address := sim.io.trace_read.address(addrW * (i + 1) - 1, addrW * i)
     req.is_store := sim.io.trace_read.is_store(i)
     req.size := sim.io.trace_read.size(sizeW * (i + 1) - 1, sizeW * i)
     req.data := sim.io.trace_read.data(dataW * (i + 1) - 1, dataW * i)
   }
 
-  globalClkCounter       := globalClkCounter + 1.U
-  val existValidReq       = WireInit(false.B)
-  existValidReq          := laneReqs.map(_.valid).reduce(_||_)
-  val validReqBlocked     = WireInit(false.B)
-  validReqBlocked        := !downstreamSQready && existValidReq
-  //Debug
-  dontTouch(downstreamSQready)
-  dontTouch(existValidReq)
-  dontTouch(validReqBlocked)
-  // Do Not Update TraceReadCycle if downstream is blocking
-  when(!validReqBlocked){
-    traceReadCycle       := traceReadCycle + 1.U
+  // def missedLine = {
+  //   val existsValidLine = WireInit(false.B)
+  //   existsValidLine := laneReqs.map(_.valid).reduce(_||_)
+  //   val missedLine = WireInit(false.B)
+  //   missedLine := !downstreamReady && existsValidLine
+
+  //   // Debug
+  //   dontTouch(downstreamReady)
+  //   dontTouch(existsValidLine)
+  //   dontTouch(missedLine)
+
+  //   missedLine
+  // }
+  when (downstreamReady){
+    traceReadCycle := traceReadCycle + 1.U
   }
 
   // To prevent collision of sourceId with a current in-flight message,
@@ -1162,19 +1169,6 @@ class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, traceFil
     wordData := Mux(subword, req.data << (offsetInWord * 8.U), req.data)
     val wordAlignedAddress = req.address & ~((1 << log2Ceil(config.wordSizeInBytes)) - 1).U(addrW.W)
     val wordAlignedSize = Mux(subword, 2.U, req.size)
-
-    // when(req.valid && subword) {
-    //   printf(
-    //     "address=%x, size=%d, data=%x, addressMask=%x, wordAlignedAddress=%x, mask=%x, wordData=%x\n",
-    //     req.address,
-    //     req.size,
-    //     req.data,
-    //     ~((1 << log2Ceil(config.WORD_SIZE)) - 1).U(addrW.W),
-    //     wordAlignedAddress,
-    //     mask,
-    //     wordData
-    //   )
-    // }
 
     val (tlOut, edge) = node.out(0)
     val (plegal, pbits) = edge.Put(
@@ -1356,34 +1350,15 @@ class MemTraceLogger(
 
         // requests on TL A channel
         //
-        req.valid := tlIn.a.valid
+        // Only log trace when fired, e.g. both upstream and downstream is ready
+        // and transaction happened.
+        req.valid := tlIn.a.fire
         req.size := tlIn.a.bits.size
         req.is_store := TLUtils.AOpcodeIsStore(tlIn.a.bits.opcode)
         req.source := tlIn.a.bits.source
         // TL always carries the exact unaligned address that the client
         // originally requested, so no postprocessing required
         req.address := tlIn.a.bits.address
-
-        // TL data
-        //
-        // When tlIn.a.bits.size is smaller than the data bus width, need to
-        // figure out which byte lanes we actually accessed so that
-        // we can write that to the memory trace.
-        // See Section 4.5 Byte Lanes in spec 1.8.1
-
-        // This assert only holds true for PutFullData and not PutPartialData,
-        // where HIGH bits in the mask may not be contiguous.
-        assert(
-          PopCount(tlIn.a.bits.mask) === (1.U << tlIn.a.bits.size),
-          "mask HIGH bits do not match the TL size.  This should have been handled by the TL generator logic"
-        )
-        val trailingZerosInMask = trailingZeros(tlIn.a.bits.mask)
-        val dataW = tlIn.params.dataBits
-        val mask = ~(~(0.U(dataW.W)) << ((1.U << tlIn.a.bits.size) * 8.U))
-        req.data := mask & (tlIn.a.bits.data >> (trailingZerosInMask * 8.U))
-        // when (req.valid) {
-        //   printf("trailingZerosInMask=%d, mask=%x, data=%x\n", trailingZerosInMask, mask, req.data)
-        // }
 
         when(req.valid) {
           TLPrintf(
@@ -1397,9 +1372,33 @@ class MemTraceLogger(
           )
         }
 
+        // TL data
+        //
+        // When tlIn.a.bits.size is smaller than the data bus width, need to
+        // figure out which byte lanes we actually accessed so that
+        // we can write that to the memory trace.
+        // See Section 4.5 Byte Lanes in spec 1.8.1
+
+        // This assert only holds true for PutFullData and not PutPartialData,
+        // where HIGH bits in the mask may not be contiguous.
+        assert(
+          PopCount(tlIn.a.bits.mask) === (1.U << tlIn.a.bits.size),
+          "mask HIGH popcount do not match the TL size. " +
+          "Partial masks are not allowed for PutFull"
+        )
+        val trailingZerosInMask = trailingZeros(tlIn.a.bits.mask)
+        val dataW = tlIn.params.dataBits
+        val mask = ~(~(0.U(dataW.W)) << ((1.U << tlIn.a.bits.size) * 8.U))
+        req.data := mask & (tlIn.a.bits.data >> (trailingZerosInMask * 8.U))
+        // when (req.valid) {
+        //   printf("trailingZerosInMask=%d, mask=%x, data=%x\n", trailingZerosInMask, mask, req.data)
+        // }
+
         // responses on TL D channel
         //
-        resp.valid := tlOut.d.valid
+        // Only log trace when fired, e.g. both upstream and downstream is ready
+        // and transaction happened.
+        resp.valid := tlOut.d.fire
         resp.size := tlOut.d.bits.size
         resp.is_store := TLUtils.DOpcodeIsStore(tlOut.d.bits.opcode)
         resp.source := tlOut.d.bits.source
@@ -1433,7 +1432,7 @@ class MemTraceLogger(
     //
     // This is a clunky workaround of the fact that Chisel doesn't allow partial
     // assignment to a bitfield range of a wide signal.
-    def flattenTrace(traceLogIO: Bundle with HasTraceLine, perLane: Vec[TraceLine]) = {
+    def flattenTrace(simIO: Bundle with HasTraceLine, perLane: Vec[TraceLine]) = {
       // these will get optimized out
       val vecValid = Wire(Vec(numLanes, chiselTypeOf(perLane(0).valid)))
       val vecSource = Wire(Vec(numLanes, chiselTypeOf(perLane(0).source)))
@@ -1449,12 +1448,12 @@ class MemTraceLogger(
         vecSize(i) := l.size
         vecData(i) := l.data
       }
-      traceLogIO.valid := vecValid.asUInt
-      traceLogIO.source := vecSource.asUInt
-      traceLogIO.address := vecAddress.asUInt
-      traceLogIO.is_store := vecIsStore.asUInt
-      traceLogIO.size := vecSize.asUInt
-      traceLogIO.data := vecData.asUInt
+      simIO.valid := vecValid.asUInt
+      simIO.source := vecSource.asUInt
+      simIO.address := vecAddress.asUInt
+      simIO.is_store := vecIsStore.asUInt
+      simIO.size := vecSize.asUInt
+      simIO.data := vecData.asUInt
     }
 
     if (simReq.isDefined) {
@@ -1544,7 +1543,7 @@ class DummyDriver(config: CoalescerConfig)(implicit p: Parameters)
     val clientParam = Seq(
       TLMasterParameters.v1(
         name = "dummy-core-node-" + i.toString,
-        sourceId = IdRange(0, defaultConfig.numOldSrcIds)
+        sourceId = IdRange(0, config.numOldSrcIds)
         // visibility = Seq(AddressSet(0x0000, 0xffffff))
       )
     )
@@ -1635,10 +1634,7 @@ class DummyCoalescerTest(timeout: Int = 500000)(implicit p: Parameters)
 }
 
 // tracedriver --> coalescer --> tracelogger --> tlram
-class TLRAMCoalescerLogger(implicit p: Parameters) extends LazyModule {
-  // val filename = "test.trace"
-  val filename = "vecadd.core1.thread4.trace"
-  // val filename = "nvbit.vecadd.n100000.filter_sm0.trace"
+class TLRAMCoalescerLogger(filename: String)(implicit p: Parameters) extends LazyModule {
   // TODO: use parameters for numLanes
   val numLanes = defaultConfig.numLanes
 
@@ -1680,13 +1676,14 @@ class TLRAMCoalescerLogger(implicit p: Parameters) extends LazyModule {
           (coreSideLogger.module.io.reqBytes === coreSideLogger.module.io.respBytes),
         "FAIL: requests and responses traffic to the coalescer do not match"
       )
+      printf("SUCCESS: coalescer response traffic matched requests!\n")
     }
   }
 }
 
-class TLRAMCoalescerLoggerTest(timeout: Int = 500000)(implicit p: Parameters)
+class TLRAMCoalescerLoggerTest(filename: String, timeout: Int = 500000)(implicit p: Parameters)
     extends UnitTest(timeout) {
-  val dut = Module(LazyModule(new TLRAMCoalescerLogger).module)
+  val dut = Module(LazyModule(new TLRAMCoalescerLogger(filename)).module)
   dut.io.start := io.start
   io.finished := dut.io.finished
 }
@@ -2131,6 +2128,8 @@ class CoalArbiterImpl(outer: CoalArbiter,
 
 
   }
+
+
 
 
 
