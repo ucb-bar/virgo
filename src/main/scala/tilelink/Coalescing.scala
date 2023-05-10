@@ -13,7 +13,7 @@ import freechips.rocketchip.unittest._
 
 // TODO: find better place for these
 case class SIMTCoreParams(nLanes: Int = 4)
-case class MemtraceCoreParams(tracefilename: String = "undefined")
+case class MemtraceCoreParams(tracefilename: String = "undefined", traceHasSource: Boolean = false)
 
 case object SIMTCoreKey extends Field[Option[SIMTCoreParams]](None /*default*/)
 case object MemtraceCoreKey extends Field[Option[MemtraceCoreParams]](None /*default*/)
@@ -1062,9 +1062,11 @@ object TLUtils {
   }
 }
 
-class MemTraceDriver(config: CoalescerConfig, filename: String)(implicit
-    p: Parameters
-) extends LazyModule {
+// `traceHasSource` is true if the input trace file has an additional source
+// ID column.  This is useful for using the output trace file genereated by
+// MemTraceLogger as the driver.
+class MemTraceDriver(config: CoalescerConfig, filename: String, traceHasSource: Boolean = false)
+  (implicit p: Parameters) extends LazyModule {
   // Create N client nodes together
   val laneNodes = Seq.tabulate(config.numLanes) { i =>
     val clientParam = Seq(
@@ -1082,7 +1084,7 @@ class MemTraceDriver(config: CoalescerConfig, filename: String)(implicit
   val node = TLIdentityNode()
   laneNodes.foreach { l => node := l }
 
-  lazy val module = new MemTraceDriverImp(this, config, filename)
+  lazy val module = new MemTraceDriverImp(this, config, filename, traceHasSource)
 }
 
 trait HasTraceLine {
@@ -1105,7 +1107,8 @@ class TraceLine extends Bundle with HasTraceLine {
   val data = UInt(64.W)
 }
 
-class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, filename: String)
+class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, filename: String,
+  traceHasSource: Boolean)
     extends LazyModuleImp(outer)
     with UnitTestModule {
   // Current cycle mark to read from trace
@@ -1119,7 +1122,7 @@ class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, filename
   // Are we safe to read the next warp?
   val reqQueueAllReady = reqQueues.map(_.io.enq.ready).reduce(_ && _)
 
-  val sim = Module(new SimMemTrace(filename, config.numLanes))
+  val sim = Module(new SimMemTrace(filename, config.numLanes, traceHasSource))
   sim.io.clock := clock
   sim.io.reset := reset.asBool
   // 'sim.io.trace_ready.ready' is a ready signal going into the DPI sim,
@@ -1251,10 +1254,11 @@ class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, filename
   }
 }
 
-
-class SimMemTrace(filename: String, numLanes: Int)
+class SimMemTrace(filename: String, numLanes: Int, traceHasSource: Boolean)
     extends BlackBox(
-      Map("FILENAME" -> filename, "NUM_LANES" -> numLanes)
+      Map("FILENAME" -> filename,
+          "NUM_LANES" -> numLanes,
+          "HAS_SOURCE" -> (if (traceHasSource) 1 else 0))
     )
     with HasBlackBoxResource {
   val traceLineT = new TraceLine
