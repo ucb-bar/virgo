@@ -13,7 +13,7 @@ import freechips.rocketchip.unittest._
 
 // TODO: find better place for these
 case class SIMTCoreParams(nLanes: Int = 4)
-case class MemtraceCoreParams(tracefilename: String = "undefined")
+case class MemtraceCoreParams(tracefilename: String = "undefined", traceHasSource: Boolean = false)
 
 case object SIMTCoreKey extends Field[Option[SIMTCoreParams]](None /*default*/)
 case object MemtraceCoreKey extends Field[Option[MemtraceCoreParams]](None /*default*/)
@@ -81,7 +81,7 @@ object defaultConfig extends CoalescerConfig(
   wordSizeInBytes = 4,
   wordWidth = 2,
   // when attaching to SoC, 16 source IDs are not enough due to longer latency
-  numOldSrcIds = 64,
+  numOldSrcIds = 16,
   numNewSrcIds = 4,
   respQueueDepth = 4,
   coalLogSizes = Seq(3),
@@ -187,19 +187,33 @@ class RespQueueEntry(sourceWidth: Int, sizeWidth: Int, maxSize: Int) extends Bun
   }
 }
 
-class ReqSourceGen(sourceWidth: Int) extends Module {
+// If `ignoreInUse`, just keep giving out new IDs without checking if it is in
+// use.
+class RoundRobinSourceGenerator(sourceWidth: Int, ignoreInUse: Boolean = true) extends Module {
   val io = IO(new Bundle {
     val gen = Input(Bool())
+    val reclaim = Input(Valid(UInt(sourceWidth.W)))
     val id = Output(Valid(UInt(sourceWidth.W)))
   })
 
   val head = RegInit(UInt(sourceWidth.W), 0.U)
-
   head := Mux(io.gen, head + 1.U, head)
 
-  // FIXME: keep track of ones in use & set invalid when out
-  io.id.valid := true.B
+  val numSourceId = 1 << sourceWidth
+  // true: in use, false: available
+  val occupancyTable = Mem(numSourceId, Valid(UInt(sourceWidth.W)))
+  when(reset.asBool) {
+    (0 until numSourceId).foreach { i => occupancyTable(i).valid := false.B }
+  }
+
+  io.id.valid := (if (ignoreInUse) true.B else !occupancyTable(head).valid)
   io.id.bits := head
+  when (io.gen && io.id.valid /* fire */) {
+    occupancyTable(io.id.bits).valid := true.B // mark in use
+  }
+  when (io.reclaim.valid) {
+    occupancyTable(io.reclaim.bits).valid := false.B // mark freed
+  }
 }
 
 class CoalShiftQueue[T <: Data](gen: T, entries: Int, config: CoalescerConfig) extends Module {
@@ -545,8 +559,10 @@ class MultiCoalescer(windowT: CoalShiftQueue[ReqQueueEntry], coalReqT: ReqQueueE
     })
   }
 
-  val sourceGen = Module(new ReqSourceGen(log2Ceil(config.numNewSrcIds)))
+  val sourceGen = Module(new RoundRobinSourceGenerator(log2Ceil(config.numNewSrcIds)))
   sourceGen.io.gen := io.coalReq.fire // use up a source ID only when request is created
+  sourceGen.io.reclaim.valid := false.B // not used
+  sourceGen.io.reclaim.bits := DontCare // not used
 
   val coalesceValid = chosenValid && sourceGen.io.id.valid
 
@@ -1062,9 +1078,11 @@ object TLUtils {
   }
 }
 
-class MemTraceDriver(config: CoalescerConfig, filename: String)(implicit
-    p: Parameters
-) extends LazyModule {
+// `traceHasSource` is true if the input trace file has an additional source
+// ID column.  This is useful for using the output trace file genereated by
+// MemTraceLogger as the driver.
+class MemTraceDriver(config: CoalescerConfig, filename: String, traceHasSource: Boolean = false)
+  (implicit p: Parameters) extends LazyModule {
   // Create N client nodes together
   val laneNodes = Seq.tabulate(config.numLanes) { i =>
     val clientParam = Seq(
@@ -1082,7 +1100,7 @@ class MemTraceDriver(config: CoalescerConfig, filename: String)(implicit
   val node = TLIdentityNode()
   laneNodes.foreach { l => node := l }
 
-  lazy val module = new MemTraceDriverImp(this, config, filename)
+  lazy val module = new MemTraceDriverImp(this, config, filename, traceHasSource)
 }
 
 trait HasTraceLine {
@@ -1105,7 +1123,8 @@ class TraceLine extends Bundle with HasTraceLine {
   val data = UInt(64.W)
 }
 
-class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, filename: String)
+class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, filename: String,
+  traceHasSource: Boolean)
     extends LazyModuleImp(outer)
     with UnitTestModule {
   // Current cycle mark to read from trace
@@ -1119,7 +1138,7 @@ class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, filename
   // Are we safe to read the next warp?
   val reqQueueAllReady = reqQueues.map(_.io.enq.ready).reduce(_ && _)
 
-  val sim = Module(new SimMemTrace(filename, config.numLanes))
+  val sim = Module(new SimMemTrace(filename, config.numLanes, traceHasSource))
   sim.io.clock := clock
   sim.io.reset := reset.asBool
   // 'sim.io.trace_ready.ready' is a ready signal going into the DPI sim,
@@ -1155,12 +1174,6 @@ class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, filename
     reqQ.io.enq.bits := req // FIXME duplicate valid
   }
 
-  // To prevent collision of sourceId with a current in-flight message,
-  // just use a counter that increments indefinitely as the sourceId of new
-  // messages.
-  val sourceIdCounter = RegInit(0.U(64.W))
-  sourceIdCounter := sourceIdCounter + 1.U
-
   // Issue here is that Vortex mem range is not within Chipyard Mem range
   // In default setting, all mem-req for program data must be within
   // 0X80000000 -> 0X90000000
@@ -1193,22 +1206,27 @@ class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, filename
     val wordAlignedAddress = req.address & ~((1 << log2Ceil(config.wordSizeInBytes)) - 1).U(addrW.W)
     val wordAlignedSize = Mux(subword, 2.U, req.size)
 
+    val sourceGen = Module(new RoundRobinSourceGenerator(log2Ceil(config.numOldSrcIds),
+      ignoreInUse = false))
+    sourceGen.io.gen := reqQ.io.deq.fire
+    // assert(sourceGen.io.id.valid)
+
     val (plegal, pbits) = edge.Put(
-      fromSource = sourceIdCounter,
+      fromSource = sourceGen.io.id.bits,
       toAddress = hashToValidPhyAddr(wordAlignedAddress),
       lgSize = wordAlignedSize, // trace line already holds log2(size)
       // data should be aligned to beatBytes
       data = (wordData << (8.U * (wordAlignedAddress % edge.manager.beatBytes.U))).asUInt
     )
     val (glegal, gbits) = edge.Get(
-      fromSource = sourceIdCounter,
+      fromSource = sourceGen.io.id.bits,
       toAddress = hashToValidPhyAddr(wordAlignedAddress),
       lgSize = wordAlignedSize
     )
     val legal = Mux(req.is_store, plegal, glegal)
     val bits = Mux(req.is_store, pbits, gbits)
 
-    tlOut.a.valid := reqQ.io.deq.valid
+    tlOut.a.valid := (reqQ.io.deq.valid && sourceGen.io.id.valid)
     when (tlOut.a.valid) {
       assert(legal, "illegal TL req gen")
     }
@@ -1217,6 +1235,10 @@ class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, filename
     tlOut.c.valid := false.B
     tlOut.d.ready := true.B
     tlOut.e.valid := false.B
+
+    // Reclaim source id on response
+    sourceGen.io.reclaim.valid := tlOut.d.valid
+    sourceGen.io.reclaim.bits := tlOut.d.bits.source
 
     // debug
     when(tlOut.a.valid) {
@@ -1251,10 +1273,11 @@ class MemTraceDriverImp(outer: MemTraceDriver, config: CoalescerConfig, filename
   }
 }
 
-
-class SimMemTrace(filename: String, numLanes: Int)
+class SimMemTrace(filename: String, numLanes: Int, traceHasSource: Boolean)
     extends BlackBox(
-      Map("FILENAME" -> filename, "NUM_LANES" -> numLanes)
+      Map("FILENAME" -> filename,
+          "NUM_LANES" -> numLanes,
+          "HAS_SOURCE" -> (if (traceHasSource) 1 else 0))
     )
     with HasBlackBoxResource {
   val traceLineT = new TraceLine
@@ -1406,11 +1429,13 @@ class MemTraceLogger(
 
         // This assert only holds true for PutFullData and not PutPartialData,
         // where HIGH bits in the mask may not be contiguous.
-        assert(
-          PopCount(tlIn.a.bits.mask) === (1.U << tlIn.a.bits.size),
-          "mask HIGH popcount do not match the TL size. " +
-          "Partial masks are not allowed for PutFull"
-        )
+        when (tlIn.a.valid) {
+          assert(
+            PopCount(tlIn.a.bits.mask) === (1.U << tlIn.a.bits.size),
+            "mask HIGH popcount do not match the TL size. " +
+            "Partial masks are not allowed for PutFull"
+          )
+        }
         val trailingZerosInMask = trailingZeros(tlIn.a.bits.mask)
         val dataW = tlIn.params.dataBits
         val mask = ~(~(0.U(dataW.W)) << ((1.U << tlIn.a.bits.size) * 8.U))
