@@ -1362,8 +1362,11 @@ class MemTraceDriverImp(
     config: CoalescerConfig,
     filename: String,
     traceHasSource: Boolean
-) extends LazyModuleImp(outer)
-    with UnitTestModule {
+) extends LazyModuleImp(outer) {
+  val io = IO(new Bundle {
+    val finished = Output(Bool())
+  })
+
   // Current cycle mark to read from trace
   val traceReadCycle = RegInit(1.U(64.W))
 
@@ -2005,7 +2008,7 @@ class TLRAMCoalescerLogger(filename: String)(implicit p: Parameters)
 
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) with UnitTestModule {
-    driver.module.io.start := io.start
+    // io.start is unused since MemTraceDriver doesn't accept io.start
     io.finished := driver.module.io.finished
 
     when(io.finished) {
@@ -2059,7 +2062,7 @@ class TLRAMCoalescer(implicit p: Parameters) extends LazyModule {
 
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) with UnitTestModule {
-    driver.module.io.start := io.start
+    // io.start is unused since MemTraceDriver doesn't accept io.start
     io.finished := driver.module.io.finished
   }
 }
