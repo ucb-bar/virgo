@@ -24,22 +24,9 @@ case class RocketTileBoundaryBufferParams(force: Boolean = false)
 
 case class VortexTileParams(
     core: RocketCoreParams = RocketCoreParams(),
-    icache: Option[ICacheParams] = Some(ICacheParams(
-      nSets = 64,
-      nWays = 4,
-      rowBits = 128,
-      nTLBSets = 1,
-      nTLBWays = 32,
-      nTLBBasePageSectors = 4,
-      nTLBSuperpages = 4,
-      cacheIdBits = 0,
-      blockBytes = 64,
-      latency = 2,
-      fetchBytes = 4
-    )),
-    dcache: Option[DCacheParams] = Some(DCacheParams(
-      // TODO
-    )),
+    useVxCache: Boolean = false,
+    icache: Option[ICacheParams] = None /* Some(ICacheParams()) */,
+    dcache: Option[DCacheParams] = None /* Some(DCacheParams()) */,
     btb: Option[BTBParams] = None, // Some(BTBParams()),
     dataScratchpadBytes: Int = 0,
     name: Option[String] = Some("vortex_tile"),
@@ -49,8 +36,9 @@ case class VortexTileParams(
     clockSinkParams: ClockSinkParameters = ClockSinkParameters(),
     boundaryBuffers: Option[RocketTileBoundaryBufferParams] = None
     ) extends InstantiableTileParams[VortexTile] {
-  require(icache.isDefined)
-  require(dcache.isDefined)
+  // require(icache.isDefined)
+  // require(dcache.isDefined) 
+
   def instantiate(crossing: TileCrossingParamsLike, lookup: LookupByHartIdImpl)(implicit p: Parameters): VortexTile = {
     new VortexTile(this, crossing, lookup)
   }
@@ -121,8 +109,24 @@ class VortexTile private(
     ))
   )))}
 
-  imemNodes.foreach { tlMasterXbar.node := _ }
-  dmemNodes.foreach { tlMasterXbar.node := _ }
+  val memNode = TLClientNode(Seq(TLMasterPortParameters.v1(
+    clients = Seq(TLMasterParameters.v1(
+      sourceId = IdRange(0, 1 << 15), // TODO magic numbers
+      name = s"Vortex Core ${vortexParams.hartId} Mem Interface",
+      requestFifo = true,
+      supportsProbe = TransferSizes(16, 16),
+      supportsGet = TransferSizes(16, 16),
+      supportsPutFull = TransferSizes(16, 16),
+      supportsPutPartial = TransferSizes(16, 16)
+    )),
+  )))
+  
+  if (vortexParams.useVxCache) {
+    tlMasterXbar.node := TLWidthWidget(16) := memNode
+  } else {
+    imemNodes.foreach { tlMasterXbar.node := _ }
+    dmemNodes.foreach { tlMasterXbar.node := _ }
+  }
 
   /* below are copied from rocket */
 
@@ -184,7 +188,7 @@ class VortexTileModuleImp(outer: VortexTile) extends BaseTileModuleImp(outer) {
   Annotated.params(this, outer.vortexParams)
 
   val core = Module(new Vortex(outer)(outer.p))
-
+  
   core.io.clock := clock
   core.io.reset := reset
 
@@ -213,42 +217,51 @@ class VortexTileModuleImp(outer: VortexTile) extends BaseTileModuleImp(outer) {
   // outer.traceSourceNode.bundle <> core.io.trace
   core.io.traceStall := outer.traceAuxSinkNode.bundle.stall
   // outer.bpwatchSourceNode.bundle <> core.io.bpwatch
-  core.io.hartid := outer.hartIdSinkNode.bundle
-  require(core.io.hartid.getWidth >= outer.hartIdSinkNode.bundle.getWidth,
-    s"core hartid wire (${core.io.hartid.getWidth}b) truncates external hartid wire (${outer.hartIdSinkNode.bundle.getWidth}b)")
 
-  (core.io.imem zip outer.imemNodes).foreach { case (coreMem, tileNode) =>
-    coreMem.d <> tileNode.out.head._1.d
-    coreMem.a <> tileNode.out.head._1.a
+  // Copypasted from Rocket; not necessary for Vortex as hartId is set via Verilog parameter
+  // core.io.hartid := outer.hartIdSinkNode.bundle
+  // require(core.io.hartid.getWidth >= outer.hartIdSinkNode.bundle.getWidth,
+  //   s"core hartid wire (${core.io.hartid.getWidth}b) truncates external hartid wire (${outer.hartIdSinkNode.bundle.getWidth}b)")
+
+  if (outer.vortexParams.useVxCache) {
+    println(s"width of a channel data ${core.io.mem.get.a.bits.data.getWidth}")
+    println(s"width of d channel data ${core.io.mem.get.d.bits.data.getWidth}")
+    core.io.mem.get.a <> outer.memNode.out.head._1.a
+    core.io.mem.get.d <> outer.memNode.out.head._1.d
+  }
+  else {
+    (core.io.imem.get zip outer.imemNodes).foreach { case (coreMem, tileNode) =>
+      coreMem.d <> tileNode.out.head._1.d
+      coreMem.a <> tileNode.out.head._1.a
+    }
+
+    // pick source id and:
+    // - lie to core that response is not valid if source doesn't match picked
+    // - lie to downstream that core is not ready if source doesn't match picked
+
+    val arb = Module(new RRArbiter(core.io.dmem.get.head.d.bits.source.cloneType, 4))
+    val matchingSources = Wire(UInt(4.W))
+    val dmemDs = outer.dmemNodes.map(_.out.head._1.d)
+
+    (arb.io.in zip dmemDs).zipWithIndex.foreach { case ((arbIn, tileNode), i) =>
+      arbIn.valid := tileNode.valid
+      arbIn.bits := tileNode.bits.source
+    }
+    matchingSources := dmemDs.map(d => (d.bits.source === arb.io.out.bits) && arb.io.out.valid).asUInt
+    arb.io.out.ready := true.B
+
+    (core.io.dmem.get zip dmemDs).zipWithIndex.foreach { case ((coreMem, tileNode), i) =>
+      coreMem.d.bits := tileNode.bits
+      coreMem.d.valid := tileNode.valid && matchingSources(i)
+      tileNode.ready := coreMem.d.ready && matchingSources(i)
+    }
+
+    (core.io.dmem.get zip outer.dmemNodes).foreach { case (coreMem, tileNode) =>
+      coreMem.a <> tileNode.out.head._1.a
+    }
   }
 
-
-  // pick source id and:
-  // - lie to core that response is not valid if source doesn't match picked
-  // - lie to downstream that core is not ready if source doesn't match picked
-
-  val arb = Module(new RRArbiter(core.io.dmem.head.d.bits.source.cloneType, 4))
-  val matchingSources = Wire(UInt(4.W))
-  val dmemDs = outer.dmemNodes.map(_.out.head._1.d)
-
-  (arb.io.in zip dmemDs).zipWithIndex.foreach { case ((arbIn, tileNode), i) =>
-    arbIn.valid := tileNode.valid
-    arbIn.bits := tileNode.bits.source
-  }
-  matchingSources := dmemDs.map(d => (d.bits.source === arb.io.out.bits) && arb.io.out.valid).asUInt
-  arb.io.out.ready := true.B
-
-  (core.io.dmem zip dmemDs).zipWithIndex.foreach { case ((coreMem, tileNode), i) =>
-    coreMem.d.bits := tileNode.bits
-    coreMem.d.valid := tileNode.valid && matchingSources(i)
-    tileNode.ready := coreMem.d.ready && matchingSources(i)
-  }
-
-  (core.io.dmem zip outer.dmemNodes).foreach { case (coreMem, tileNode) =>
-    coreMem.a <> tileNode.out.head._1.a
-  }
-
-  core.io.fpu := DontCare
+  // core.io.fpu := DontCare
 
   // TODO eliminate this redundancy
   // val h = dcachePorts.size
@@ -260,6 +273,7 @@ class VortexTileModuleImp(outer: VortexTile) extends BaseTileModuleImp(outer) {
   // dcacheArb.io.requestor <> dcachePorts.toSeq
 }
 
+// FIXME: unsure this is necessary
 trait HasFpuOpt { this: RocketTileModuleImp =>
   val fpuOpt = outer.tileParams.core.fpu.map(params => Module(new FPU(params)(outer.p)))
 }
