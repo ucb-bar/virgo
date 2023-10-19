@@ -254,41 +254,76 @@ case class CoalescedResponse(config: CoalescerConfig)
       dataWidth = (8 * (1 << config.maxCoalLogSize))
     )
 
-// If `ignoreInUse`, just keep giving out new IDs without checking if it is in
-// use.
-class SourceGenerator(sourceWidth: Int, ignoreInUse: Boolean = true)
-    extends Module {
+// `metadata` is an extra field in the sourceId table that can be used for
+// storing e.g. the UUID originally attached to a request.  This is useful for
+// using this module as a source ID converter / compressor.  If `None`, this
+// field is not instantiated.
+// TODO: implement lookup logic.
+//
+// If `ignoreInUse`, just keep giving out new IDs without any collision checking.
+// This might result in TL violation.
+class SourceGenerator[T <: Data](
+  sourceWidth: Int,
+  metadata: Option[T] = None,
+  ignoreInUse: Boolean = false
+) extends Module {
+  def getMetadataType = metadata match {
+    case Some(gen) => gen.cloneType
+    case None => UInt(0.W)
+  }
   val io = IO(new Bundle {
     val gen = Input(Bool())
     val reclaim = Input(Valid(UInt(sourceWidth.W)))
     val id = Output(Valid(UInt(sourceWidth.W)))
+    // below are used only when metadata is not None
+    // `meta` is used as input when a request succeeds id generation to store
+    // its value to the table.
+    // `peek` is the retrieved metadata saved for the request when corresponding
+    // request has come back, setting `reclaim`.
+    // Although these do not use ValidIO, it is safe because any in-flight
+    // response coming back should have allocated a valid entry in the table
+    // when it went out.
+    val meta = Input(getMetadataType)
+    val peek = Output(getMetadataType)
+    // for debugging; indicates whether there is at least one inflight request
+    // that hasn't been reclaimed yet
     val inflight = Output(Bool())
   })
   val head = RegInit(UInt(sourceWidth.W), 0.U)
   head := Mux(io.gen, head + 1.U, head)
 
-  // for debugging
-  // also for indicating if there is at least one inflight request that hasn't been reclaimed
   val outstanding = RegInit(UInt((sourceWidth + 1).W), 0.U)
   io.inflight := (outstanding > 0.U) || io.gen
 
   val numSourceId = 1 << sourceWidth
-  // true: in use, false: available
-  val occupancyTable = Mem(numSourceId, Valid(UInt(sourceWidth.W)))
-  when(reset.asBool) {
-    (0 until numSourceId).foreach { occupancyTable(_).valid := false.B }
+  val row = new Bundle {
+    val meta = getMetadataType
+    val id = Valid(UInt(sourceWidth.W))
   }
-  val frees = (0 until numSourceId).map(!occupancyTable(_).valid)
+  // valid: in use, invalid: available
+  // val occupancyTable = Mem(numSourceId, Valid(UInt(sourceWidth.W)))
+  val occupancyTable = Mem(numSourceId, row)
+  when(reset.asBool) {
+    (0 until numSourceId).foreach { occupancyTable(_).id.valid := false.B }
+  }
+  val frees = (0 until numSourceId).map(!occupancyTable(_).id.valid)
   val lowestFree = PriorityEncoder(frees)
   val lowestFreeRow = occupancyTable(lowestFree)
 
-  io.id.valid := (if (ignoreInUse) true.B else !lowestFreeRow.valid)
+  io.id.valid := (if (ignoreInUse) true.B else !lowestFreeRow.id.valid)
   io.id.bits := lowestFree
   when(io.gen && io.id.valid /* fire */ ) {
-    occupancyTable(io.id.bits).valid := true.B // mark in use
+    occupancyTable(io.id.bits).id.valid := true.B // mark in use
+    if (metadata.isDefined) {
+      occupancyTable(io.id.bits).meta := io.meta
+    }
   }
   when(io.reclaim.valid) {
-    occupancyTable(io.reclaim.bits).valid := false.B // mark freed
+    // @perf: would this require multiple write ports?
+    occupancyTable(io.reclaim.bits).id.valid := false.B // mark freed
+  }
+  io.peek := {
+    if (metadata.isDefined) occupancyTable(io.reclaim.bits).meta else 0.U
   }
 
   when(io.gen && io.id.valid) {
@@ -300,7 +335,6 @@ class SourceGenerator(sourceWidth: Int, ignoreInUse: Boolean = true)
     assert(outstanding > 0.U)
     outstanding := outstanding - 1.U
   }
-
   dontTouch(outstanding)
 }
 
@@ -738,30 +772,41 @@ class MultiCoalescer(
   if (!config.enable) disable
 }
 
+// This module mostly handles the correct ready/valid handshake depending on
+// sourceId availability.  Actual generation logic is done by the
+// SourceGenerator module.
 class CoalescerSourceGen(
     config: CoalescerConfig,
     coalReqT: CoalescedRequest,
     respT: TLBundleD
 ) extends Module {
   val io = IO(new Bundle {
+    // in/out means upstream/downstream
     val inReq = Flipped(Decoupled(coalReqT.cloneType))
     val outReq = Decoupled(coalReqT.cloneType)
-    val inResp = Flipped(Decoupled(respT.cloneType))
+    // outResp is only needed for telling the downstream TL node that this
+    // sourcegen module is always ready to take in responses.
+    // No need for inResp, since coalescerNode is directly replied by the
+    // outResp TileLink bundle.
+    val outResp = Flipped(Decoupled(respT.cloneType))
   })
   val sourceGen = Module(
     new SourceGenerator(log2Ceil(config.numNewSrcIds), ignoreInUse = false)
   )
   sourceGen.io.gen := io.outReq.fire // use up a source ID only when request is created
-  sourceGen.io.reclaim.valid := io.inResp.fire
-  sourceGen.io.reclaim.bits := io.inResp.bits.source
-  io.inResp.ready := true.B // should be always ready to reclaim old ID
+  sourceGen.io.reclaim.valid := io.outResp.fire
+  sourceGen.io.reclaim.bits := io.outResp.bits.source
+  sourceGen.io.meta := DontCare
   // TODO: make sourceGen.io.reclaim Decoupled?
 
+  // passthrough logic
   io.outReq <> io.inReq
+  // "man-in-the-middle"
   io.inReq.ready := io.outReq.ready && sourceGen.io.id.valid
   // overwrite bits affected by sourcegen backpressure
   io.outReq.valid := io.inReq.valid && sourceGen.io.id.valid
   io.outReq.bits.source := sourceGen.io.id.bits
+  io.outResp.ready := true.B // should be always ready to reclaim old ID
 }
 
 class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
@@ -880,7 +925,7 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
   //
   val coalSourceGen = Module(new CoalescerSourceGen(config, coalReqT, tlCoal.d.bits))
   coalSourceGen.io.inReq <> coalescer.io.coalReq
-  coalSourceGen.io.inResp <> tlCoal.d
+  coalSourceGen.io.outResp <> tlCoal.d
 
   // InflightTable IO
   //
@@ -1468,6 +1513,7 @@ class MemTraceDriverImp(
     // assert(sourceGen.io.id.valid)
     sourceGen.io.reclaim.valid := tlOut.d.fire
     sourceGen.io.reclaim.bits := tlOut.d.bits.source
+    sourceGen.io.meta := DontCare
 
     val (plegal, pbits) = edge.Put(
       fromSource = sourceGen.io.id.bits,
@@ -2203,7 +2249,7 @@ class CoalescerXbarImpl(outer: CoalescerXbar,
     // For the uncoalesced data response
     (outer.nonCoalNarrowNodes zip io.nonCoalResps).foreach{
       case(node,resp) => 
-        val (tlOut, edgeOut)  = node.out(0)
+        val (tlOut, _)  = node.out(0)
         val nonCoalResp = Wire(respNonCoalEntryT)
         nonCoalResp.fromTLD(tlOut.d.bits)
         tlOut.d.ready  := resp.ready
@@ -2219,7 +2265,7 @@ class CoalescerXbarImpl(outer: CoalescerXbar,
                                   )
     outer.coalReqNodes.zipWithIndex.foreach{
       case(node, idx) =>
-        val (tlOut, edgeOut)  = node.out(0)
+        val (tlOut, _)  = node.out(0)
         coalRespRRArbiter.io.in(idx) <> tlOut.d
     }
     //Connect output of arbiter to coalesced reponse output

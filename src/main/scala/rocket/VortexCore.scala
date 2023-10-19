@@ -8,9 +8,31 @@ import chisel3.util._
 import chisel3.experimental._
 import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.tile._
-import freechips.rocketchip.util._
-import freechips.rocketchip.scie._
 import tile.VortexTile
+
+class VortexBundleA(
+  sourceWidth: Int,
+  dataWidth: Int
+) extends Bundle {
+  assert(dataWidth % 8 == 0)
+  val opcode = UInt(3.W) // FIXME: hardcoded
+  val size = UInt(4.W) // FIXME: hardcoded
+  val source = UInt(sourceWidth.W) // FIXME: hardcoded
+  val address = UInt(32.W) // FIXME: hardcoded
+  val mask = UInt((dataWidth / 8).W) // FIXME: hardcoded
+  val data = UInt(dataWidth.W) // FIXME: hardcoded
+}
+
+class VortexBundleD(
+  sourceWidth: Int,
+  dataWidth: Int
+) extends Bundle {
+  assert(dataWidth % 8 == 0)
+  val opcode = UInt(3.W) // FIXME: hardcoded
+  val size = UInt(4.W) // FIXME: hardcoded
+  val source = UInt(sourceWidth.W) // FIXME: hardcoded
+  val data = UInt(dataWidth.W) // FIXME: hardcoded
+}
 
 class VortexBundle(tile: VortexTile)(implicit p: Parameters) extends CoreBundle {
   val clock = Input(Clock())
@@ -20,17 +42,19 @@ class VortexBundle(tile: VortexTile)(implicit p: Parameters) extends CoreBundle 
   val interrupts = Input(new CoreInterrupts())
   
   // conditionally instantiate ports depending on whether we want to use VX_cache or not
-  val imem = if (!tile.vortexParams.useVxCache) Some(Vec(1, new Bundle { // TODO: magic number
-    val a = tile.imemNodes.head.out.head._1.a.cloneType
-    val d = Flipped(tile.imemNodes.head.out.head._1.d.cloneType)
+  val imem = if (!tile.vortexParams.useVxCache) Some(Vec(1, new Bundle {
+    val a = Decoupled(new VortexBundleA(sourceWidth = 10, dataWidth = 32))
+    val d = Flipped(Decoupled(new VortexBundleD(sourceWidth = 10, dataWidth = 32)))
   })) else None
-  val dmem = if (!tile.vortexParams.useVxCache) Some(Vec(4, new Bundle {
-    val a = tile.dmemNodes.head.out.head._1.a.cloneType
-    val d = Flipped(tile.dmemNodes.head.out.head._1.d.cloneType)
+  val dmem = if (!tile.vortexParams.useVxCache) Some(Vec(tile.numLanes, new Bundle {
+    val a = Decoupled(new VortexBundleA(sourceWidth = 10, dataWidth = 32))
+    val d = Flipped(Decoupled(new VortexBundleD(sourceWidth = 10, dataWidth = 32)))
   })) else None
   val mem = if (tile.vortexParams.useVxCache) Some(new Bundle { 
-    val a = tile.memNode.out.head._1.a.cloneType
-    val d = Flipped(tile.memNode.out.head._1.d.cloneType)
+    val a = Decoupled(new VortexBundleA(sourceWidth = 15, dataWidth = 128))
+    val d = Flipped(Decoupled(new VortexBundleD(sourceWidth = 15, dataWidth = 128)))
+    // val a = tile.memNode.out.head._1.a.cloneType
+    // val d = Flipped(tile.memNode.out.head._1.d.cloneType)
   }) else None
 
   // val fpu = Flipped(new FPUCoreIO())
