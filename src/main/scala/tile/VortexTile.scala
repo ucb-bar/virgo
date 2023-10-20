@@ -201,6 +201,7 @@ class VortexTile private (
       Description(name, mapping ++ cpuProperties ++ nextLevelCacheProperty
                   ++ tileProperties ++ dtimProperty ++ itimProperty ++ beuProperty)
     }
+  }
 
   ResourceBinding {
     Resource(cpuDevice, "reg").bind(ResourceAddress(staticIdForMetadataUseOnly))
