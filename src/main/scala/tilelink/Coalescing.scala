@@ -170,7 +170,7 @@ class CoalescingUnit(config: CoalescerConfig)(implicit p: Parameters) extends La
 class Request(sourceWidth: Int, sizeWidth: Int, addressWidth: Int, dataWidth: Int)
     extends Bundle {
   require(dataWidth % 8 == 0, s"dataWidth (${dataWidth} bits) is not multiple of 8")
-  val op = UInt(1.W) // 0=READ 1=WRITE
+  val op = Bool() // 0=READ 1=WRITE
   val address = UInt(addressWidth.W)
   val size = UInt(sizeWidth.W)
   val source = UInt(sourceWidth.W)
@@ -1162,6 +1162,7 @@ class Uncoalescer(
 
       when(io.inflightLookup.valid && foundReq.valid) {
         enqIO.valid := io.coalResp.valid && foundReq.valid
+        enqIO.bits.op := foundReq.op
         enqIO.bits.source := foundReq.source
         val logSize = foundRow.sizeEnumT.enumToLogSize(foundReq.sizeEnum)
         enqIO.bits.size := logSize
@@ -1172,6 +1173,8 @@ class Uncoalescer(
             foundReq.offset,
             logSize
           )
+        // is this necessary?
+        enqIO.bits.error := DontCare
       }
     }
   }
@@ -1247,6 +1250,7 @@ class InFlightTable(
       table(i).bits.lanes.foreach { l =>
         l.reqs.foreach { r =>
           r.valid := false.B
+          r.op := false.B
           r.source := 0.U
           r.offset := 0.U
           r.sizeEnum := config.sizeEnum.INVALID
@@ -1279,6 +1283,7 @@ class InFlightTable(
               )
             }
             reqEntry.valid := (io.invalidate.valid && inv)
+            reqEntry.op := req.op
             reqEntry.source := req.source
             reqEntry.offset := ((req.address % (1 << config.maxCoalLogSize).U) >> config.wordSizeWidth)
             reqEntry.sizeEnum := config.sizeEnum.logSizeToEnum(req.size)
@@ -1342,6 +1347,7 @@ class InFlightTableEntry(
 ) extends Bundle {
   class PerSingleReq extends Bundle {
     val valid = Bool() // FIXME: delete this
+    val op = Bool() // 0=READ 1=WRITE
     val source = UInt(oldSourceWidth.W)
     val offset = UInt(offsetBits.W)
     val sizeEnum = sizeEnumT()
@@ -1364,7 +1370,8 @@ object TLUtils {
         "unhandled TL A opcode found"
       )
     }
-    Mux(opcode === TLMessages.PutFullData, true.B, false.B)
+    Mux(opcode === TLMessages.PutFullData || opcode === TLMessages.PutPartialData,
+      true.B, false.B)
   }
   def DOpcodeIsStore(opcode: UInt, checkOpcode: Bool): Bool = {
     when(checkOpcode) {
