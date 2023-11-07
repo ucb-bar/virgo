@@ -23,6 +23,7 @@ case class L1SystemConfig(
     coreTagWidth: Int,
     writeInfoReqQSize: Int,
     mshrSize: Int,
+    l2ReqSourceGenSize: Int,
     uncachedAddrSets: Seq[AddressSet],
     icacheInstAddrSets: Seq[AddressSet]
 ) {
@@ -38,6 +39,7 @@ object defaultL1SystemConfig extends L1SystemConfig(
     coreTagWidth = 8,
     writeInfoReqQSize = 16,
     mshrSize = 8,
+    l2ReqSourceGenSize = 8,
     uncachedAddrSets = Seq(AddressSet(0x2000000L, 0xFFL)),
     icacheInstAddrSets = Seq(AddressSet(0x80000000L, 0xFFFFFFFL))
 )
@@ -59,6 +61,7 @@ class L1System (config:L1SystemConfig) (implicit p: Parameters) extends LazyModu
     val dmemXbar    = LazyModule(new TLXbar)
     dcache_banks.foreach { _.coalToVxCacheNode :=* dmemXbar.node}
     passThrough.coalToVxCacheNode :=* dmemXbar.node
+    icache_bank.coalToVxCacheNode :=* dmemXbar.node
 
     //L1System exposes to downstream as one tileLink Identity Node
     val L1SystemToL2Node = TLIdentityNode()
@@ -71,13 +74,15 @@ class L1System (config:L1SystemConfig) (implicit p: Parameters) extends LazyModu
 }
 
 
+//To-Do
+//Make the FatBank Pass Through a Blocking Module
 class FatBankPassThrough(config:L1SystemConfig) (implicit p: Parameters) extends LazyModule {
 
     val clientParam = Seq(TLMasterPortParameters.v1(
         clients = Seq(
             TLMasterParameters.v1(
                 name = "VortexFatBank",
-                sourceId = IdRange(0, 1 << 14), // FIXME: magic number
+                sourceId = IdRange(0, 1 << (log2Ceil(config.l2ReqSourceGenSize)+5) ),
                 supportsProbe = TransferSizes(1, config.wordSize),
                 supportsGet = TransferSizes(1, config.wordSize),
                 supportsPutFull = TransferSizes(1, config.wordSize),
@@ -128,8 +133,8 @@ class VortexFatBank (config: L1SystemConfig, bankId: Int, isICache: Boolean = fa
     def generateAddressSets(): Seq[AddressSet] = {
         
         if (isICache){
-            //config.icacheInstAddrSets
-            Seq(AddressSet(0x00000000L, 0xFFFFFFFFL))
+            config.icacheInstAddrSets
+            //Seq(AddressSet(0x00000000L, 0xFFFFFFFFL))
         } else {
             //suppose have 4 bank
             //base for bank 1: ...000000|01|0000
@@ -150,7 +155,7 @@ class VortexFatBank (config: L1SystemConfig, bankId: Int, isICache: Boolean = fa
         clients = Seq(
             TLMasterParameters.v1(
                 name = "VortexFatBank",
-                sourceId = IdRange(0, 1 << 14), // FIXME: magic number
+                sourceId = IdRange(0, config.l2ReqSourceGenSize), 
                 supportsProbe = TransferSizes(1, config.wordSize),
                 supportsGet = TransferSizes(1, config.wordSize),
                 supportsPutFull = TransferSizes(1, config.wordSize),
@@ -318,7 +323,11 @@ class VortexFatBankImp (
     //Therefore, we need our own internal source_ID generator for all write operation
     
 
-    val sourceGen = Module( new NewSourceGenerator(3, metadata = Some(UInt(32.W)), ignoreInUse = false))
+    val sourceGen = Module( new NewSourceGenerator(
+        log2Ceil(config.l2ReqSourceGenSize), 
+        metadata = Some(UInt(32.W)), 
+        ignoreInUse = false)
+        )
     
 
 

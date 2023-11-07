@@ -236,16 +236,19 @@ class VortexTile private (
 
           //Connect L1System with imem_fetch_interface without XBar
           //coalToVxCacheNode is a bad naming, it really means up steam of vxBank in whihc it takes input
-          imemNodes.foreach { L1System.icache_bank.coalToVxCacheNode := TLWidthWidget(4) := _ }
+
+          //imemNodes.foreach { L1System.icache_bank.coalToVxCacheNode := TLWidthWidget(4) := _ }
+          imemNodes.foreach { L1System.dmemXbar.node := TLWidthWidget(4) := _ }
 
           //connect L1System with dmem_req from coalescer
           L1System.dmemXbar.node :=* coal.aggregateNode
+
 
           //L1System appears to downstream as one Identity Node
           L1System.L1SystemToL2Node
           
         }
-        
+
         case None => {
           imemNodes.foreach { tlMasterXbar.node := TLWidthWidget(4) := _ } //need to bind imem directly if not using FatBank
           coal.aggregateNode //if no fatbank, simply return coalescer.aggregateNode
