@@ -70,7 +70,11 @@ class Vortex(tile: VortexTile)(implicit p: Parameters)
       // Each Vortex core gets tied-off hartId of 0, 1, 2, 3, ...
       // The actual MHARTID read by the program is different by warp, not core;
       // see VX_csr_data that implements the read logic for CSR_MHARTID/GWID.
-      Map("CORE_ID" -> tile.tileParams.hartId)
+      Map(
+        "CORE_ID" -> tile.tileParams.hartId,
+        // TODO: can we get this as a parameter?
+        "BOOTROM_HANG100" -> 0x10100,
+      )
     )
     with HasBlackBoxResource {
   // addResource("/vsrc/vortex/hw/unit_tests/generic_queue/testbench.v")
@@ -158,7 +162,6 @@ class Vortex(tile: VortexTile)(implicit p: Parameters)
   // addResource("/vsrc/vortex/hw/rtl/mem/VX_mem_perf_if.sv")
   addResource("/vsrc/vortex/hw/rtl/mem/VX_shared_mem.sv")
   addResource("/vsrc/vortex/hw/rtl/mem/VX_smem_switch.sv")
-
 
   // tex_unit missing in Vortex 2.0
   // addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_sat.sv")
