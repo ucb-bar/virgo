@@ -593,8 +593,8 @@ class VortexTLAdapter(
   io.outReq.bits.corrupt := 0.U
   io.inReq.ready := io.outReq.ready
   // VortexBundleD <> TLBundleD
-  // Do not reply to write requests; Vortex core does not expect ack on writes
-  io.inResp.valid := io.outResp.valid && edge.hasData(io.outResp.bits)
+  // Filtering out write requests is handled inside the wrapper Verilog
+  io.inResp.valid := io.outResp.valid
   io.inResp.bits.opcode := io.outResp.bits.opcode
   io.inResp.bits.size := io.outResp.bits.size
   io.inResp.bits.source := io.outResp.bits.source
