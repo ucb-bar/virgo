@@ -566,7 +566,7 @@ class VortexTLAdapter(
     val inResp = Decoupled(inRespT)
     val outResp = chiselTypeOf(outTL._1.d)
   })
-  val edge = outTL._2
+  val (bundle, edge) = outTL
   val sourceGen = Module(
     new SourceGenerator(
       newSourceWidth,
@@ -587,8 +587,15 @@ class VortexTLAdapter(
   io.outReq.bits.size := io.inReq.bits.size
   io.outReq.bits.source := io.inReq.bits.source
   io.outReq.bits.address := io.inReq.bits.address
-  // generate TL-correct mask
-  io.outReq.bits.mask := edge.mask(io.inReq.bits.address, io.inReq.bits.size)
+  // this is just to double-check TLWidthWidget is in place
+  require(io.inReq.bits.size.getWidth == bundle.params.sizeBits)
+  // Get requires contiguous mask; only copy core's potentially-partial mask
+  // when writing
+  io.outReq.bits.mask := Mux(edge.hasData(io.outReq.bits),
+    io.inReq.bits.mask,
+    // generate TL-correct mask
+    edge.mask(io.inReq.bits.address, io.inReq.bits.size)
+  )
   io.outReq.bits.data := io.inReq.bits.data
   io.outReq.bits.corrupt := 0.U
   io.inReq.ready := io.outReq.ready
