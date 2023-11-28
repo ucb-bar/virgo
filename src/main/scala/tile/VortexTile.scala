@@ -286,6 +286,7 @@ class VortexTile private (
       // coalToVxCacheNode is a bad naming, it really means up steam of vxBank in whihc it takes input
       // imemNodes.foreach { l1cache.icache_bank.coalToVxCacheNode := TLWidthWidget(4) := _ }
       imemNodes.foreach { l1cache.coresideNode := TLWidthWidget(4) := _ }
+      // dmemNodes go through coalescerNode
       l1cache.coresideNode :=* coalescerNode
       l1cache.masterNode
     }
@@ -587,8 +588,6 @@ class VortexTLAdapter(
   io.outReq.bits.size := io.inReq.bits.size
   io.outReq.bits.source := io.inReq.bits.source
   io.outReq.bits.address := io.inReq.bits.address
-  // this is just to double-check TLWidthWidget is in place
-  require(io.inReq.bits.size.getWidth == bundle.params.sizeBits)
   // Get requires contiguous mask; only copy core's potentially-partial mask
   // when writing
   io.outReq.bits.mask := Mux(edge.hasData(io.outReq.bits),
