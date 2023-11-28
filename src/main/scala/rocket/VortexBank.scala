@@ -16,7 +16,7 @@ case class VortexL1Config(
     coreTagWidth: Int,
     writeInfoReqQSize: Int,
     mshrSize: Int,
-    l2ReqSourceGenSize: Int,
+    memSideSourceIds: Int,
     uncachedAddrSets: Seq[AddressSet],
     icacheInstAddrSets: Seq[AddressSet]
 ) {
@@ -24,7 +24,7 @@ case class VortexL1Config(
     log2Ceil(wordSize) + coreTagWidth
   }
   require(
-    mshrSize == l2ReqSourceGenSize,
+    mshrSize == memSideSourceIds,
     "MSHR size must match the number of sourceIds to downstream."
   )
 }
@@ -37,7 +37,7 @@ object defaultVortexL1Config
       coreTagWidth = 8,
       writeInfoReqQSize = 16,
       mshrSize = 8,
-      l2ReqSourceGenSize = 8,
+      memSideSourceIds = 8,
       uncachedAddrSets = Seq(AddressSet(0x2000000L, 0xffL)),
       icacheInstAddrSets = Seq(AddressSet(0x80000000L, 0xfffffffL))
     )
@@ -101,7 +101,7 @@ class VortexBankPassThrough(config: VortexL1Config)(implicit p: Parameters)
       clients = Seq(
         TLMasterParameters.v1(
           name = "VortexBank",
-          sourceId = IdRange(0, 1 << (log2Ceil(config.l2ReqSourceGenSize) + 5)),
+          sourceId = IdRange(0, 1 << (log2Ceil(config.memSideSourceIds) + 5 /*FIXME: why is this here?*/)),
           supportsProbe = TransferSizes(1, config.wordSize),
           supportsGet = TransferSizes(1, config.wordSize),
           supportsPutFull = TransferSizes(1, config.wordSize),
@@ -177,7 +177,7 @@ class VortexBank(
       clients = Seq(
         TLMasterParameters.v1(
           name = "VortexBank",
-          sourceId = IdRange(0, config.l2ReqSourceGenSize),
+          sourceId = IdRange(0, config.memSideSourceIds),
           supportsProbe = TransferSizes(1, config.wordSize),
           supportsGet = TransferSizes(1, config.wordSize),
           supportsPutFull = TransferSizes(1, config.wordSize),
@@ -332,7 +332,7 @@ class VortexBankImp(
   // separate source ID allocator to solve this.
   val sourceGen = Module(
     new NewSourceGenerator(
-      log2Ceil(config.l2ReqSourceGenSize),
+      log2Ceil(config.memSideSourceIds),
       metadata = Some(UInt(32.W)),
       ignoreInUse = false
     )
@@ -425,7 +425,7 @@ class VX_cache_top(
         "WRITE_ENABLE" -> WRITE_ENABLE,
         "UUID_WIDTH" -> UUID_WIDTH,
         "TAG_WIDTH" -> CORE_TAG_WIDTH,
-        // "MEM_TAG_WIDTH" -> MEM_TAG_WIDTH,
+        "MEM_TAG_WIDTH" -> MEM_TAG_WIDTH,
       )
     )
     with HasBlackBoxResource {
