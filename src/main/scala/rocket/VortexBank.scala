@@ -203,7 +203,7 @@ class VortexBankImp(
     config: VortexL1Config
 ) extends LazyModuleImp(outer) {
   val vxCache = Module(
-    new VX_cache(
+    new VX_cache_top(
       WORD_SIZE = config.wordSize,
       CACHE_LINE_SIZE = config.cacheLineSize,
       CORE_TAG_WIDTH = config.coreTagPlusSizeWidth,
@@ -389,70 +389,63 @@ class VortexBankImp(
   VXReq2TLReq
 }
 
-class VX_cache(
-    CACHE_ID: Int = 0, // seems to be only used for debug trace prints
+class VX_cache_top(
+    // TODO: INSTANCE_ID
     CACHE_SIZE: Int = 16384 / 4, // <FIXME, divided by 4 for faster simulation
     CACHE_LINE_SIZE: Int = 16,
-    NUM_PORTS: Int = 1,
-    WORD_SIZE: Int =
-      16, // hack - one "word" is enough to satisfy all 4 warps after decoalescing.
-    CREQ_SIZE: Int = 0,
+    NUM_BANKS: Int = 1,
+    NUM_WAYS: Int = 1,
+    // for single-bank configuration, set NUM_REQS = 1 and instead set
+    // WORD_SIZE to something wider than 4
+    WORD_SIZE: Int = 16,
     CRSQ_SIZE: Int = 2,
-    MSHR_SIZE: Int = 8,
+    MSHR_SIZE: Int = 16,
     MRSQ_SIZE: Int = 0,
     MREQ_SIZE: Int = 4,
     WRITE_ENABLE: Int = 1,
+    UUID_WIDTH: Int = 0, // FIXME: should be different for debug
     CORE_TAG_WIDTH: Int =
-      10, // source ID ranges from 0 to 1 << 10, we need to allocate upper bits to save size
-    CORE_TAG_ID_BITS: Int =
-      5, // no idea what this is, just match it with default L1 dcache
-    BANK_ADDR_OFFSET: Int = 0,
-    NC_ENABLE: Int = 0, // NC_ENABLE=1 means the cache becomes a passthrough
+      16, // source ID ranges from 0 to 1 << 10, we need to allocate upper bits to save size
     WORD_ADDR_WIDTH: Int = 28, // 16 byte "word" = 4 bits
     MEM_TAG_WIDTH: Int =
       14, // Elaborated value is also completely different from (32 - log2Ceil(CACHE_LINE_SIZE)). This should match with sourceIds on client node associated with this cache
     MEM_ADDR_WIDTH: Int = 28 // 16 byte cache line = 4 bits
 ) extends BlackBox(
       Map(
-        "CACHE_ID" -> CACHE_ID,
         "NUM_REQS" -> 1, // force to instantiate single bank by setting NUM_REQS to 1
         "CACHE_SIZE" -> CACHE_SIZE,
-        "CACHE_LINE_SIZE" -> CACHE_LINE_SIZE,
-        "NUM_PORTS" -> NUM_PORTS,
+        "LINE_SIZE" -> CACHE_LINE_SIZE,
+        "NUM_BANKS" -> NUM_BANKS,
+        "NUM_WAYS" -> NUM_WAYS,
         "WORD_SIZE" -> WORD_SIZE,
-        "CREQ_SIZE" -> CREQ_SIZE,
         "CRSQ_SIZE" -> CRSQ_SIZE,
         "MSHR_SIZE" -> MSHR_SIZE,
         "MRSQ_SIZE" -> MRSQ_SIZE,
         "MREQ_SIZE" -> MREQ_SIZE,
         "WRITE_ENABLE" -> WRITE_ENABLE,
-        "CORE_TAG_WIDTH" -> CORE_TAG_WIDTH,
-        "CORE_TAG_ID_BITS" -> CORE_TAG_ID_BITS,
-        "MEM_TAG_WIDTH" -> MEM_TAG_WIDTH,
-        "BANK_ADDR_OFFSET" -> BANK_ADDR_OFFSET,
-        "NC_ENABLE" -> NC_ENABLE
+        "UUID_WIDTH" -> UUID_WIDTH,
+        "TAG_WIDTH" -> CORE_TAG_WIDTH,
+        // "MEM_TAG_WIDTH" -> MEM_TAG_WIDTH,
       )
     )
     with HasBlackBoxResource {
+
+  // require(MEM_)
 
   val io = IO(new Bundle {
     val clk = Input(Clock())
     val reset = Input(Reset())
 
-    // We should be able to turn the following into TileLink easily
-
     // CACHE <> CORE
     val core_req_valid = Input(Bool())
     val core_req_rw = Input(Bool())
-    val core_req_addr = Input(UInt(WORD_ADDR_WIDTH.W))
     val core_req_byteen = Input(UInt(WORD_SIZE.W))
+    val core_req_addr = Input(UInt(WORD_ADDR_WIDTH.W))
     val core_req_data = Input(UInt((WORD_SIZE * 8).W))
     val core_req_tag = Input(UInt(CORE_TAG_WIDTH.W))
     val core_req_ready = Output(Bool())
 
     val core_rsp_valid = Output(Bool()) // 1 bit wide
-    val core_rsp_tmask =
-      Output(Bool()) // 1 bit wide, probably can ignore (check waveform)
     val core_rsp_data = Output(UInt((WORD_SIZE * 8).W))
     val core_rsp_tag = Output(UInt(CORE_TAG_WIDTH.W))
     val core_rsp_ready = Input(Bool())
@@ -472,132 +465,142 @@ class VX_cache(
     val mem_rsp_ready = Output(Bool())
   })
 
-  addResource("/vsrc/vortex/hw/rtl/VX_dispatch.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_issue.sv")
+  addResource("/vsrc/vortex/hw/rtl/cache/VX_cache_bank.sv")
+  addResource("/vsrc/vortex/hw/rtl/cache/VX_cache_bypass.sv")
+  addResource("/vsrc/vortex/hw/rtl/cache/VX_cache_data.sv")
   addResource("/vsrc/vortex/hw/rtl/cache/VX_cache_define.vh")
-  addResource("/vsrc/vortex/hw/rtl/VX_warp_sched.sv")
-  addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_sat.sv")
-  addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_stride.sv")
-  addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_lerp.sv")
-  addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_addr.sv")
-  addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_mem.sv")
-  addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_format.sv")
-  addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_sampler.sv")
-  addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_unit.sv")
-  addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_define.vh")
-  addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_wrap.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_scope.vh")
-  addResource("/vsrc/vortex/hw/rtl/VX_fpu_unit.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_scoreboard.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_writeback.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_muldiv.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_decode.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_ibuffer.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_icache_stage.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_gpu_unit.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_trace_instr.vh")
-  addResource("/vsrc/vortex/hw/rtl/VX_gpu_types.vh")
-  addResource("/vsrc/vortex/hw/rtl/VX_config.vh")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_lzc.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_fifo_queue.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_scan.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_find_first.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_multiplier.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_bits_remove.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_pipe_register.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_priority_encoder.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_reset_relay.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_popcount.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_bits_insert.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_skid_buffer.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_fixed_arbiter.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_shift_register.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_index_buffer.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_onehot_encoder.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_matrix_arbiter.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_dp_ram.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_axi_adapter.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_elastic_buffer.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_rr_arbiter.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_stream_arbiter.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_sp_ram.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_stream_demux.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_serial_div.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_fair_arbiter.sv")
-  addResource("/vsrc/vortex/hw/rtl/libs/VX_pending_size.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_define.vh")
-  addResource("/vsrc/vortex/hw/rtl/VX_csr_data.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_cache_arb.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_ipdom_stack.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_gpr_stage.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_execute.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_fetch.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_alu_unit.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_platform.vh")
-  addResource("/vsrc/vortex/hw/rtl/VX_commit.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_pipeline.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_lsu_unit.sv")
-  addResource("/vsrc/vortex/hw/rtl/VX_csr_unit.sv")
-  addResource("/vsrc/vortex/hw/VX_config.h")
-  addResource("/vsrc/vortex/sim/common/rvfloats.h")
-  addResource("/vsrc/vortex/sim/common/rvfloats.cpp")
-  addResource("/csrc/softfloat/include/internals.h")
-  addResource("/csrc/softfloat/include/primitives.h")
-  addResource("/csrc/softfloat/include/primitiveTypes.h")
-  addResource("/csrc/softfloat/include/softfloat.h")
-  addResource("/csrc/softfloat/include/softfloat_types.h")
-  addResource("/csrc/softfloat/RISCV/specialize.h")
-  addResource("/vsrc/vortex/hw/dpi/float_dpi.cpp")
-  addResource("/vsrc/vortex/hw/dpi/float_dpi.vh")
-  addResource("/vsrc/vortex/hw/dpi/util_dpi.cpp")
-  addResource("/vsrc/vortex/hw/dpi/util_dpi.vh")
-  addResource("/vsrc/vortex/hw/rtl/fp_cores/VX_fpu_dpi.sv")
-  addResource("/vsrc/vortex/hw/rtl/fp_cores/VX_fpu_define.vh")
-  addResource("/vsrc/vortex/hw/rtl/fp_cores/VX_fpu_types.vh")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_icache_rsp_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_dcache_req_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_tex_csr_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_join_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_ifetch_req_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_perf_cache_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_perf_memsys_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_gpr_req_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_decode_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_writeback_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_gpu_req_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_perf_pipeline_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_gpr_rsp_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_cmt_to_csr_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_csr_to_alu_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_ifetch_rsp_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_alu_req_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_csr_req_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_ibuffer_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_branch_ctl_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_dcache_rsp_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_icache_req_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_lsu_req_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_wstall_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_mem_rsp_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_fpu_to_csr_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_commit_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_tex_req_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_warp_ctl_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_tex_rsp_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_fetch_to_csr_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_perf_tex_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_mem_req_if.sv")
-  addResource("/vsrc/vortex/hw/rtl/interfaces/VX_fpu_req_if.sv")
-  // addResource("/vsrc/vortex/hw/rtl/cache/VX_shared_mem.sv")
-  addResource("/vsrc/vortex/hw/rtl/cache/VX_core_rsp_merge.sv")
-  addResource("/vsrc/vortex/hw/rtl/cache/VX_tag_access.sv")
-  addResource("/vsrc/vortex/hw/rtl/cache/VX_core_req_bank_sel.sv")
-  addResource("/vsrc/vortex/hw/rtl/cache/VX_bank.sv")
-  addResource("/vsrc/vortex/hw/rtl/cache/VX_data_access.sv")
-  addResource("/vsrc/vortex/hw/rtl/cache/VX_flush_ctrl.sv")
-  addResource("/vsrc/vortex/hw/rtl/cache/VX_nc_bypass.sv")
-  addResource("/vsrc/vortex/hw/rtl/cache/VX_miss_resrv.sv")
+  addResource("/vsrc/vortex/hw/rtl/cache/VX_cache_init.sv")
+  addResource("/vsrc/vortex/hw/rtl/cache/VX_cache_mshr.sv")
   addResource("/vsrc/vortex/hw/rtl/cache/VX_cache.sv")
+  addResource("/vsrc/vortex/hw/rtl/cache/VX_cache_tags.sv")
+  addResource("/vsrc/vortex/hw/rtl/cache/VX_cache_top.sv")
+
+  // addResource("/vsrc/vortex/hw/rtl/VX_dispatch.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_issue.sv")
+  // addResource("/vsrc/vortex/hw/rtl/cache/VX_cache_define.vh")
+  // addResource("/vsrc/vortex/hw/rtl/VX_warp_sched.sv")
+  // addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_sat.sv")
+  // addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_stride.sv")
+  // addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_lerp.sv")
+  // addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_addr.sv")
+  // addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_mem.sv")
+  // addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_format.sv")
+  // addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_sampler.sv")
+  // addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_unit.sv")
+  // addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_define.vh")
+  // addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_wrap.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_scope.vh")
+  // addResource("/vsrc/vortex/hw/rtl/VX_fpu_unit.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_scoreboard.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_writeback.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_muldiv.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_decode.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_ibuffer.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_icache_stage.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_gpu_unit.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_trace_instr.vh")
+  // addResource("/vsrc/vortex/hw/rtl/VX_gpu_types.vh")
+  // addResource("/vsrc/vortex/hw/rtl/VX_config.vh")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_lzc.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_fifo_queue.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_scan.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_find_first.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_multiplier.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_bits_remove.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_pipe_register.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_priority_encoder.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_reset_relay.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_popcount.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_bits_insert.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_skid_buffer.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_fixed_arbiter.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_shift_register.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_index_buffer.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_onehot_encoder.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_matrix_arbiter.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_dp_ram.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_axi_adapter.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_elastic_buffer.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_rr_arbiter.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_stream_arbiter.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_sp_ram.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_stream_demux.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_serial_div.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_fair_arbiter.sv")
+  // addResource("/vsrc/vortex/hw/rtl/libs/VX_pending_size.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_define.vh")
+  // addResource("/vsrc/vortex/hw/rtl/VX_csr_data.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_cache_arb.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_ipdom_stack.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_gpr_stage.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_execute.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_fetch.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_alu_unit.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_platform.vh")
+  // addResource("/vsrc/vortex/hw/rtl/VX_commit.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_pipeline.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_lsu_unit.sv")
+  // addResource("/vsrc/vortex/hw/rtl/VX_csr_unit.sv")
+  // addResource("/vsrc/vortex/hw/VX_config.h")
+  // addResource("/vsrc/vortex/sim/common/rvfloats.h")
+  // addResource("/vsrc/vortex/sim/common/rvfloats.cpp")
+  // addResource("/csrc/softfloat/include/internals.h")
+  // addResource("/csrc/softfloat/include/primitives.h")
+  // addResource("/csrc/softfloat/include/primitiveTypes.h")
+  // addResource("/csrc/softfloat/include/softfloat.h")
+  // addResource("/csrc/softfloat/include/softfloat_types.h")
+  // addResource("/csrc/softfloat/RISCV/specialize.h")
+  // addResource("/vsrc/vortex/hw/dpi/float_dpi.cpp")
+  // addResource("/vsrc/vortex/hw/dpi/float_dpi.vh")
+  // addResource("/vsrc/vortex/hw/dpi/util_dpi.cpp")
+  // addResource("/vsrc/vortex/hw/dpi/util_dpi.vh")
+  // addResource("/vsrc/vortex/hw/rtl/fp_cores/VX_fpu_dpi.sv")
+  // addResource("/vsrc/vortex/hw/rtl/fp_cores/VX_fpu_define.vh")
+  // addResource("/vsrc/vortex/hw/rtl/fp_cores/VX_fpu_types.vh")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_icache_rsp_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_dcache_req_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_tex_csr_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_join_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_ifetch_req_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_perf_cache_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_perf_memsys_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_gpr_req_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_decode_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_writeback_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_gpu_req_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_perf_pipeline_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_gpr_rsp_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_cmt_to_csr_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_csr_to_alu_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_ifetch_rsp_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_alu_req_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_csr_req_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_ibuffer_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_branch_ctl_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_dcache_rsp_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_icache_req_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_lsu_req_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_wstall_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_mem_rsp_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_fpu_to_csr_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_commit_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_tex_req_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_warp_ctl_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_tex_rsp_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_fetch_to_csr_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_perf_tex_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_mem_req_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/interfaces/VX_fpu_req_if.sv")
+  // // addResource("/vsrc/vortex/hw/rtl/cache/VX_shared_mem.sv")
+  // addResource("/vsrc/vortex/hw/rtl/cache/VX_core_rsp_merge.sv")
+  // addResource("/vsrc/vortex/hw/rtl/cache/VX_tag_access.sv")
+  // addResource("/vsrc/vortex/hw/rtl/cache/VX_core_req_bank_sel.sv")
+  // addResource("/vsrc/vortex/hw/rtl/cache/VX_bank.sv")
+  // addResource("/vsrc/vortex/hw/rtl/cache/VX_data_access.sv")
+  // addResource("/vsrc/vortex/hw/rtl/cache/VX_flush_ctrl.sv")
+  // addResource("/vsrc/vortex/hw/rtl/cache/VX_nc_bypass.sv")
+  // addResource("/vsrc/vortex/hw/rtl/cache/VX_miss_resrv.sv")
+  // addResource("/vsrc/vortex/hw/rtl/cache/VX_cache.sv")
 
 }
 
