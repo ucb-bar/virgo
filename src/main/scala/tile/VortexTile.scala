@@ -271,7 +271,7 @@ class VortexTile private (
   }
 
   // Conditionally instantiate L1 cache
-  val l1Node = p(VortexL1Key) match {
+  val (icacheNode, dcacheNode): (TLNode, TLNode) = p(VortexL1Key) match {
     case Some(vortexL1Config) => {
       println(
         s"============ Using Vortex L1 cache ================="
@@ -281,22 +281,29 @@ class VortexTile private (
         "Vortex L1 configuration currently only works when coalescer is also enabled."
       )
 
-      val l1cache = LazyModule(new VortexL1Cache(vortexL1Config))
-      // // Connect L1 with imem_fetch_interface without XBar
-      // // imemNodes.foreach { l1cache.icache_bank.coresideNode := TLWidthWidget(4) := _ }
-      // imemNodes.foreach { l1cache.coresideNode := TLWidthWidget(4) := _ }
+      val icache = LazyModule(new VortexL1Cache(vortexL1Config))
+      val dcache = LazyModule(new VortexL1Cache(vortexL1Config))
+      // imemNodes.foreach { icache.coresideNode := TLWidthWidget(4) := _ }
+      assert(imemNodes.length == 1) // FIXME
+      icache.coresideNode := TLWidthWidget(4) := imemNodes(0)
       // dmemNodes go through coalescerNode
-      l1cache.coresideNode :=* coalescerNode
-      l1cache.masterNode
+      dcache.coresideNode :=* coalescerNode
+      (icache.masterNode, dcache.masterNode)
     }
-    case None => coalescerNode
+    case None => {
+      val imemWideNode = TLIdentityNode()
+      assert(imemNodes.length == 1) // FIXME
+      imemWideNode := TLWidthWidget(4) := imemNodes(0)
+      (imemWideNode, coalescerNode)
+    }
   }
 
   if (vortexParams.useVxCache) {
     tlMasterXbar.node := TLWidthWidget(16) := memNode
   } else {
-    imemNodes.foreach { tlMasterXbar.node := TLWidthWidget(4) := _ }
-    tlMasterXbar.node :=* l1Node
+    // imemNodes.foreach { tlMasterXbar.node := TLWidthWidget(4) := _ }
+    tlMasterXbar.node :=* icacheNode
+    tlMasterXbar.node :=* dcacheNode
   }
 
   /* below are copied from rocket */
@@ -584,7 +591,8 @@ class VortexTLAdapter(
   io.outReq.bits.address := io.inReq.bits.address
   // Get requires contiguous mask; only copy core's potentially-partial mask
   // when writing
-  io.outReq.bits.mask := Mux(edge.hasData(io.outReq.bits),
+  io.outReq.bits.mask := Mux(
+    edge.hasData(io.outReq.bits),
     io.inReq.bits.mask,
     // generate TL-correct mask
     edge.mask(io.inReq.bits.address, io.inReq.bits.size)
