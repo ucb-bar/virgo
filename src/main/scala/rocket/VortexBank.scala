@@ -23,6 +23,10 @@ case class VortexL1Config(
   def coreTagPlusSizeWidth: Int = {
     log2Ceil(wordSize) + coreTagWidth
   }
+  // NOTE: This assertion depends on the fact that the Vortex cache is
+  // configured to have 1 bank, and that it uses MSHR id as the tag of
+  // memory-side requests.  Otherwise, it will append bank id to the tag as
+  // well and break this requirement.
   require(
     mshrSize == memSideSourceIds,
     "MSHR size must match the number of sourceIds to downstream."
@@ -214,7 +218,7 @@ class VortexBankImp(
       WORD_SIZE = config.wordSize,
       CACHE_LINE_SIZE = config.cacheLineSize,
       CORE_TAG_WIDTH = config.coreTagPlusSizeWidth,
-      // MSHR_SIZE = config.mshrSize
+      MSHR_SIZE = config.mshrSize
       // NUM_BANKS is set to 1 to treat a whole VX_cache_top instance as a
       // single bank
     )
