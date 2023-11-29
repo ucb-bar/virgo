@@ -282,25 +282,20 @@ class VortexTile private (
       )
 
       val l1cache = LazyModule(new VortexL1Cache(vortexL1Config))
-      // Connect L1 with imem_fetch_interface without XBar
-      // imemNodes.foreach { l1cache.icache_bank.coresideNode := TLWidthWidget(4) := _ }
-      imemNodes.foreach { l1cache.coresideNode := TLWidthWidget(4) := _ }
+      // // Connect L1 with imem_fetch_interface without XBar
+      // // imemNodes.foreach { l1cache.icache_bank.coresideNode := TLWidthWidget(4) := _ }
+      // imemNodes.foreach { l1cache.coresideNode := TLWidthWidget(4) := _ }
       // dmemNodes go through coalescerNode
       l1cache.coresideNode :=* coalescerNode
       l1cache.masterNode
     }
-    case None => {
-      // Regardless of using coalescer or not, if we're not using L1, imemNode
-      // goes directly to tile exit xbar
-      // FIXME: unnatural, have L1 just handle dmem
-      imemNodes.foreach { tlMasterXbar.node := TLWidthWidget(4) := _ }
-      coalescerNode
-    }
+    case None => coalescerNode
   }
 
   if (vortexParams.useVxCache) {
     tlMasterXbar.node := TLWidthWidget(16) := memNode
   } else {
+    imemNodes.foreach { tlMasterXbar.node := TLWidthWidget(4) := _ }
     tlMasterXbar.node :=* l1Node
   }
 

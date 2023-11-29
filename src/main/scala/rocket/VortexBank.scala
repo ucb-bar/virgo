@@ -38,14 +38,15 @@ object defaultVortexL1Config
       writeInfoReqQSize = 16,
       mshrSize = 8,
       memSideSourceIds = 8,
-      uncachedAddrSets = Seq(AddressSet(0x2000000L, 0xffL)),
-      icacheInstAddrSets = Seq(AddressSet(0x80000000L, 0xfffffffL))
+      // Don't cache CLINT region to ensure coherent access
+      uncachedAddrSets = Seq(AddressSet(0x2000000L, 0xffffL)),
+      icacheInstAddrSets = Seq(AddressSet(0x80000000L, 0x0fffffffL))
     )
 
 class VortexL1Cache(config: VortexL1Config)(implicit p: Parameters)
     extends LazyModule {
   // icache bank
-  val icache_bank = LazyModule(new VortexBank(config, 0, isICache = true))
+  // val icache_bank = LazyModule(new VortexBank(config, 0, isICache = true))
 
   // dcache banks
   val dcache_banks = Seq.tabulate(config.numBanks) { bankId =>
@@ -63,13 +64,13 @@ class VortexL1Cache(config: VortexL1Config)(implicit p: Parameters)
   bankXbar.node :=* coresideNode
   dcache_banks.foreach { _.coresideNode :=* bankXbar.node }
   passThrough.coresideNode :=* bankXbar.node
-  icache_bank.coresideNode :=* bankXbar.node
+  // icache_bank.coresideNode :=* bankXbar.node
 
   // master node that exposes to and drives the downstream
   val masterNode = TLIdentityNode()
   dcache_banks.foreach { masterNode := _.vxCacheToL2Node }
   masterNode := passThrough.vxCacheToL2Node
-  masterNode := icache_bank.vxCacheToL2Node
+  // masterNode := icache_bank.vxCacheToL2Node
 
   lazy val module = new LazyModuleImp(this)
 }
@@ -141,7 +142,6 @@ class VortexBank(
   def generateAddressSets(): Seq[AddressSet] = {
     if (isICache) {
       config.icacheInstAddrSets
-      // Seq(AddressSet(0x00000000L, 0xFFFFFFFFL))
     } else {
       // suppose have 4 bank
       // base for bank 1: ...000000|01|0000
@@ -149,7 +149,8 @@ class VortexBank(
       val mask = 0xffffffffL ^ ((config.numBanks - 1) * config.wordSize)
       val base = 0x00000000L | (bankId * config.wordSize)
 
-      val excludeSets = (config.uncachedAddrSets ++ config.icacheInstAddrSets)
+      // val excludeSets = (config.uncachedAddrSets ++ config.icacheInstAddrSets)
+      val excludeSets = config.uncachedAddrSets
       var remainingSets: Seq[AddressSet] = Seq(AddressSet(base, mask))
       for (excludeSet <- excludeSets) {
         remainingSets = remainingSets.flatMap(_.subtract(excludeSet))
