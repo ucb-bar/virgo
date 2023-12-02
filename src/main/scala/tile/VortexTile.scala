@@ -262,7 +262,7 @@ class VortexTile private (
   val coalescerNode = p(CoalescerKey) match {
     case Some(coalescerParam) => {
       val coal = LazyModule(
-        new CoalescingUnit(coalescerParam.copy(enable = true))
+        new CoalescingUnit(coalescerParam)
       )
       coal.cpuNode :=* dmemAggregateNode
       coal.aggregateNode // N+1 lanes
@@ -276,10 +276,10 @@ class VortexTile private (
       println(
         s"============ Using Vortex L1 cache ================="
       )
-      require(
-        p(CoalescerKey).isDefined,
-        "Vortex L1 configuration currently only works when coalescer is also enabled."
-      )
+      // require(
+      //   p(CoalescerKey).isDefined,
+      //   "Vortex L1 configuration currently only works when coalescer is also enabled."
+      // )
 
       val icache = LazyModule(new VortexL1Cache(vortexL1Config))
       val dcache = LazyModule(new VortexL1Cache(vortexL1Config))
