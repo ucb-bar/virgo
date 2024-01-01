@@ -103,6 +103,7 @@ class Vortex(tile: VortexTile)(implicit p: Parameters)
   // addResource("/vsrc/vortex/hw/syn/synopsys/models/memory/cln28hpc/rf2_32x128_wm1/vsim/rf2_32x128_wm1_tb.v")
   // addResource("/vsrc/vortex/hw/syn/modelsim/vortex_tb.v")
 
+
   addResource("/vsrc/vortex/hw/rtl/VX_gpu_pkg.sv")
 
   // addResource("/vsrc/vortex/hw/rtl/VX_cluster.sv")
@@ -164,13 +165,12 @@ class Vortex(tile: VortexTile)(implicit p: Parameters)
   // addResource("/vsrc/vortex/hw/rtl/mem/VX_gbar_arb.sv")
   // addResource("/vsrc/vortex/hw/rtl/mem/VX_gbar_bus_if.sv")
   // addResource("/vsrc/vortex/hw/rtl/mem/VX_gbar_unit.sv")
-  // Only used for caches
+  // mem_arb is used in VX_socket or VX_cache_cluster
   // addResource("/vsrc/vortex/hw/rtl/mem/VX_mem_arb.sv")
   addResource("/vsrc/vortex/hw/rtl/mem/VX_mem_bus_if.sv")
   // addResource("/vsrc/vortex/hw/rtl/mem/VX_mem_perf_if.sv")
   addResource("/vsrc/vortex/hw/rtl/mem/VX_shared_mem.sv")
   addResource("/vsrc/vortex/hw/rtl/mem/VX_smem_switch.sv")
-
 
   // tex_unit missing in Vortex 2.0
   // addResource("/vsrc/vortex/hw/rtl/tex_unit/VX_tex_sat.sv")

@@ -187,6 +187,8 @@ class VortexTile private (
       "We recommend setting nSrcIds to at least 16."
   )
 
+  val smemSourceWidth = 4 // FIXME: hardcoded
+
   val imemNodes = Seq.tabulate(1) { i =>
     TLClientNode(
       Seq(
@@ -228,6 +230,30 @@ class VortexTile private (
       )
     )
   }
+
+  val smemNodes = Seq.tabulate(numLanes) { i =>
+    TLClientNode(
+      Seq(
+        TLMasterPortParameters.v1(
+          clients = Seq(
+            TLMasterParameters.v1(
+              sourceId = IdRange(0, 1 << smemSourceWidth),
+              name = s"Vortex Core ${vortexParams.hartId} SharedMem Lane $i",
+              requestFifo = true,
+              supportsProbe =
+                TransferSizes(1, lazyCoreParamsView.coreDataBytes),
+              supportsGet = TransferSizes(1, lazyCoreParamsView.coreDataBytes),
+              supportsPutFull =
+                TransferSizes(1, lazyCoreParamsView.coreDataBytes),
+              supportsPutPartial =
+                TransferSizes(1, lazyCoreParamsView.coreDataBytes)
+            )
+          )
+        )
+      )
+    )
+  }
+
   // combine outgoing per-lane dmemNode into 1 idenity node
   //
   // NOTE: We need TLWidthWidget here because there might be a data width
@@ -297,6 +323,13 @@ class VortexTile private (
       (imemWideNode, coalescerNode)
     }
   }
+
+  // Instantiate sharedmem
+  // TODO: parametrize
+  val sharedmem = LazyModule(new TLRAM(AddressSet(0xff000000L, 0x00ffffffL), beatBytes = 4 /*FIXME*/))
+  val smemXbar = LazyModule(new TLXbar)
+  smemNodes.foreach(smemXbar.node := _)
+  sharedmem.node :=* smemXbar.node
 
   if (vortexParams.useVxCache) {
     tlMasterXbar.node := TLWidthWidget(16) := memNode
