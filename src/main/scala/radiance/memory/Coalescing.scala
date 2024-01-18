@@ -1317,14 +1317,12 @@ class InFlightTable(
   // Lookup logic
   io.lookup.valid := table(io.lookupSourceId).valid
   io.lookup.bits := table(io.lookupSourceId).bits
-  // under normal circumstances, every lookup to the table should succeed
-  // as long as the request gets recorded earlier than the response
-  when(io.lookup.ready) {
-    assert(table(io.lookupSourceId).valid === true.B,
-      "table lookup with a valid sourceId failed")
-  }
   // Dequeue as soon as lookup succeeds
   when(io.lookup.fire) {
+    // every lookup to the table should succeed as the request should have
+    // gotten recorded earlier than the response
+    assert(table(io.lookupSourceId).valid === true.B,
+      "table lookup with a valid sourceId failed")
     table(io.lookupSourceId).valid := false.B
   }
   assert(
