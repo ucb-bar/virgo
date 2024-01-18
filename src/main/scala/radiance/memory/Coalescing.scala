@@ -1114,14 +1114,22 @@ class Uncoalescer(
     val inflightLookup = Flipped(Decoupled(inflightEntryT))
     val coalResp = Flipped(Decoupled(new CoalescedResponse(config)))
     val respQueueIO = Vec(config.numLanes,
-      // FIXME: does this have to be respQueueDepth?
+      // reqQueueDepth because if we're doing time-coalescing, that's the
+      // maximum number of same-lane, different-time requests that can go into
+      // a single coalesced request.
       Vec(config.reqQueueDepth, Decoupled(new NonCoalescedResponse(config)))
     )
   })
 
-  io.coalResp.ready := true.B // FIXME, see sw model implementation
-  // Lookup table whenever coalesced response is valid
+  // Lookup table as soon as a coalesced response arrives
   io.inflightLookup.ready := io.coalResp.valid
+
+  // Only accept coalesced response when all enq ports of the response queue
+  // are ready.  This is necessary because uncoalescing logic is a
+  // combinational logic that produces all the split responses at the same
+  // cycle, so it needs to be guaranteed that all of them has somewhere to go.
+  val allRespQueueEnqReady = io.respQueueIO.map(_.map(_.ready).reduce(_ && _)).reduce(_ && _)
+  io.coalResp.ready := allRespQueueEnqReady
 
   // Un-coalescing logic
   //
