@@ -275,20 +275,19 @@ class VortexBankImp(
     writeInputFire := vxCache.io.core_req_rw && tlInFromCoal.a.fire
 
     // vxCache -> coal response on channel D
-    // ok ... this part is a little tricky, the downstream coalescer requires
-    // the L1 cache to send ack and dataAck, this is how coalescer knows when
-    // an inflight ID has retired if we don't send ack, the coalescer will run
-    // out of IDs, and can't generate new request
-
-    // Optimization: for write requests from upstream (i.e. coalescer), we send
-    // back ack as soon as we can without waiting for the actual ack from
-    // downstream (i.e. L2).
     //
-    // We still need to store these pending core write requests somewhere,
-    // because we can't always ack them in the next cycle, ex. when there's a
-    // competing read response.
+    // Vortex L1 does not send back write responses that are required by
+    // TileLink. Therefore we synthesize write responses here outside of L1 by
+    // using a separate queue structure that keeps track of in-flight write
+    // requests, and tries to send back the response as soon as the queue has
+    // valid entries.
+    //
+    // We cannot assume that we can send back write responses at the next cycle
+    // after the requests, since there can exist a contemporary read response
+    // at the same cycle.
 
-    // FIXME: currently assuming below buffer is never full
+    assert(coreWriteReqQueue.io.enq.ready === true.B,
+      "FIXME: VortexCache: coreWriteReqQueue is full")
     coreWriteReqQueue.io.enq.valid :=
       tlInFromCoal.a.fire && !(tlInFromCoal.a.bits.opcode === TLMessages.Get)
     coreWriteReqQueue.io.enq.bits.id := tlInFromCoal.a.bits.source
