@@ -1,0 +1,15 @@
+out/
+target/
+*.fir
+*.v
+*.anno.json
+*.swp
+*~
+.addons-dont-touch
+/lib/
+/test_lib/
+/testbuild/
+*#
+.#*
+.idea/
+/test_run_dir/
