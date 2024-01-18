@@ -1054,12 +1054,12 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
 
       // Debug only
       val inflightCounter = RegInit(UInt(32.W), 0.U)
-      when(tlOut.a.valid) {
+      when(tlOut.a.fire) {
         // don't inc/dec on simultaneous req/resp
-        when(!tlOut.d.valid) {
+        when(!tlOut.d.fire) {
           inflightCounter := inflightCounter + 1.U
         }
-      }.elsewhen(tlOut.d.valid) {
+      }.elsewhen(tlOut.d.fire) {
         inflightCounter := inflightCounter - 1.U
       }
 
