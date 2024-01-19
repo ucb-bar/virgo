@@ -797,6 +797,7 @@ class CoalescerSourceGen(
     val outReq = Decoupled(coalReqT.cloneType)
     // outResp is only needed for telling the downstream TL node that this
     // sourcegen module is always ready to take in responses.
+    val inResp = Decoupled(respT.cloneType)
     // No need for inResp, since coalescerNode is directly replied by the
     // outResp TileLink bundle.
     val outResp = Flipped(Decoupled(respT.cloneType))
@@ -812,12 +813,13 @@ class CoalescerSourceGen(
 
   // passthrough logic
   io.outReq <> io.inReq
+  io.inResp <> io.outResp
+
   // "man-in-the-middle"
-  io.inReq.ready := io.outReq.ready && sourceGen.io.id.valid
   // overwrite bits affected by sourcegen backpressure
+  io.inReq.ready := io.outReq.ready && sourceGen.io.id.valid
   io.outReq.valid := io.inReq.valid && sourceGen.io.id.valid
   io.outReq.bits.source := sourceGen.io.id.bits
-  io.outResp.ready := true.B // should be always ready to reclaim old ID
 }
 
 class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
@@ -927,21 +929,20 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
 
   // The request coming out of MultiCoalescer still needs to go through source
   // ID generation.
-  // We pull the sourcegen part out of MultiCoalescer to a separate Module to
-  // reduce IO bloat in the coalescer and top-level clutter.
+  // The source generator needs to be on both upstream and downstream flow, as
+  // it needs to snoop on both reqs and resps to allocate/free the sourceIds.
   //
   // The overall flow looks like:
-  // ┌────────────────┐ ┌─────────────────────┐ ┌────────────────────┐
-  // │ CoalShiftQueue ├─┤ Mono/MultiCoalescer ├─┤ CoalescerSourceGen ├── TileLink req
-  // └────────────────┘ └─────────────────────┘ └────────────────────┘
-  //                                                             ^
-  //                             ┌────────────┐ ┌─────────────┐  │
-  //                             │ RespQueues ├─┤ Uncoalescer ├──┴────── TileLink resp
-  //                             └────────────┘ └─────────────┘
+  //
+  // ┌────────────────┐ ┌─────────────────────┐ ┌────────────────────┐ ┌───────────────┐
+  // │ CoalShiftQueue ├─┤ Mono/MultiCoalescer ├─┤ CoalSourceGen(gen) ├─┤ InFlightTable ├── TileLink req
+  // └────────────────┘ └─────────────────────┘ └────────────────────┘ └───────────────┘
+  //         ┌────────────┐ ┌─────────────┐ ┌────────────────────────┐ ┌───────────────┐
+  //         │ RespQueues ├─┤ Uncoalescer ├─┤ CoalSourceGen(reclaim) ├─┤ InFlightTable ├── TileLink resp
+  //         └────────────┘ └─────────────┘ └────────────────────────┘ └───────────────┘
   //
   val coalSourceGen = Module(new CoalescerSourceGen(config, coalReqT, tlCoal.d.bits))
   coalSourceGen.io.inReq <> coalescer.io.coalReq
-  coalSourceGen.io.outResp <> tlCoal.d
 
   // InflightTable IO
   //
@@ -1071,8 +1072,10 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
   // Uncoalescer IO
   //
   // Connect coalesced response
-  uncoalescer.io.coalResp.valid := tlCoal.d.valid
-  uncoalescer.io.coalResp.bits.fromTLD(tlCoal.d.bits, tlCoal.d.fire)
+  uncoalescer.io.coalResp.valid := coalSourceGen.io.inResp.valid
+  uncoalescer.io.coalResp.bits.fromTLD(coalSourceGen.io.inResp.bits, coalSourceGen.io.inResp.fire)
+  coalSourceGen.io.inResp.ready := uncoalescer.io.coalResp.ready
+
   // Connect lookup result from InflightTable
   uncoalescer.io.inflightLookup <> inflightTable.io.lookup
   // InflightTable IO: Look up the table with incoming coalesced responses
@@ -1099,9 +1102,11 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
       }
     }
   }
-  // Uncoalescer backpressure: stall downstream when uncoalescer is not ready
-  // to accept new coalesced response
-  tlCoal.d.ready := uncoalescer.io.coalResp.ready
+
+  // coalSourceGen is the last module before going to downstream
+  // This handles backpressure to the downstream when uncoalescer is not ready,
+  // because uncoalescer is connected before coalSourceGen.
+  coalSourceGen.io.outResp <> tlCoal.d
 
   // Debug
   dontTouch(coalescer.io.coalReq)
