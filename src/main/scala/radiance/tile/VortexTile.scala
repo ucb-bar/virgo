@@ -171,7 +171,7 @@ class VortexTile private (
   // ibuffer size is set as a hardcoded macro IBUF_SIZE that's uncontrollable
   // from Chisel, there's no easy solution.  We at least don't expose this as a
   // Parameter and leave as a hardcoded value here.
-  val imemSourceWidth = 6 // 1 << imemSourceWidth == IBUF_SIZE
+  val imemSourceWidth = 4 // 1 << imemSourceWidth == IBUF_SIZE
 
   val dmemSourceWidth = p(SIMTCoreKey) match {
     // TODO: respect coalescer newSrcIds
