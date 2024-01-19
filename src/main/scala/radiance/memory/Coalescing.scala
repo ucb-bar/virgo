@@ -1035,12 +1035,10 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
       val resp = Wire(respQueueEntryT)
       resp.fromTLD(tlOut.d.bits, tlOut.d.fire)
 
-      // Queue up responses that didn't get coalesced originally ("noncoalesced" responses).
-      // Coalesced (but uncoalesced back) responses will also be enqueued into the same queue.
-      assert(
-        respQueue.io.enq(respQueueNoncoalPort).ready,
-        "respQueue: enq port for noncoalesced response is blocked"
-      )
+      // Queue up responses that didn't get coalesced originally, i.e.
+      // "noncoalesced" responses. Coalesced (but uncoalesced on the way back)
+      // responses will be enqueued into a different port of the
+      // MultiPortQueue, and eventually serialized.
       respQueue.io.enq(respQueueNoncoalPort).valid := tlOut.d.valid
       respQueue.io.enq(respQueueNoncoalPort).bits := resp
       assert(respQueue.io.deq.length == 1,
