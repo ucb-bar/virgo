@@ -1132,8 +1132,9 @@ class Uncoalescer(
     )
   })
 
-  // Lookup table as soon as a coalesced response arrives
-  io.inflightLookup.ready := io.coalResp.valid
+  // Lookup table as soon as a coalesced response fires
+  // @perf: might result in long ready chain?
+  io.inflightLookup.ready := io.coalResp.fire
 
   // Only accept coalesced response when all enq ports of the response queue
   // are ready.  This is necessary because uncoalescing logic is a
@@ -1180,7 +1181,7 @@ class Uncoalescer(
       // dontTouch(q.io.enq(respQueueCoalPortOffset))
 
       when(io.inflightLookup.valid && foundReq.valid) {
-        enqIO.valid := io.coalResp.valid && foundReq.valid
+        enqIO.valid := io.coalResp.fire && foundReq.valid
         enqIO.bits.op := foundReq.op
         enqIO.bits.source := foundReq.source
         val logSize = foundRow.sizeEnumT.enumToLogSize(foundReq.sizeEnum)
@@ -1251,7 +1252,9 @@ class InFlightTable(
     //
     // TODO: return actual stuff
     val lookup = Decoupled(entryT)
-    // TODO: put this inside decoupledIO
+    // this should really be a part of lookup, but since lookup only accepts
+    // ready, we need another port for accepting sourceId.  Could maybe have a
+    // custom decoupledIO with ready+sourceId input. @cleanup
     val lookupSourceId = Input(UInt(sourceWidth.W))
   })
 
