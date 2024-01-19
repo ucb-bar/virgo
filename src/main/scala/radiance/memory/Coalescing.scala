@@ -954,7 +954,7 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
   // This is the final coalesced request.
   val coalReq = inflightTable.io.outCoalReq
   // downstream backpressure on the coalesced edge
-  // TODO: custom <>?
+  // @cleanup: custom <>?
   inflightTable.io.outCoalReq.ready := tlCoal.a.ready
   tlCoal.a.valid := coalReq.valid
   val (legal, tlBits) = coalReq.bits.toTLA(edgeCoal)
@@ -1078,9 +1078,10 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
 
   // Connect lookup result from InflightTable
   uncoalescer.io.inflightLookup <> inflightTable.io.lookup
-  // InflightTable IO: Look up the table with incoming coalesced responses
-  // @cleanup: this should be done inside uncoalescer
-  inflightTable.io.lookupSourceId := tlCoal.d.bits.source
+  // Look up the inflight table with incoming coalesced responses
+  // @cleanup: would be cleaner if inflightTable lookup is contained inside
+  // uncoalescer
+  inflightTable.io.lookupSourceId := coalSourceGen.io.inResp.bits.source
 
   // Connect uncoalescer results back into response queue
   (respQueues zip uncoalescer.io.respQueueIO).zipWithIndex.foreach
@@ -1132,17 +1133,6 @@ class Uncoalescer(
     )
   })
 
-  // Lookup table as soon as a coalesced response fires
-  // @perf: might result in long ready chain?
-  io.inflightLookup.ready := io.coalResp.fire
-
-  // Only accept coalesced response when all enq ports of the response queue
-  // are ready.  This is necessary because uncoalescing logic is a
-  // combinational logic that produces all the split responses at the same
-  // cycle, so it needs to be guaranteed that all of them has somewhere to go.
-  val allRespQueueEnqReady = io.respQueueIO.map(_.map(_.ready).reduce(_ && _)).reduce(_ && _)
-  io.coalResp.ready := allRespQueueEnqReady
-
   // Un-coalescing logic
   //
   def getCoalescedDataChunk(data: UInt, dataWidth: Int, offset: UInt, logSize: UInt): UInt = {
@@ -1165,32 +1155,59 @@ class Uncoalescer(
     chunks(offset) // MUX
   }
 
-  // Un-coalesce responses back to individual lanes
-  // Connect uncoalesced results back into each lane's response queue
-  val foundRow = io.inflightLookup.bits
-  (foundRow.lanes zip io.respQueueIO).zipWithIndex.foreach { case ((foundLane, enqIOs), lane) =>
-    foundLane.reqs.zipWithIndex.foreach { case (foundReq, depth) =>
+  // Pipeline registers for the inflight table lookup result, and the coalesced
+  // response itself.  We cut timing here expecting that the table lookup
+  // will take up a long path.
+  val coalRespPipeReg = Module(new Queue(chiselTypeOf(io.coalResp.bits), 1, pipe = true))
+  coalRespPipeReg.io.enq <> io.coalResp
+  val tablePipeReg = Module(new Queue(chiselTypeOf(io.inflightLookup.bits), 1, pipe = true))
+  tablePipeReg.io.enq <> io.inflightLookup
+  tablePipeReg.io.enq.valid := io.inflightLookup.fire
+
+  // inflightTable looks up as soon as ready signal goes up, assuming
+  // io.lookupSourceId is valid, so need to be careful when we assert ready by
+  // checking both if we have space in the pipeline register, and if there is a
+  // valid response on the channel
+  io.inflightLookup.ready := tablePipeReg.io.enq.ready && io.coalResp.fire
+
+  // Only proceed uncoalescing when all enq ports of the response queue are
+  // ready.  This is necessary because uncoalescing logic is a combinational
+  // logic that produces all the split responses at the same cycle, so it needs
+  // to be guaranteed that all of them has somewhere to go.
+  val allRespQueueEnqReady = io.respQueueIO.map(_.map(_.ready).reduce(_ && _)).reduce(_ && _)
+  tablePipeReg.io.deq.ready := allRespQueueEnqReady
+  coalRespPipeReg.io.deq.ready := allRespQueueEnqReady
+
+  assert(tablePipeReg.io.enq.fire === coalRespPipeReg.io.enq.fire,
+    "enqueue timing for uncoalescer pipeline registers out-of-sync!")
+  assert(tablePipeReg.io.deq.fire === coalRespPipeReg.io.deq.fire,
+    "dequeue timing for uncoalescer pipeline registers out-of-sync!")
+
+  // Un-coalesce responses back to individual lanes. Connect uncoalesced
+  // results back into each lane's response queue.
+  val tableRow = tablePipeReg.io.deq
+  (io.respQueueIO zip tableRow.bits.lanes).zipWithIndex.foreach { case ((enqIOs, lane), laneNum) =>
+    lane.reqs.zipWithIndex.foreach { case (req, depth) =>
       val enqIO = enqIOs(depth)
-      // spatial-only coalescing: only looking at 0th srcId entry
       enqIO.valid := false.B
       enqIO.bits := DontCare
       // debug
       // when (resp.valid) {
-      //   printf(s"${i}-th uncoalesced response came back from lane ${lane}\n")
+      //   printf(s"${i}-th uncoalesced response came back from lane ${laneNum}\n")
       // }
       // dontTouch(q.io.enq(respQueueCoalPortOffset))
 
-      when(io.inflightLookup.valid && foundReq.valid) {
-        enqIO.valid := io.coalResp.fire && foundReq.valid
-        enqIO.bits.op := foundReq.op
-        enqIO.bits.source := foundReq.source
-        val logSize = foundRow.sizeEnumT.enumToLogSize(foundReq.sizeEnum)
+      when(tableRow.valid && req.valid) {
+        enqIO.valid := tableRow.fire && req.valid
+        enqIO.bits.op := req.op
+        enqIO.bits.source := req.source
+        val logSize = tableRow.bits.sizeEnumT.enumToLogSize(req.sizeEnum)
         enqIO.bits.size := logSize
         enqIO.bits.data :=
           getCoalescedDataChunk(
-            io.coalResp.bits.data,
-            io.coalResp.bits.data.getWidth,
-            foundReq.offset,
+            coalRespPipeReg.io.deq.bits.data,
+            coalRespPipeReg.io.deq.bits.data.getWidth,
+            req.offset,
             logSize
           )
         // is this necessary?
@@ -1219,15 +1236,8 @@ class InFlightTable(
     config.maxCoalLogSize, // FIXME: offsetBits?
     config.sizeEnum
   )
-
   val entries = config.numNewSrcIds
   val sourceWidth = log2Ceil(config.numOldSrcIds)
-
-  println(s"CoalescingUnit InFlightTable config: {")
-  println(s"    sourceWidth: ${sourceWidth}")
-  println(s"    offsetBits: ${offsetBits}")
-  println(s"    sizeEnumBits: ${entryT.sizeEnumT.getWidth}")
-  println(s"}")
 
   val io = IO(new Bundle {
     // Enqueue IO
@@ -1257,6 +1267,12 @@ class InFlightTable(
     // custom decoupledIO with ready+sourceId input. @cleanup
     val lookupSourceId = Input(UInt(sourceWidth.W))
   })
+
+  println(s"CoalescingUnit InFlightTable config: {")
+  println(s"    sourceWidth: ${sourceWidth}")
+  println(s"    offsetBits: ${offsetBits}")
+  println(s"    sizeEnumBits: ${entryT.sizeEnumT.getWidth}")
+  println(s"}")
 
   val table = Mem(
     entries,
@@ -1339,12 +1355,14 @@ class InFlightTable(
   // Lookup logic
   io.lookup.valid := table(io.lookupSourceId).valid
   io.lookup.bits := table(io.lookupSourceId).bits
-  // Dequeue as soon as lookup succeeds
-  when(io.lookup.fire) {
-    // every lookup to the table should succeed as the request should have
-    // gotten recorded earlier than the response
+  // every lookup to the table should succeed as the request should have
+  // gotten recorded earlier than the response
+  when(io.lookup.ready) {
     assert(table(io.lookupSourceId).valid === true.B,
       "table lookup with a valid sourceId failed")
+  }
+  // Dequeue as soon as lookup succeeds
+  when(io.lookup.fire) {
     table(io.lookupSourceId).valid := false.B
   }
   assert(
