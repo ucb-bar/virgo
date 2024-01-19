@@ -1076,18 +1076,26 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
   // Connect lookup result from InflightTable
   uncoalescer.io.inflightLookup <> inflightTable.io.lookup
   // InflightTable IO: Look up the table with incoming coalesced responses
-  // FIXME: this should be done inside uncoalescer
+  // @cleanup: this should be done inside uncoalescer
   inflightTable.io.lookupSourceId := tlCoal.d.bits.source
 
   // Connect uncoalescer results back into response queue
-  (respQueues zip uncoalescer.io.respQueueIO).foreach { case (q, uncoalEnqs) =>
+  (respQueues zip uncoalescer.io.respQueueIO).zipWithIndex.foreach
+  { case ((q, sameLaneUncoalResps), lane) =>
+    // reqQueueDepth here is the maximum number of same-lane, different-time
+    // requests that can go into a single coalesced response.  We need to have
+    // that many enq ports to not backpressure the uncoalescer.
     require(q.io.enq.length == config.reqQueueDepth + respQueueUncoalPortOffset,
       s"wrong number of enq ports for MultiPort response queue")
     // slice the ports reserved for uncoalesced response
-    val qUncoalEnqs = q.io.enq.slice(respQueueUncoalPortOffset, q.io.enq.length)
-    (qUncoalEnqs zip uncoalEnqs).foreach {
-      case (enq, uncoalEnq) => {
-        enq <> uncoalEnq
+    val sameLaneEnqPorts = q.io.enq.slice(respQueueUncoalPortOffset, q.io.enq.length)
+    (sameLaneEnqPorts zip sameLaneUncoalResps).foreach {
+      case (enqPort, uncoalResp) => {
+        enqPort <> uncoalResp
+        // assert(
+        //   enqPort.ready,
+        //   cf"respQueue: enq port for uncoalesced response is blocked on lane $lane"
+        // )
       }
     }
   }
