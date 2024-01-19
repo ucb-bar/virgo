@@ -14,13 +14,18 @@ import freechips.rocketchip.tilelink._
 
 // Note: numNewSrcId is not a part of CoreParam, because the SIMT core should be agnostic to how inflight coalesced request can be genertated
 case class SIMTCoreParams(nLanes: Int = 4, nSrcIds: Int = 8)
-case class MemtraceCoreParams(tracefilename: String = "undefined", traceHasSource: Boolean = false)
+case class MemtraceCoreParams(
+    tracefilename: String = "undefined",
+    traceHasSource: Boolean = false
+)
 case class CoalXbarParam()
 
-case object SIMTCoreKey extends Field[Option[SIMTCoreParams]](None /*default*/)
-case object MemtraceCoreKey extends Field[Option[MemtraceCoreParams]](None /*default*/)
-case object CoalescerKey extends Field[Option[CoalescerConfig]](None /*default*/)
-case object CoalXbarKey extends Field[Option[CoalXbarParam]](None /*default*/)
+case object SIMTCoreKey extends Field[Option[SIMTCoreParams]](None /*default*/ )
+case object MemtraceCoreKey
+    extends Field[Option[MemtraceCoreParams]](None /*default*/ )
+case object CoalescerKey
+    extends Field[Option[CoalescerConfig]](None /*default*/ )
+case object CoalXbarKey extends Field[Option[CoalXbarParam]](None /*default*/ )
 
 trait InFlightTableSizeEnum extends ChiselEnum {
   val INVALID: Type
@@ -81,19 +86,25 @@ case class CoalescerConfig(
 ) {
   // maximum coalesced size
   def maxCoalLogSize: Int = {
-    require(coalLogSizes.max <= dataBusWidth,
-      "multi-beat coalesced reads/writes are currently not supported")
+    require(
+      coalLogSizes.max <= dataBusWidth,
+      "multi-beat coalesced reads/writes are currently not supported"
+    )
     if (coalLogSizes.max < dataBusWidth) {
-      println("======== Warning: coalescer's max coalescing size is set to " +
-        s"${coalLogSizes.max}, which is narrower than data bus width " +
-        s"${dataBusWidth}.  This might indicate misconfiguration.")
+      println(
+        "======== Warning: coalescer's max coalescing size is set to " +
+          s"${coalLogSizes.max}, which is narrower than data bus width " +
+          s"${dataBusWidth}.  This might indicate misconfiguration."
+      )
     }
     coalLogSizes.max
   }
   def wordSizeWidth: Int = {
     val w = log2Ceil(wordSizeInBytes)
-    require(wordSizeInBytes == 1 << w,
-      s"wordSizeInBytes (${wordSizeInBytes}) is not power of two")
+    require(
+      wordSizeInBytes == 1 << w,
+      s"wordSizeInBytes (${wordSizeInBytes}) is not power of two"
+    )
     w
   }
 }
@@ -167,9 +178,16 @@ class CoalescingUnit(config: CoalescerConfig)(implicit p: Parameters) extends La
 // Protocol-agnostic bundles that represent a request and a response to the
 // coalescer.
 
-class Request(sourceWidth: Int, sizeWidth: Int, addressWidth: Int, dataWidth: Int)
-    extends Bundle {
-  require(dataWidth % 8 == 0, s"dataWidth (${dataWidth} bits) is not multiple of 8")
+class Request(
+    sourceWidth: Int,
+    sizeWidth: Int,
+    addressWidth: Int,
+    dataWidth: Int
+) extends Bundle {
+  require(
+    dataWidth % 8 == 0,
+    s"dataWidth (${dataWidth} bits) is not multiple of 8"
+  )
   val op = Bool() // 0=READ 1=WRITE
   val address = UInt(addressWidth.W)
   val size = UInt(sizeWidth.W)
@@ -213,7 +231,10 @@ case class CoalescedRequest(config: CoalescerConfig)
 
 class Response(sourceWidth: Int, sizeWidth: Int, dataWidth: Int)
     extends Bundle {
-  require(dataWidth % 8 == 0, s"dataWidth (${dataWidth} bits) is not multiple of 8")
+  require(
+    dataWidth % 8 == 0,
+    s"dataWidth (${dataWidth} bits) is not multiple of 8"
+  )
   val op = UInt(1.W) // 0=READ 1=WRITE
   val size = UInt(sizeWidth.W)
   val source = UInt(sourceWidth.W)
@@ -262,13 +283,13 @@ case class CoalescedResponse(config: CoalescerConfig)
 // If `ignoreInUse`, just keep giving out new IDs without any collision checking.
 // This might result in TL violation.
 class SourceGenerator[T <: Data](
-  sourceWidth: Int,
-  metadata: Option[T] = None,
-  ignoreInUse: Boolean = false
+    sourceWidth: Int,
+    metadata: Option[T] = None,
+    ignoreInUse: Boolean = false
 ) extends Module {
   def getMetadataType = metadata match {
     case Some(gen) => gen.cloneType
-    case None => UInt(0.W)
+    case None      => UInt(0.W)
   }
   val io = IO(new Bundle {
     val gen = Input(Bool())
@@ -327,7 +348,7 @@ class SourceGenerator[T <: Data](
   }
 
   when(io.gen && io.id.valid) {
-    when (!io.reclaim.valid) {
+    when(!io.reclaim.valid) {
       assert(outstanding < (1 << sourceWidth).U)
       outstanding := outstanding + 1.U
     }
@@ -627,7 +648,7 @@ class MonoCoalescer(
 class MultiCoalescer(
     config: CoalescerConfig,
     queueT: CoalShiftQueue[NonCoalescedRequest],
-    coalReqT: CoalescedRequest,
+    coalReqT: CoalescedRequest
 ) extends Module {
   val invalidateT = Valid(Vec(config.numLanes, UInt(config.reqQueueDepth.W)))
   val io = IO(new Bundle {
@@ -864,7 +885,9 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
   reqQueues.io.coalescable := coalescer.io.coalescable
   reqQueues.io.invalidate := coalescer.io.invalidate
 
-  val inflightTable = Module(new InFlightTable(config, nonCoalReqT, coalReqT, coalRespT))
+  val inflightTable = Module(
+    new InFlightTable(config, nonCoalReqT, coalReqT, coalRespT)
+  )
   val uncoalescer = Module(new Uncoalescer(config, inflightTable.entryT))
 
   // ===========================================================================
@@ -903,27 +926,27 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
         assert(legal, "unhandled illegal TL req gen")
       }
 
-      // debug
-      // when (tlIn.a.valid) {
-      //   TLPrintf(s"tlIn(${lane}).a",
-      //     tlIn.a.bits.address,
-      //     tlIn.a.bits.size,
-      //     tlIn.a.bits.mask,
-      //     TLUtils.AOpcodeIsStore(tlIn.a.bits.opcode),
-      //     tlIn.a.bits.data,
-      //     0.U
-      //   )
-      // }
-      // when (tlOut.a.valid) {
-      //   TLPrintf(s"tlOut(${lane}).a",
-      //     tlOut.a.bits.address,
-      //     tlOut.a.bits.size,
-      //     tlOut.a.bits.mask,
-      //     TLUtils.AOpcodeIsStore(tlOut.a.bits.opcode),
-      //     tlOut.a.bits.data,
-      //     0.U
-      //   )
-      // }
+    // debug
+    // when (tlIn.a.valid) {
+    //   TLPrintf(s"tlIn(${lane}).a",
+    //     tlIn.a.bits.address,
+    //     tlIn.a.bits.size,
+    //     tlIn.a.bits.mask,
+    //     TLUtils.AOpcodeIsStore(tlIn.a.bits.opcode),
+    //     tlIn.a.bits.data,
+    //     0.U
+    //   )
+    // }
+    // when (tlOut.a.valid) {
+    //   TLPrintf(s"tlOut(${lane}).a",
+    //     tlOut.a.bits.address,
+    //     tlOut.a.bits.size,
+    //     tlOut.a.bits.mask,
+    //     TLUtils.AOpcodeIsStore(tlOut.a.bits.opcode),
+    //     tlOut.a.bits.data,
+    //     0.U
+    //   )
+    // }
   }
 
   val (tlCoal, edgeCoal) = outer.coalescerNode.out.head
@@ -942,7 +965,9 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
   //         │ RespQueues ├─┤ Uncoalescer ├─┤ CoalSourceGen(reclaim) ├─┤ InFlightTable ├── TileLink resp
   //         └────────────┘ └─────────────┘ └────────────────────────┘ └───────────────┘
   //
-  val coalSourceGen = Module(new CoalescerSourceGen(config, coalReqT, tlCoal.d.bits))
+  val coalSourceGen = Module(
+    new CoalescerSourceGen(config, coalReqT, tlCoal.d.bits)
+  )
   coalSourceGen.io.inReq <> coalescer.io.coalReq
 
   // InflightTable IO
@@ -1043,8 +1068,10 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
       // MultiPortQueue, and eventually serialized.
       respQueue.io.enq(respQueueNoncoalPort).valid := tlOut.d.valid
       respQueue.io.enq(respQueueNoncoalPort).bits := resp
-      assert(respQueue.io.deq.length == 1,
-        "respQueue should have only one dequeue port to the upstream")
+      assert(
+        respQueue.io.deq.length == 1,
+        "respQueue should have only one dequeue port to the upstream"
+      )
       respQueue.io.deq.head.ready := tlIn.d.ready
 
       tlIn.d.valid := respQueue.io.deq.head.valid
@@ -1074,7 +1101,8 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
   //
   // Connect coalesced response
   uncoalescer.io.coalResp.valid := coalSourceGen.io.inResp.valid
-  uncoalescer.io.coalResp.bits.fromTLD(coalSourceGen.io.inResp.bits, coalSourceGen.io.inResp.fire)
+  uncoalescer.io.coalResp.bits
+    .fromTLD(coalSourceGen.io.inResp.bits, coalSourceGen.io.inResp.fire)
   coalSourceGen.io.inResp.ready := uncoalescer.io.coalResp.ready
 
   // Connect lookup result from InflightTable
@@ -1086,24 +1114,27 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
   inflightTable.io.lookupSourceId.bits := coalSourceGen.io.inResp.bits.source
 
   // Connect uncoalescer results back into response queue
-  (respQueues zip uncoalescer.io.respQueueIO).zipWithIndex.foreach
-  { case ((q, sameLaneUncoalResps), lane) =>
-    // reqQueueDepth here is the maximum number of same-lane, different-time
-    // requests that can go into a single coalesced response.  We need to have
-    // that many enq ports to not backpressure the uncoalescer.
-    require(q.io.enq.length == config.reqQueueDepth + respQueueUncoalPortOffset,
-      s"wrong number of enq ports for MultiPort response queue")
-    // slice the ports reserved for uncoalesced response
-    val sameLaneEnqPorts = q.io.enq.slice(respQueueUncoalPortOffset, q.io.enq.length)
-    (sameLaneEnqPorts zip sameLaneUncoalResps).foreach {
-      case (enqPort, uncoalResp) => {
-        enqPort <> uncoalResp
-        // assert(
-        //   enqPort.ready,
-        //   cf"respQueue: enq port for uncoalesced response is blocked on lane $lane"
-        // )
+  (respQueues zip uncoalescer.io.respQueueIO).zipWithIndex.foreach {
+    case ((q, sameLaneUncoalResps), lane) =>
+      // reqQueueDepth here is the maximum number of same-lane, different-time
+      // requests that can go into a single coalesced response.  We need to have
+      // that many enq ports to not backpressure the uncoalescer.
+      require(
+        q.io.enq.length == config.reqQueueDepth + respQueueUncoalPortOffset,
+        s"wrong number of enq ports for MultiPort response queue"
+      )
+      // slice the ports reserved for uncoalesced response
+      val sameLaneEnqPorts =
+        q.io.enq.slice(respQueueUncoalPortOffset, q.io.enq.length)
+      (sameLaneEnqPorts zip sameLaneUncoalResps).foreach {
+        case (enqPort, uncoalResp) => {
+          enqPort <> uncoalResp
+          // assert(
+          //   enqPort.ready,
+          //   cf"respQueue: enq port for uncoalesced response is blocked on lane $lane"
+          // )
+        }
       }
-    }
   }
 
   // coalSourceGen is the last module before going to downstream
@@ -1127,7 +1158,8 @@ class Uncoalescer(
   val io = IO(new Bundle {
     val inflightLookup = Flipped(Decoupled(inflightEntryT))
     val coalResp = Flipped(Decoupled(new CoalescedResponse(config)))
-    val respQueueIO = Vec(config.numLanes,
+    val respQueueIO = Vec(
+      config.numLanes,
       // reqQueueDepth because if we're doing time-coalescing, that's the
       // maximum number of same-lane, different-time requests that can go into
       // a single coalesced request.
@@ -1137,7 +1169,12 @@ class Uncoalescer(
 
   // Un-coalescing logic
   //
-  def getCoalescedDataChunk(data: UInt, dataWidth: Int, offset: UInt, logSize: UInt): UInt = {
+  def getCoalescedDataChunk(
+      data: UInt,
+      dataWidth: Int,
+      offset: UInt,
+      logSize: UInt
+  ): UInt = {
     assert(logSize === 2.U, "currently only supporting 4-byte accesses. TODO")
 
     // sizeInBits should be simulation-only construct
@@ -1167,46 +1204,52 @@ class Uncoalescer(
   // ready.  This is necessary because uncoalescing logic is a combinational
   // logic that produces all the split responses at the same cycle, so it needs
   // to be guaranteed that all of them has somewhere to go.
-  val allRespQueueEnqReady = io.respQueueIO.map(_.map(_.ready).reduce(_ && _)).reduce(_ && _)
+  val allRespQueueEnqReady =
+    io.respQueueIO.map(_.map(_.ready).reduce(_ && _)).reduce(_ && _)
   tablePipeRegDeq.ready := allRespQueueEnqReady
   coalRespPipeRegDeq.ready := allRespQueueEnqReady
 
-  assert(io.coalResp.fire === io.inflightLookup.fire,
-    "enqueue timing for uncoalescer pipeline registers out-of-sync!")
-  assert(tablePipeRegDeq.fire === coalRespPipeRegDeq.fire,
-    "dequeue timing for uncoalescer pipeline registers out-of-sync!")
+  assert(
+    io.coalResp.fire === io.inflightLookup.fire,
+    "enqueue timing for uncoalescer pipeline registers out-of-sync!"
+  )
+  assert(
+    tablePipeRegDeq.fire === coalRespPipeRegDeq.fire,
+    "dequeue timing for uncoalescer pipeline registers out-of-sync!"
+  )
 
   // Un-coalesce responses back to individual lanes. Connect uncoalesced
   // results back into each lane's response queue.
   val tableRow = tablePipeRegDeq
-  (io.respQueueIO zip tableRow.bits.lanes).zipWithIndex.foreach { case ((enqIOs, lane), laneNum) =>
-    lane.reqs.zipWithIndex.foreach { case (req, depth) =>
-      val enqIO = enqIOs(depth)
-      enqIO.valid := false.B
-      enqIO.bits := DontCare
-      // debug
-      // when (resp.valid) {
-      //   printf(s"${i}-th uncoalesced response came back from lane ${laneNum}\n")
-      // }
-      // dontTouch(q.io.enq(respQueueCoalPortOffset))
+  (io.respQueueIO zip tableRow.bits.lanes).zipWithIndex.foreach {
+    case ((enqIOs, lane), laneNum) =>
+      lane.reqs.zipWithIndex.foreach { case (req, depth) =>
+        val enqIO = enqIOs(depth)
+        enqIO.valid := false.B
+        enqIO.bits := DontCare
+        // debug
+        // when (resp.valid) {
+        //   printf(s"${i}-th uncoalesced response came back from lane ${laneNum}\n")
+        // }
+        // dontTouch(q.io.enq(respQueueCoalPortOffset))
 
-      when(tableRow.valid && req.valid) {
-        enqIO.valid := tableRow.fire && req.valid
-        enqIO.bits.op := req.op
-        enqIO.bits.source := req.source
-        val logSize = tableRow.bits.sizeEnumT.enumToLogSize(req.sizeEnum)
-        enqIO.bits.size := logSize
-        enqIO.bits.data :=
-          getCoalescedDataChunk(
-            coalRespPipeRegDeq.bits.data,
-            coalRespPipeRegDeq.bits.data.getWidth,
-            req.offset,
-            logSize
-          )
-        // is this necessary?
-        enqIO.bits.error := DontCare
+        when(tableRow.valid && req.valid) {
+          enqIO.valid := tableRow.fire && req.valid
+          enqIO.bits.op := req.op
+          enqIO.bits.source := req.source
+          val logSize = tableRow.bits.sizeEnumT.enumToLogSize(req.sizeEnum)
+          enqIO.bits.size := logSize
+          enqIO.bits.data :=
+            getCoalescedDataChunk(
+              coalRespPipeRegDeq.bits.data,
+              coalRespPipeRegDeq.bits.data.getWidth,
+              req.offset,
+              logSize
+            )
+          // is this necessary?
+          enqIO.bits.error := DontCare
+        }
       }
-    }
   }
 }
 
@@ -1219,9 +1262,10 @@ class InFlightTable(
     config: CoalescerConfig,
     nonCoalReqT: NonCoalescedRequest,
     coalReqT: CoalescedRequest,
-    coalRespT: CoalescedResponse,
+    coalRespT: CoalescedResponse
 ) extends Module {
-  val offsetBits = config.maxCoalLogSize - config.wordSizeWidth // assumes word offset
+  val offsetBits =
+    config.maxCoalLogSize - config.wordSizeWidth // assumes word offset
   val entryT = new InFlightTableEntry(
     config.numLanes,
     config.reqQueueDepth,
@@ -1243,11 +1287,13 @@ class InFlightTable(
     val inCoalReq = Flipped(Decoupled(coalReqT))
     // invalidate signal coming out of coalescer.  Needed to generate new entry
     // for the table.
-    val invalidate = Input(Valid(Vec(config.numLanes, UInt(config.reqQueueDepth.W))))
+    val invalidate =
+      Input(Valid(Vec(config.numLanes, UInt(config.reqQueueDepth.W))))
     // coalescing window, connected to the contents of the request queues.
     // Need this to generate new entry for the table.
     // TODO: duplicate type construction
-    val windowElts = Input(Vec(config.numLanes, Vec(config.reqQueueDepth, nonCoalReqT)))
+    val windowElts =
+      Input(Vec(config.numLanes, Vec(config.reqQueueDepth, nonCoalReqT)))
     // InflightTable simply passes through the inCoalReq to outCoalReq, only snooping
     // on its data to record what's necessary.
     val outCoalReq = Decoupled(coalReqT)
@@ -1319,7 +1365,7 @@ class InFlightTable(
             reqEntry.source := req.source
             reqEntry.offset := ((req.address % (1 << config.maxCoalLogSize).U) >> config.wordSizeWidth)
             reqEntry.sizeEnum := config.sizeEnum.logSizeToEnum(req.size)
-            // TODO: load/store op
+          // TODO: load/store op
           }
       }
     dontTouch(newEntry)
@@ -1347,23 +1393,27 @@ class InFlightTable(
   }
 
   // Lookup logic
-  io.lookupResult.valid := io.lookupSourceId.valid && table(io.lookupSourceId.bits).valid
+  io.lookupResult.valid := io.lookupSourceId.valid && table(
+    io.lookupSourceId.bits
+  ).valid
   io.lookupResult.bits := table(io.lookupSourceId.bits).bits
   // every lookup to the table should succeed as the request should have
   // gotten recorded earlier than the response
   when(io.lookupSourceId.valid) {
-    assert(table(io.lookupSourceId.bits).valid === true.B,
-      "table lookup with a valid sourceId failed")
+    assert(
+      table(io.lookupSourceId.bits).valid === true.B,
+      "table lookup with a valid sourceId failed"
+    )
+    assert(
+      !(enqFire && io.lookupResult.fire &&
+        (enqSource === io.lookupSourceId.bits)),
+      "inflight table: enqueueing and looking up the same srcId at the same cycle is not handled"
+    )
   }
   // Dequeue as soon as lookup succeeds
   when(io.lookupResult.fire) {
     table(io.lookupSourceId.bits).valid := false.B
   }
-  assert(
-    !((enqFire === true.B) && (io.lookupResult.fire === true.B) &&
-      (enqSource === io.lookupSourceId.bits)),
-    "inflight table: enqueueing and looking up the same srcId at the same cycle is not handled"
-  )
 
   dontTouch(io.lookupResult)
 }
@@ -1399,12 +1449,15 @@ object TLUtils {
     when(checkOpcode) {
       assert(
         opcode === TLMessages.PutFullData || opcode === TLMessages.PutPartialData ||
-        opcode === TLMessages.Get,
+          opcode === TLMessages.Get,
         "unhandled TL A opcode found"
       )
     }
-    Mux(opcode === TLMessages.PutFullData || opcode === TLMessages.PutPartialData,
-      true.B, false.B)
+    Mux(
+      opcode === TLMessages.PutFullData || opcode === TLMessages.PutPartialData,
+      true.B,
+      false.B
+    )
   }
   def DOpcodeIsStore(opcode: UInt, checkOpcode: Bool): Bool = {
     when(checkOpcode) {
@@ -1531,92 +1584,95 @@ class MemTraceDriverImp(
     Cat(8.U(4.W), addr(27, 0))
   }
 
-  val sourceGens = Seq.fill(config.numLanes)(Module(
-    new SourceGenerator(
-      log2Ceil(config.numOldSrcIds),
-      ignoreInUse = false
+  val sourceGens = Seq.fill(config.numLanes)(
+    Module(
+      new SourceGenerator(
+        log2Ceil(config.numOldSrcIds),
+        ignoreInUse = false
+      )
     )
-  ))
+  )
 
   // Advance source ID for all lanes in synchrony
   val syncedSourceGenValid = sourceGens.map(_.io.id.valid).reduce(_ && _)
 
   // Take requests off of the queue and generate TL requests
-  (outer.laneNodes zip reqQueues).zipWithIndex.foreach { case ((node, reqQ), lane) =>
-    val (tlOut, edge) = node.out(0)
+  (outer.laneNodes zip reqQueues).zipWithIndex.foreach {
+    case ((node, reqQ), lane) =>
+      val (tlOut, edge) = node.out(0)
 
-    val req = reqQ.io.deq.bits
-    // backpressure from downstream propagates into the queue
-    reqQ.io.deq.ready := tlOut.a.ready && syncedSourceGenValid
+      val req = reqQ.io.deq.bits
+      // backpressure from downstream propagates into the queue
+      reqQ.io.deq.ready := tlOut.a.ready && syncedSourceGenValid
 
-    // Core only makes accesses of granularity larger than a word, so we want
-    // the trace driver to act so as well.
-    // That means if req.size is smaller than word size, we need to pad data
-    // with zeros to generate a word-size request, and set mask accordingly.
-    val offsetInWord = req.address % config.wordSizeInBytes.U
-    val subword = req.size < log2Ceil(config.wordSizeInBytes).U
+      // Core only makes accesses of granularity larger than a word, so we want
+      // the trace driver to act so as well.
+      // That means if req.size is smaller than word size, we need to pad data
+      // with zeros to generate a word-size request, and set mask accordingly.
+      val offsetInWord = req.address % config.wordSizeInBytes.U
+      val subword = req.size < log2Ceil(config.wordSizeInBytes).U
 
-    // `mask` is currently unused
-    // val mask = Wire(UInt(config.wordSizeInBytes.W))
-    val wordData = Wire(UInt((config.wordSizeInBytes * 8 * 2).W))
-    val sizeInBytes = Wire(UInt((sizeW + 1).W))
-    sizeInBytes := (1.U) << req.size
-    // mask := Mux(subword, (~((~0.U(64.W)) << sizeInBytes)) << offsetInWord, ~0.U)
-    wordData := Mux(subword, req.data << (offsetInWord * 8.U), req.data)
-    val wordAlignedAddress =
-      req.address & ~((1 << log2Ceil(config.wordSizeInBytes)) - 1).U(addrW.W)
-    val wordAlignedSize = Mux(subword, 2.U, req.size)
+      // `mask` is currently unused
+      // val mask = Wire(UInt(config.wordSizeInBytes.W))
+      val wordData = Wire(UInt((config.wordSizeInBytes * 8 * 2).W))
+      val sizeInBytes = Wire(UInt((sizeW + 1).W))
+      sizeInBytes := (1.U) << req.size
+      // mask := Mux(subword, (~((~0.U(64.W)) << sizeInBytes)) << offsetInWord, ~0.U)
+      wordData := Mux(subword, req.data << (offsetInWord * 8.U), req.data)
+      val wordAlignedAddress =
+        req.address & ~((1 << log2Ceil(config.wordSizeInBytes)) - 1).U(addrW.W)
+      val wordAlignedSize = Mux(subword, 2.U, req.size)
 
-    val sourceGen = sourceGens(lane)
-    sourceGen.io.gen := tlOut.a.fire
-    // assert(sourceGen.io.id.valid)
-    sourceGen.io.reclaim.valid := tlOut.d.fire
-    sourceGen.io.reclaim.bits := tlOut.d.bits.source
-    sourceGen.io.meta := DontCare
+      val sourceGen = sourceGens(lane)
+      sourceGen.io.gen := tlOut.a.fire
+      // assert(sourceGen.io.id.valid)
+      sourceGen.io.reclaim.valid := tlOut.d.fire
+      sourceGen.io.reclaim.bits := tlOut.d.bits.source
+      sourceGen.io.meta := DontCare
 
-    val (plegal, pbits) = edge.Put(
-      fromSource = sourceGen.io.id.bits,
-      toAddress = hashToValidPhyAddr(wordAlignedAddress),
-      lgSize = wordAlignedSize, // trace line already holds log2(size)
-      // data should be aligned to beatBytes
-      data =
-        (wordData << (8.U * (wordAlignedAddress % edge.manager.beatBytes.U))).asUInt
-    )
-    val (glegal, gbits) = edge.Get(
-      fromSource = sourceGen.io.id.bits,
-      toAddress = hashToValidPhyAddr(wordAlignedAddress),
-      lgSize = wordAlignedSize
-    )
-    val legal = Mux(req.is_store, plegal, glegal)
-    val bits = Mux(req.is_store, pbits, gbits)
-
-    tlOut.a.valid := reqQ.io.deq.valid && syncedSourceGenValid
-    when(tlOut.a.fire) {
-      assert(legal, "illegal TL req gen")
-    }
-    tlOut.a.bits := bits
-    tlOut.b.ready := true.B
-    tlOut.c.valid := false.B
-    tlOut.d.ready := true.B
-    tlOut.e.valid := false.B
-
-    // debug
-    dontTouch(reqQ.io.enq)
-    dontTouch(reqQ.io.deq)
-    when(tlOut.a.valid) {
-      TLPrintf(
-        "MemTraceDriver",
-        tlOut.a.bits.source,
-        tlOut.a.bits.address,
-        tlOut.a.bits.size,
-        tlOut.a.bits.mask,
-        req.is_store,
-        tlOut.a.bits.data,
-        req.data
+      val (plegal, pbits) = edge.Put(
+        fromSource = sourceGen.io.id.bits,
+        toAddress = hashToValidPhyAddr(wordAlignedAddress),
+        lgSize = wordAlignedSize, // trace line already holds log2(size)
+        // data should be aligned to beatBytes
+        data =
+          (wordData << (8.U * (wordAlignedAddress % edge.manager.beatBytes.U))).asUInt
       )
-    }
-    dontTouch(tlOut.a)
-    dontTouch(tlOut.d)
+      val (glegal, gbits) = edge.Get(
+        fromSource = sourceGen.io.id.bits,
+        toAddress = hashToValidPhyAddr(wordAlignedAddress),
+        lgSize = wordAlignedSize
+      )
+      val legal = Mux(req.is_store, plegal, glegal)
+      val bits = Mux(req.is_store, pbits, gbits)
+
+      tlOut.a.valid := reqQ.io.deq.valid && syncedSourceGenValid
+      when(tlOut.a.fire) {
+        assert(legal, "illegal TL req gen")
+      }
+      tlOut.a.bits := bits
+      tlOut.b.ready := true.B
+      tlOut.c.valid := false.B
+      tlOut.d.ready := true.B
+      tlOut.e.valid := false.B
+
+      // debug
+      dontTouch(reqQ.io.enq)
+      dontTouch(reqQ.io.deq)
+      when(tlOut.a.valid) {
+        TLPrintf(
+          "MemTraceDriver",
+          tlOut.a.bits.source,
+          tlOut.a.bits.address,
+          tlOut.a.bits.size,
+          tlOut.a.bits.mask,
+          req.is_store,
+          tlOut.a.bits.data,
+          req.data
+        )
+      }
+      dontTouch(tlOut.a)
+      dontTouch(tlOut.d)
   }
 
   // Give some slack time after trace EOF to get some outstanding responses
@@ -1627,8 +1683,8 @@ class MemTraceDriverImp(
   }
   io.finished := traceFinished
 
-  //currently the .cc file ouptuts finished=true while it still need to issue one more request
-  val noValidReqs     = sim.io.trace_read.valid === 0.U     
+  // currently the .cc file ouptuts finished=true while it still need to issue one more request
+  val noValidReqs = sim.io.trace_read.valid === 0.U
   val allReqReclaimed = !(sourceGens.map(_.io.inflight).reduce(_ || _))
 
   when(traceFinished && allReqReclaimed && noValidReqs) {
@@ -1821,7 +1877,10 @@ class MemTraceLogger(
         // and transaction happened.
         resp.valid := tlOut.d.fire
         resp.size := tlOut.d.bits.size
-        resp.is_store := TLUtils.DOpcodeIsStore(tlOut.d.bits.opcode, tlOut.d.fire)
+        resp.is_store := TLUtils.DOpcodeIsStore(
+          tlOut.d.bits.opcode,
+          tlOut.d.fire
+        )
         resp.source := tlOut.d.bits.source
         // NOTE: TL D channel doesn't carry address nor mask, so there's no easy
         // way to figure out which bytes the master actually use.  Since we
@@ -1911,7 +1970,7 @@ class MemTraceLogger(
 // depending on this, e.g. response trace will not contain an address column.
 class SimMemTraceLogger(
     isResponse: Boolean,
-    filenameBase: String,   // usually the same as `filename` of SimMemTrace
+    filenameBase: String, // usually the same as `filename` of SimMemTrace
     filenameSuffix: String, // can be ".req", ".resp", .etc
     numLanes: Int
 ) extends BlackBox(
