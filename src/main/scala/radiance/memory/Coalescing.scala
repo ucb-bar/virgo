@@ -1731,6 +1731,7 @@ class SimMemTrace(filename: String, numLanes: Int, traceHasSource: Boolean)
       }
   })
 
+  addResource("/vsrc/SimDefaults.vh")
   addResource("/vsrc/SimMemTrace.v")
   addResource("/csrc/SimMemTrace.cc")
   addResource("/csrc/SimMemTrace.h")
@@ -2006,6 +2007,7 @@ class SimMemTraceLogger(
     }
   })
 
+  addResource("/vsrc/SimDefaults.vh")
   addResource("/vsrc/SimMemTraceLogger.v")
   addResource("/csrc/SimMemTraceLogger.cc")
   addResource("/csrc/SimMemTrace.h")

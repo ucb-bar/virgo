@@ -1,8 +1,4 @@
-// FIXME hardcoded
-`define DATA_WIDTH 64
-`define MAX_NUM_LANES 32
-`define SOURCEID_WIDTH 32
-`define LOGSIZE_WIDTH 8
+`include "SimDefaults.vh"
 
 import "DPI-C" function int memtracelogger_init(
   input bit    is_response,
@@ -38,11 +34,11 @@ module SimMemTraceLogger #(parameter
 
   // NOTE: LSB is lane 0
   input [NUM_LANES-1:0]                 trace_log_valid,
-  input [`SOURCEID_WIDTH*NUM_LANES-1:0] trace_log_source,
-  input [`DATA_WIDTH*NUM_LANES-1:0]     trace_log_address,
+  input [`SIMMEM_SOURCE_WIDTH*NUM_LANES-1:0] trace_log_source,
+  input [`SIMMEM_DATA_WIDTH*NUM_LANES-1:0]     trace_log_address,
   input [NUM_LANES-1:0]                 trace_log_is_store,
-  input [`LOGSIZE_WIDTH*NUM_LANES-1:0]  trace_log_size,
-  input [`DATA_WIDTH*NUM_LANES-1:0]     trace_log_data,
+  input [`SIMMEM_LOGSIZE_WIDTH*NUM_LANES-1:0]  trace_log_size,
+  input [`SIMMEM_DATA_WIDTH*NUM_LANES-1:0]     trace_log_data,
   output                                trace_log_ready
 );
   int logger_handle;
@@ -50,17 +46,17 @@ module SimMemTraceLogger #(parameter
 
   // cycle_counter will start off right after reset is deasserted which should
   // synchronize itself with SimMemTrace.cycle_counter
-  reg [`DATA_WIDTH-1:0] cycle_counter;
-  wire [`DATA_WIDTH-1:0] next_cycle_counter;
+  reg [`SIMMEM_DATA_WIDTH-1:0] cycle_counter;
+  wire [`SIMMEM_DATA_WIDTH-1:0] next_cycle_counter;
   assign next_cycle_counter = cycle_counter + 1'b1;
 
   // wires going into the DPC
   wire                      __valid [NUM_LANES-1:0];
-  wire [`SOURCEID_WIDTH-1:0] __source [NUM_LANES-1:0];
-  wire [`DATA_WIDTH-1:0]    __address [NUM_LANES-1:0];
+  wire [`SIMMEM_SOURCE_WIDTH-1:0] __source [NUM_LANES-1:0];
+  wire [`SIMMEM_DATA_WIDTH-1:0]    __address [NUM_LANES-1:0];
   wire                      __is_store [NUM_LANES-1:0];
-  wire [`LOGSIZE_WIDTH-1:0] __size [NUM_LANES-1:0];
-  wire [`DATA_WIDTH-1:0]    __data [NUM_LANES-1:0];
+  wire [`SIMMEM_LOGSIZE_WIDTH-1:0] __size [NUM_LANES-1:0];
+  wire [`SIMMEM_DATA_WIDTH-1:0]    __data [NUM_LANES-1:0];
 
   assign trace_log_ready = __in_ready;
 
@@ -69,11 +65,11 @@ module SimMemTraceLogger #(parameter
     for (g = 0; g < NUM_LANES; g = g + 1) begin
       // LSB is lane 0
       assign __valid[g] = trace_log_valid[g];
-      assign __source[g] = trace_log_source[`SOURCEID_WIDTH*(g+1)-1:`SOURCEID_WIDTH*g];
-      assign __address[g] = trace_log_address[`DATA_WIDTH*(g+1)-1:`DATA_WIDTH*g];
+      assign __source[g] = trace_log_source[`SIMMEM_SOURCE_WIDTH*(g+1)-1:`SIMMEM_SOURCE_WIDTH*g];
+      assign __address[g] = trace_log_address[`SIMMEM_DATA_WIDTH*(g+1)-1:`SIMMEM_DATA_WIDTH*g];
       assign __is_store[g] = trace_log_is_store[g];
-      assign __size[g] = trace_log_size[`LOGSIZE_WIDTH*(g+1)-1:`LOGSIZE_WIDTH*g];
-      assign __data[g] = trace_log_data[`DATA_WIDTH*(g+1)-1:`DATA_WIDTH*g];
+      assign __size[g] = trace_log_size[`SIMMEM_LOGSIZE_WIDTH*(g+1)-1:`SIMMEM_LOGSIZE_WIDTH*g];
+      assign __data[g] = trace_log_data[`SIMMEM_DATA_WIDTH*(g+1)-1:`SIMMEM_DATA_WIDTH*g];
     end
   endgenerate
 
@@ -85,7 +81,7 @@ module SimMemTraceLogger #(parameter
   always @(posedge clock) begin
     if (reset) begin
       __in_ready = 1'b1;
-      cycle_counter <= `DATA_WIDTH'b0;
+      cycle_counter <= `SIMMEM_DATA_WIDTH'b0;
     end else begin
       cycle_counter <= next_cycle_counter;
 
