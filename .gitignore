@@ -1,7 +1,6 @@
 out/
 target/
 *.fir
-*.v
 *.anno.json
 *.swp
 *~
