@@ -49,6 +49,24 @@ class WithRadianceCores(
   }
 })
 
+class WithFuzzerCores(
+  n: Int,
+  useVxCache: Boolean
+) extends Config((site, _, up) => {
+  case XLen => 32
+  case TilesLocated(InSubsystem) => {
+    val prev = up(TilesLocated(InSubsystem), site)
+    val idOffset = prev.size
+    val fuzzer = FuzzerTileParams(
+      core = VortexCoreParams(fpu = None),
+      useVxCache = useVxCache)
+    List.tabulate(n)(i => FuzzerTileAttachParams(
+      fuzzer.copy(tileId = i + idOffset),
+      RocketCrossingParams()
+    )) ++ prev
+  }
+})
+
 // `nSrcIds`: number of source IDs for dmem requests on each SIMT lane
 class WithSimtLanes(nLanes: Int, nSrcIds: Int = 8) extends Config((site, _, up) => {
   case SIMTCoreKey => {
