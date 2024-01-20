@@ -62,14 +62,14 @@ class FuzzerTile private (
   require(p(CoalescerKey).isDefined, "FuzzerTile requires coalescer key to be defined")
   val coalParam = p(CoalescerKey).get
   val coalescer = LazyModule(new CoalescingUnit(coalParam))
-  val tracer = LazyModule(new MemTraceDriver(coalParam, "fixme"))
+  val fuzzer = LazyModule(new MemFuzzer(coalParam))
 
-  coalescer.cpuNode :=* TLWidthWidget(4) :=* tracer.node
+  coalescer.cpuNode :=* TLWidthWidget(4) :=* fuzzer.node
   masterNode :=* coalescer.aggregateNode
 
   override lazy val module = new FuzzerTileModuleImp(this)
 }
 
 class FuzzerTileModuleImp(outer: FuzzerTile) extends BaseTileModuleImp(outer) {
-  outer.reportCease(Some(true.B))
+  outer.reportCease(Some(outer.fuzzer.module.io.finished))
 }

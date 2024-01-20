@@ -1695,6 +1695,18 @@ class MemTraceDriverImp(
   }
 }
 
+class SimMemFuzzer extends BlackBox
+    with HasBlackBoxResource {
+  val io = IO(new Bundle {
+    val clock = Input(Clock())
+    val reset = Input(Bool())
+  })
+
+  addResource("/vsrc/SimDefaults.vh")
+  addResource("/vsrc/SimMemFuzzer.v")
+  addResource("/csrc/SimMemFuzzer.c")
+}
+
 class SimMemTrace(filename: String, numLanes: Int, traceHasSource: Boolean)
     extends BlackBox(
       Map(
@@ -2041,6 +2053,165 @@ object TLPrintf {
   }
 }
 
+class MemFuzzer(
+    config: CoalescerConfig,
+)(implicit p: Parameters)
+    extends LazyModule {
+  val laneNodes = Seq.tabulate(config.numLanes) { i =>
+    val clientParam = Seq(
+      TLMasterParameters.v1(
+        name = "MemTraceDriver" + i.toString,
+        sourceId = IdRange(0, config.numOldSrcIds)
+        // visibility = Seq(AddressSet(0x0000, 0xffffff))
+      )
+    )
+    TLClientNode(Seq(TLMasterPortParameters.v1(clientParam)))
+  }
+
+  val node = TLIdentityNode()
+  laneNodes.foreach { l => node := l }
+
+  lazy val module = new MemFuzzerImp(this, config)
+}
+
+class MemFuzzerImp(
+    outer: MemFuzzer,
+    config: CoalescerConfig,
+) extends LazyModuleImp(outer) {
+  val io = IO(new Bundle {
+    val finished = Output(Bool())
+  })
+  val sim = Module(new SimMemFuzzer)
+  sim.io.clock := clock
+  sim.io.reset := reset.asBool
+
+  // Read output from Verilog BlackBox
+  // Split output of SimMemTrace, which is flattened across all lanes,back to each lane's.
+  val laneReqs = Wire(Vec(config.numLanes, new TraceLine))
+  val addrW = laneReqs(0).address.getWidth
+  val sizeW = laneReqs(0).size.getWidth
+  val dataW = laneReqs(0).data.getWidth
+  laneReqs.zipWithIndex.foreach { case (req, i) =>
+    // req.valid := sim.io.trace_read.valid(i)
+    // req.source := 0.U // driver trace doesn't contain source id
+    // req.address := sim.io.trace_read.address(addrW * (i + 1) - 1, addrW * i)
+    // req.is_store := sim.io.trace_read.is_store(i)
+    // req.size := sim.io.trace_read.size(sizeW * (i + 1) - 1, sizeW * i)
+    // req.data := sim.io.trace_read.data(dataW * (i + 1) - 1, dataW * i)
+    req.valid := 0.U
+    req.source := 0.U // driver trace doesn't contain source id
+    req.address := 0.U
+    req.is_store := 0.U
+    req.size := 0.U
+    req.data := 0.U
+  }
+
+  val sourceGens = Seq.fill(config.numLanes)(
+    Module(
+      new SourceGenerator(
+        log2Ceil(config.numOldSrcIds),
+        ignoreInUse = false
+      )
+    )
+  )
+
+  // Take requests off of the queue and generate TL requests
+  (outer.laneNodes zip laneReqs).zipWithIndex.foreach {
+    case ((node, req), lane) =>
+      val (tlOut, edge) = node.out(0)
+
+      // Core only makes accesses of granularity larger than a word, so we want
+      // the trace driver to act so as well.
+      // That means if req.size is smaller than word size, we need to pad data
+      // with zeros to generate a word-size request, and set mask accordingly.
+      val offsetInWord = req.address % config.wordSizeInBytes.U
+      val subword = req.size < log2Ceil(config.wordSizeInBytes).U
+
+      // `mask` is currently unused
+      // val mask = Wire(UInt(config.wordSizeInBytes.W))
+      val wordData = Wire(UInt((config.wordSizeInBytes * 8 * 2).W))
+      val sizeInBytes = Wire(UInt((sizeW + 1).W))
+      sizeInBytes := (1.U) << req.size
+      // mask := Mux(subword, (~((~0.U(64.W)) << sizeInBytes)) << offsetInWord, ~0.U)
+      wordData := Mux(subword, req.data << (offsetInWord * 8.U), req.data)
+      val wordAlignedAddress =
+        req.address & ~((1 << log2Ceil(config.wordSizeInBytes)) - 1).U(addrW.W)
+      val wordAlignedSize = Mux(subword, 2.U, req.size)
+
+      val sourceGen = sourceGens(lane)
+      sourceGen.io.gen := tlOut.a.fire
+      sourceGen.io.reclaim.valid := tlOut.d.fire
+      sourceGen.io.reclaim.bits := tlOut.d.bits.source
+      sourceGen.io.meta := DontCare
+
+      val (plegal, pbits) = edge.Put(
+        fromSource = sourceGen.io.id.bits,
+        toAddress = wordAlignedAddress,
+        lgSize = wordAlignedSize, // trace line already holds log2(size)
+        // data should be aligned to beatBytes
+        data =
+          (wordData << (8.U * (wordAlignedAddress % edge.manager.beatBytes.U))).asUInt
+      )
+      val (glegal, gbits) = edge.Get(
+        fromSource = sourceGen.io.id.bits,
+        toAddress = wordAlignedAddress,
+        lgSize = wordAlignedSize
+      )
+      val legal = Mux(req.is_store, plegal, glegal)
+      val bits = Mux(req.is_store, pbits, gbits)
+
+      tlOut.a.valid := req.valid && sourceGen.io.id.valid
+      // req.ready := tlOut.a.ready && sourceGen.io.id.valid
+
+      when(tlOut.a.fire) {
+        assert(legal, "illegal TL req gen")
+      }
+      tlOut.a.bits := bits
+      tlOut.b.ready := true.B
+      tlOut.c.valid := false.B
+      tlOut.d.ready := true.B
+      tlOut.e.valid := false.B
+
+      // debug
+      dontTouch(req)
+      when(tlOut.a.valid) {
+        TLPrintf(
+          "MemFuzzer",
+          tlOut.a.bits.source,
+          tlOut.a.bits.address,
+          tlOut.a.bits.size,
+          tlOut.a.bits.mask,
+          req.is_store,
+          tlOut.a.bits.data,
+          req.data
+        )
+      }
+      dontTouch(tlOut.a)
+      dontTouch(tlOut.d)
+  }
+
+  // Give some slack time after trace EOF to get some outstanding responses
+  // back.
+  // val traceFinished = RegInit(false.B)
+  // when(sim.io.trace_read.finished) {
+  //   traceFinished := true.B
+  // }
+  // io.finished := traceFinished
+  io.finished := true.B
+
+  // FIXME:
+  //
+  // currently the .cc file ouptuts finished=true while it still need to issue one more request
+  // val noValidReqs = sim.io.trace_read.valid === 0.U
+  // val allReqReclaimed = !(sourceGens.map(_.io.inflight).reduce(_ || _))
+
+  // when(traceFinished && allReqReclaimed && noValidReqs) {
+  //   assert(
+  //     false.B,
+  //     "\n\n\nsimulation Successfully finished\n\n\n (this assertion intentional fail upon MemTracer termination)"
+  //   )
+  // }
+}
 // Synthesizable unit tests
 
 class DummyDriver(config: CoalescerConfig)(implicit p: Parameters)
