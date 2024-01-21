@@ -1130,10 +1130,10 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
       (sameLaneEnqPorts zip sameLaneUncoalResps).foreach {
         case (enqPort, uncoalResp) => {
           enqPort <> uncoalResp
-          // assert(
-          //   enqPort.ready,
-          //   cf"respQueue: enq port for uncoalesced response is blocked on lane $lane"
-          // )
+
+          when(!enqPort.ready) {
+            printf(s"respQueue: enq port for uncoalesced response is blocked on lane ${lane}\n")
+          }
         }
       }
   }
@@ -1676,19 +1676,19 @@ class MemTraceDriverImp(
       dontTouch(tlOut.d)
   }
 
-  // Give some slack time after trace EOF to get some outstanding responses
-  // back.
   val traceFinished = RegInit(false.B)
   when(sim.io.trace_read.finished) {
     traceFinished := true.B
   }
-  io.finished := traceFinished
 
-  // currently the .cc file ouptuts finished=true while it still need to issue one more request
+  // ensure no more new requests OR inflight requests are remaining
   val noValidReqs = sim.io.trace_read.valid === 0.U
   val allReqReclaimed = !(sourceGens.map(_.io.inflight).reduce(_ || _))
 
-  when(traceFinished && allReqReclaimed && noValidReqs) {
+  io.finished := traceFinished && allReqReclaimed && noValidReqs
+
+  // FIXME
+  when(io.finished) {
     assert(
       false.B,
       "\n\n\nsimulation Successfully finished\n\n\n (this assertion intentional fail upon MemTracer termination)"
