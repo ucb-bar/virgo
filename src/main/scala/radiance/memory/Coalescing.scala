@@ -848,6 +848,7 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
   println(s"CoalescingUnit instantiated with config: {")
   println(s"    enable: ${config.enable}")
   println(s"    numLanes: ${config.numLanes}")
+  println(s"    wordSizeInBytes: ${config.wordSizeInBytes}")
   println(s"    coalLogSizes: ${config.coalLogSizes}")
   println(s"    numOldSrcIds: ${config.numOldSrcIds}")
   println(s"    numNewSrcIds: ${config.numNewSrcIds}")
@@ -1695,18 +1696,6 @@ class MemTraceDriverImp(
   }
 }
 
-class SimMemFuzzer extends BlackBox
-    with HasBlackBoxResource {
-  val io = IO(new Bundle {
-    val clock = Input(Clock())
-    val reset = Input(Bool())
-  })
-
-  addResource("/vsrc/SimDefaults.vh")
-  addResource("/vsrc/SimMemFuzzer.v")
-  addResource("/csrc/SimMemFuzzer.c")
-}
-
 class SimMemTrace(filename: String, numLanes: Int, traceHasSource: Boolean)
     extends BlackBox(
       Map(
@@ -2081,9 +2070,13 @@ class MemFuzzerImp(
   val io = IO(new Bundle {
     val finished = Output(Bool())
   })
-  val sim = Module(new SimMemFuzzer)
+  val sim = Module(new SimMemFuzzer(config.numLanes))
   sim.io.clock := clock
   sim.io.reset := reset.asBool
+
+  sim.io.a.ready := true.B // FIXME
+
+  io.finished := sim.io.finished
 
   // Read output from Verilog BlackBox
   // Split output of SimMemTrace, which is flattened across all lanes,back to each lane's.
@@ -2092,18 +2085,12 @@ class MemFuzzerImp(
   val sizeW = laneReqs(0).size.getWidth
   val dataW = laneReqs(0).data.getWidth
   laneReqs.zipWithIndex.foreach { case (req, i) =>
-    // req.valid := sim.io.trace_read.valid(i)
-    // req.source := 0.U // driver trace doesn't contain source id
-    // req.address := sim.io.trace_read.address(addrW * (i + 1) - 1, addrW * i)
-    // req.is_store := sim.io.trace_read.is_store(i)
-    // req.size := sim.io.trace_read.size(sizeW * (i + 1) - 1, sizeW * i)
-    // req.data := sim.io.trace_read.data(dataW * (i + 1) - 1, dataW * i)
-    req.valid := 0.U
-    req.source := 0.U // driver trace doesn't contain source id
-    req.address := 0.U
-    req.is_store := 0.U
-    req.size := 0.U
-    req.data := 0.U
+    req.valid := sim.io.a.valid(i)
+    req.source := 0.U // DPI fuzzer doesn't generate contain source id
+    req.address := sim.io.a.address(addrW * (i + 1) - 1, addrW * i)
+    req.is_store := sim.io.a.is_store(i)
+    req.size := sim.io.a.size(sizeW * (i + 1) - 1, sizeW * i)
+    req.data := sim.io.a.data(dataW * (i + 1) - 1, dataW * i)
   }
 
   val sourceGens = Seq.fill(config.numLanes)(
@@ -2169,7 +2156,7 @@ class MemFuzzerImp(
       tlOut.a.bits := bits
       tlOut.b.ready := true.B
       tlOut.c.valid := false.B
-      tlOut.d.ready := true.B
+      tlOut.d.ready := sim.io.d.ready(lane) // FIXME
       tlOut.e.valid := false.B
 
       // debug
@@ -2190,21 +2177,6 @@ class MemFuzzerImp(
       dontTouch(tlOut.d)
   }
 
-  // Give some slack time after trace EOF to get some outstanding responses
-  // back.
-  // val traceFinished = RegInit(false.B)
-  // when(sim.io.trace_read.finished) {
-  //   traceFinished := true.B
-  // }
-  // io.finished := traceFinished
-  io.finished := true.B
-
-  // FIXME:
-  //
-  // currently the .cc file ouptuts finished=true while it still need to issue one more request
-  // val noValidReqs = sim.io.trace_read.valid === 0.U
-  // val allReqReclaimed = !(sourceGens.map(_.io.inflight).reduce(_ || _))
-
   // when(traceFinished && allReqReclaimed && noValidReqs) {
   //   assert(
   //     false.B,
@@ -2212,6 +2184,40 @@ class MemFuzzerImp(
   //   )
   // }
 }
+
+class SimMemFuzzer(numLanes: Int) extends BlackBox
+    with HasBlackBoxResource {
+  val traceLineT = new TraceLine
+  val addrW = traceLineT.address.getWidth
+  val sizeW = traceLineT.size.getWidth
+  val dataW = traceLineT.data.getWidth
+  val io = IO(new Bundle {
+    val clock = Input(Clock())
+    val reset = Input(Bool())
+    val finished = Output(Bool())
+
+    val a =
+      new Bundle {
+        val ready = Input(UInt(numLanes.W))
+        val valid = Output(UInt(numLanes.W))
+        // Chisel can't interface with Verilog 2D port, so flatten all lanes into
+        // single wide 1D array.
+        val address = Output(UInt((addrW * numLanes).W))
+        val is_store = Output(UInt(numLanes.W))
+        val size = Output(UInt((sizeW * numLanes).W))
+        val data = Output(UInt((dataW * numLanes).W))
+      }
+    val d =
+      new Bundle {
+        val ready = Output(UInt(numLanes.W))
+      }
+  })
+
+  addResource("/vsrc/SimDefaults.vh")
+  addResource("/vsrc/SimMemFuzzer.v")
+  addResource("/csrc/SimMemFuzzer.cc")
+}
+
 // Synthesizable unit tests
 
 class DummyDriver(config: CoalescerConfig)(implicit p: Parameters)
