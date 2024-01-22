@@ -59,13 +59,29 @@ class FuzzerTile private (
   val masterNode = visibilityNode
   // val statusNode = BundleBridgeSource(() => new GroundTestStatus)
 
-  require(p(CoalescerKey).isDefined, "FuzzerTile requires coalescer key to be defined")
-  val coalParam = p(CoalescerKey).get
-  val coalescer = LazyModule(new CoalescingUnit(coalParam))
-  val fuzzer = LazyModule(new MemFuzzer(coalParam))
+  val (numLanes, numSrcIds) = p(SIMTCoreKey) match {
+      case Some(param) => (param.nLanes, param.nSrcIds)
+      case None => {
+        require(false, "fuzzer requires SIMTCoreKey to be defined")
+        (0, 0)
+      }
+  }
+  // FIXME: parameterize
+  val wordSizeInBytes = 4
 
-  coalescer.cpuNode :=* TLWidthWidget(4) :=* fuzzer.node
-  masterNode :=* coalescer.aggregateNode
+  val fuzzer = LazyModule(new MemFuzzer(numLanes, numSrcIds, wordSizeInBytes))
+
+  // Conditionally instantiate memory coalescer
+  val coalescerNode = p(CoalescerKey) match {
+    case Some(coalParam) => {
+      val coal = LazyModule(new CoalescingUnit(coalParam))
+      coal.cpuNode :=* TLWidthWidget(4) :=* fuzzer.node
+      coal.aggregateNode
+    }
+    case None => fuzzer.node
+  }
+
+  masterNode :=* coalescerNode
 
   override lazy val module = new FuzzerTileModuleImp(this)
 }

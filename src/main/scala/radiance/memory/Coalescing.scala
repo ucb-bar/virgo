@@ -2024,14 +2024,16 @@ object TLPrintf {
 }
 
 class MemFuzzer(
-    config: CoalescerConfig,
+    numLanes: Int,
+    numSrcIds: Int,
+    wordSizeInBytes: Int,
 )(implicit p: Parameters)
     extends LazyModule {
-  val laneNodes = Seq.tabulate(config.numLanes) { i =>
+  val laneNodes = Seq.tabulate(numLanes) { i =>
     val clientParam = Seq(
       TLMasterParameters.v1(
         name = "MemTraceDriver" + i.toString,
-        sourceId = IdRange(0, config.numOldSrcIds)
+        sourceId = IdRange(0, numSrcIds)
         // visibility = Seq(AddressSet(0x0000, 0xffffff))
       )
     )
@@ -2039,19 +2041,21 @@ class MemFuzzer(
   }
 
   val node = TLIdentityNode()
-  laneNodes.foreach { l => node := l }
+  laneNodes.foreach(node := _)
 
-  lazy val module = new MemFuzzerImp(this, config)
+  lazy val module = new MemFuzzerImp(this, numLanes, numSrcIds, wordSizeInBytes)
 }
 
 class MemFuzzerImp(
     outer: MemFuzzer,
-    config: CoalescerConfig,
+    numLanes : Int,
+    numSrcIds: Int,
+    wordSizeInBytes: Int,
 ) extends LazyModuleImp(outer) {
   val io = IO(new Bundle {
     val finished = Output(Bool())
   })
-  val sim = Module(new SimMemFuzzer(config.numLanes))
+  val sim = Module(new SimMemFuzzer(numLanes))
   sim.io.clock := clock
   sim.io.reset := reset.asBool
 
@@ -2064,7 +2068,7 @@ class MemFuzzerImp(
 
   // connect Verilog <-> Chisel IO
   // Verilog IO flattened across all lanes
-  val laneReqs = Wire(Vec(config.numLanes, Decoupled(new TraceLine)))
+  val laneReqs = Wire(Vec(numLanes, Decoupled(new TraceLine)))
   val addrW = laneReqs(0).bits.address.getWidth
   val sizeW = laneReqs(0).bits.size.getWidth
   val dataW = laneReqs(0).bits.data.getWidth
@@ -2078,7 +2082,7 @@ class MemFuzzerImp(
   }
   sim.io.a.ready := VecInit(laneReqs.map(_.ready)).asUInt
 
-  val laneResps = Wire(Vec(config.numLanes, Flipped(Decoupled(new TraceLine))))
+  val laneResps = Wire(Vec(numLanes, Flipped(Decoupled(new TraceLine))))
   laneResps.zipWithIndex.foreach { case (resp, i) =>
     resp.ready := sim.io.d.ready(i)
     // TODO: not handled in DPI
@@ -2090,10 +2094,10 @@ class MemFuzzerImp(
   sim.io.d.is_store := VecInit(laneResps.map(_.bits.is_store)).asUInt
   sim.io.d.size := VecInit(laneResps.map(_.bits.size)).asUInt
 
-  val sourceGens = Seq.fill(config.numLanes)(
+  val sourceGens = Seq.fill(numLanes)(
     Module(
       new SourceGenerator(
-        log2Ceil(config.numOldSrcIds),
+        log2Ceil(numSrcIds),
         ignoreInUse = false
       )
     )
@@ -2110,18 +2114,18 @@ class MemFuzzerImp(
       // the trace driver to act so as well.
       // That means if req.size is smaller than word size, we need to pad data
       // with zeros to generate a word-size request, and set mask accordingly.
-      val offsetInWord = req.bits.address % config.wordSizeInBytes.U
-      val subword = req.bits.size < log2Ceil(config.wordSizeInBytes).U
+      val offsetInWord = req.bits.address % wordSizeInBytes.U
+      val subword = req.bits.size < log2Ceil(wordSizeInBytes).U
 
       // `mask` is currently unused
-      // val mask = Wire(UInt(config.wordSizeInBytes.W))
-      val wordData = Wire(UInt((config.wordSizeInBytes * 8 * 2).W))
+      // val mask = Wire(UInt(wordSizeInBytes.W))
+      val wordData = Wire(UInt((wordSizeInBytes * 8 * 2).W))
       val sizeInBytes = Wire(UInt((sizeW + 1).W))
       sizeInBytes := (1.U) << req.bits.size
       // mask := Mux(subword, (~((~0.U(64.W)) << sizeInBytes)) << offsetInWord, ~0.U)
       wordData := Mux(subword, req.bits.data << (offsetInWord * 8.U), req.bits.data)
       val wordAlignedAddress =
-        req.bits.address & ~((1 << log2Ceil(config.wordSizeInBytes)) - 1).U(addrW.W)
+        req.bits.address & ~((1 << log2Ceil(wordSizeInBytes)) - 1).U(addrW.W)
       val wordAlignedSize = Mux(subword, 2.U, req.bits.size)
 
       val sourceGen = sourceGens(lane)
@@ -2168,6 +2172,7 @@ class MemFuzzerImp(
       // debug
       dontTouch(req)
       when(tlOut.a.valid) {
+        printf(s"Lane ${lane}: ");
         TLPrintf(
           "MemFuzzer",
           tlOut.a.bits.source,
