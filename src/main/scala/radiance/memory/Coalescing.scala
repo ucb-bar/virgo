@@ -319,29 +319,29 @@ class SourceGenerator[T <: Data](
   val numSourceId = 1 << sourceWidth
   val row = new Bundle {
     val meta = getMetadataType
-    val id = Valid(UInt(sourceWidth.W))
+    val valid = Bool()
   }
   // valid: in use, invalid: available
   // val occupancyTable = Mem(numSourceId, Valid(UInt(sourceWidth.W)))
   val occupancyTable = Mem(numSourceId, row)
   when(reset.asBool) {
-    (0 until numSourceId).foreach { occupancyTable(_).id.valid := false.B }
+    (0 until numSourceId).foreach { occupancyTable(_).valid := false.B }
   }
-  val frees = (0 until numSourceId).map(!occupancyTable(_).id.valid)
+  val frees = (0 until numSourceId).map(!occupancyTable(_).valid)
   val lowestFree = PriorityEncoder(frees)
   val lowestFreeRow = occupancyTable(lowestFree)
 
-  io.id.valid := (if (ignoreInUse) true.B else !lowestFreeRow.id.valid)
+  io.id.valid := (if (ignoreInUse) true.B else !lowestFreeRow.valid)
   io.id.bits := lowestFree
   when(io.gen && io.id.valid /* fire */ ) {
-    occupancyTable(io.id.bits).id.valid := true.B // mark in use
+    occupancyTable(io.id.bits).valid := true.B // mark in use
     if (metadata.isDefined) {
       occupancyTable(io.id.bits).meta := io.meta
     }
   }
   when(io.reclaim.valid) {
     // @perf: would this require multiple write ports?
-    occupancyTable(io.reclaim.bits).id.valid := false.B // mark freed
+    occupancyTable(io.reclaim.bits).valid := false.B // mark freed
   }
   io.peek := {
     if (metadata.isDefined) occupancyTable(io.reclaim.bits).meta else 0.U
