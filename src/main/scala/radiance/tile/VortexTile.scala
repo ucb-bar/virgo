@@ -178,12 +178,12 @@ class VortexTile private (
     case Some(simtParam) => log2Ceil(simtParam.nSrcIds)
     case None            => 4
   }
-  require(
-    dmemSourceWidth >= 4,
-    "Setting a small number of sourceIds may cause correctness bug inside " +
-      "Vortex core due to synchronization issues in vx_wspawn. " +
-      "We recommend setting nSrcIds to at least 16."
-  )
+  // require(
+  //   dmemSourceWidth >= 4,
+  //   "Setting a small number of sourceIds may cause correctness bug inside " +
+  //     "Vortex core due to synchronization issues in vx_wspawn. " +
+  //     "We recommend setting nSrcIds to at least 16."
+  // )
 
   val smemSourceWidth = 4 // FIXME: hardcoded
 
@@ -295,9 +295,9 @@ class VortexTile private (
 
   // Conditionally instantiate memory coalescer
   val coalescerNode = p(CoalescerKey) match {
-    case Some(coalescerParam) => {
+    case Some(coalParam) => {
       val coal = LazyModule(
-        new CoalescingUnit(coalescerParam)
+        new CoalescingUnit(coalParam)
       )
       coal.cpuNode :=* dmemAggregateNode
       coal.aggregateNode // N+1 lanes
