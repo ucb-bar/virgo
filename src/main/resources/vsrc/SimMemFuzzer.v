@@ -59,7 +59,10 @@ module SimMemFuzzer #(parameter NUM_LANES = 4) (
     memfuzz_init(NUM_LANES);
   end
 
-  always @(posedge clock) begin
+  // negedge is important here; the DPI logic is essentially functioning as
+  // a combinational logic, so we want to reflect the signal change from DPI
+  // at the *current* cycle, not the next.
+  always @(negedge clock) begin
     if (reset) begin
       for (integer tid = 0; tid < NUM_LANES; tid = tid + 1) begin
         __in_a_valid[tid]    = 1'b0;
