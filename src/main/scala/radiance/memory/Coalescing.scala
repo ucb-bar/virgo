@@ -1502,7 +1502,6 @@ class MemTraceDriver(
 }
 
 trait HasTraceLine {
-  val valid: UInt
   val source: UInt
   val address: UInt
   val is_store: UInt
@@ -1513,7 +1512,6 @@ trait HasTraceLine {
 // Used for both request and response.  Response had address set to 0
 // NOTE: these widths have to agree with what's hardcoded in Verilog.
 class TraceLine extends Bundle with HasTraceLine {
-  val valid = Bool()
   val source = UInt(32.W)
   val address = UInt(64.W)
   val is_store = Bool()
@@ -1538,7 +1536,7 @@ class MemTraceDriverImp(
   // downstream take requests from the queue individually for each lane,
   // but do synchronized enqueue whenever all lane queue is ready to prevent
   // drifts between the lane.
-  val reqQueues = Seq.fill(config.numLanes)(Module(new Queue(new TraceLine, 2)))
+  val reqQueues = Seq.fill(config.numLanes)(Module(new Queue(Valid(new TraceLine), 2)))
   // Are we safe to read the next warp?
   val reqQueueAllReady = reqQueues.map(_.io.enq.ready).reduce(_ && _)
 
@@ -1552,17 +1550,17 @@ class MemTraceDriverImp(
 
   // Read output from Verilog BlackBox
   // Split output of SimMemTrace, which is flattened across all lanes,back to each lane's.
-  val laneReqs = Wire(Vec(config.numLanes, new TraceLine))
-  val addrW = laneReqs(0).address.getWidth
-  val sizeW = laneReqs(0).size.getWidth
-  val dataW = laneReqs(0).data.getWidth
+  val laneReqs = Wire(Vec(config.numLanes, Valid(new TraceLine)))
+  val addrW = laneReqs(0).bits.address.getWidth
+  val sizeW = laneReqs(0).bits.size.getWidth
+  val dataW = laneReqs(0).bits.data.getWidth
   laneReqs.zipWithIndex.foreach { case (req, i) =>
     req.valid := sim.io.trace_read.valid(i)
-    req.source := 0.U // driver trace doesn't contain source id
-    req.address := sim.io.trace_read.address(addrW * (i + 1) - 1, addrW * i)
-    req.is_store := sim.io.trace_read.is_store(i)
-    req.size := sim.io.trace_read.size(sizeW * (i + 1) - 1, sizeW * i)
-    req.data := sim.io.trace_read.data(dataW * (i + 1) - 1, dataW * i)
+    req.bits.source := 0.U // driver trace doesn't contain source id
+    req.bits.address := sim.io.trace_read.address(addrW * (i + 1) - 1, addrW * i)
+    req.bits.is_store := sim.io.trace_read.is_store(i)
+    req.bits.size := sim.io.trace_read.size(sizeW * (i + 1) - 1, sizeW * i)
+    req.bits.data := sim.io.trace_read.data(dataW * (i + 1) - 1, dataW * i)
   }
 
   // Not all fire because trace cycle has to advance even when there is no valid
@@ -1610,19 +1608,19 @@ class MemTraceDriverImp(
       // the trace driver to act so as well.
       // That means if req.size is smaller than word size, we need to pad data
       // with zeros to generate a word-size request, and set mask accordingly.
-      val offsetInWord = req.address % config.wordSizeInBytes.U
-      val subword = req.size < log2Ceil(config.wordSizeInBytes).U
+      val offsetInWord = req.bits.address % config.wordSizeInBytes.U
+      val subword = req.bits.size < log2Ceil(config.wordSizeInBytes).U
 
       // `mask` is currently unused
       // val mask = Wire(UInt(config.wordSizeInBytes.W))
       val wordData = Wire(UInt((config.wordSizeInBytes * 8 * 2).W))
       val sizeInBytes = Wire(UInt((sizeW + 1).W))
-      sizeInBytes := (1.U) << req.size
+      sizeInBytes := (1.U) << req.bits.size
       // mask := Mux(subword, (~((~0.U(64.W)) << sizeInBytes)) << offsetInWord, ~0.U)
-      wordData := Mux(subword, req.data << (offsetInWord * 8.U), req.data)
+      wordData := Mux(subword, req.bits.data << (offsetInWord * 8.U), req.bits.data)
       val wordAlignedAddress =
-        req.address & ~((1 << log2Ceil(config.wordSizeInBytes)) - 1).U(addrW.W)
-      val wordAlignedSize = Mux(subword, 2.U, req.size)
+        req.bits.address & ~((1 << log2Ceil(config.wordSizeInBytes)) - 1).U(addrW.W)
+      val wordAlignedSize = Mux(subword, 2.U, req.bits.size)
 
       val sourceGen = sourceGens(lane)
       sourceGen.io.gen := tlOut.a.fire
@@ -1644,8 +1642,8 @@ class MemTraceDriverImp(
         toAddress = hashToValidPhyAddr(wordAlignedAddress),
         lgSize = wordAlignedSize
       )
-      val legal = Mux(req.is_store, plegal, glegal)
-      val bits = Mux(req.is_store, pbits, gbits)
+      val legal = Mux(req.bits.is_store, plegal, glegal)
+      val bits = Mux(req.bits.is_store, pbits, gbits)
 
       tlOut.a.valid := reqQ.io.deq.valid && syncedSourceGenValid
       when(tlOut.a.fire) {
@@ -1667,9 +1665,9 @@ class MemTraceDriverImp(
           tlOut.a.bits.address,
           tlOut.a.bits.size,
           tlOut.a.bits.mask,
-          req.is_store,
+          req.bits.is_store,
           tlOut.a.bits.data,
-          req.data
+          req.bits.data
         )
       }
       dontTouch(tlOut.a)
@@ -1809,8 +1807,8 @@ class MemTraceLogger(
       simResp.get.io.reset := reset.asBool
     }
 
-    val laneReqs = Wire(Vec(numLanes, new TraceLine))
-    val laneResps = Wire(Vec(numLanes, new TraceLine))
+    val laneReqs = Wire(Vec(numLanes, Valid(new TraceLine)))
+    val laneResps = Wire(Vec(numLanes, Valid(new TraceLine)))
 
     assert(
       numLanes == node.in.length,
@@ -1828,12 +1826,12 @@ class MemTraceLogger(
         // Only log trace when fired, e.g. both upstream and downstream is ready
         // and transaction happened.
         req.valid := tlIn.a.fire
-        req.size := tlIn.a.bits.size
-        req.is_store := TLUtils.AOpcodeIsStore(tlIn.a.bits.opcode, tlIn.a.fire)
-        req.source := tlIn.a.bits.source
+        req.bits.size := tlIn.a.bits.size
+        req.bits.is_store := TLUtils.AOpcodeIsStore(tlIn.a.bits.opcode, tlIn.a.fire)
+        req.bits.source := tlIn.a.bits.source
         // TL always carries the exact unaligned address that the client
         // originally requested, so no postprocessing required
-        req.address := tlIn.a.bits.address
+        req.bits.address := tlIn.a.bits.address
 
         when(req.valid) {
           TLPrintf(
@@ -1842,9 +1840,9 @@ class MemTraceLogger(
             tlIn.a.bits.address,
             tlIn.a.bits.size,
             tlIn.a.bits.mask,
-            req.is_store,
+            req.bits.is_store,
             tlIn.a.bits.data,
-            req.data
+            req.bits.data
           )
         }
 
@@ -1868,9 +1866,9 @@ class MemTraceLogger(
         val dataW = tlIn.params.dataBits
         val sizeInBits = (1.U(1.W) << tlIn.a.bits.size) << 3.U
         val mask = ~(~(0.U(dataW.W)) << sizeInBits)
-        req.data := mask & (tlIn.a.bits.data >> (trailingZerosInMask * 8.U))
-        // when (req.valid) {
-        //   printf("trailingZerosInMask=%d, mask=%x, data=%x\n", trailingZerosInMask, mask, req.data)
+        req.bits.data := mask & (tlIn.a.bits.data >> (trailingZerosInMask * 8.U))
+        // when (req.bits.valid) {
+        //   printf("trailingZerosInMask=%d, mask=%x, data=%x\n", trailingZerosInMask, mask, req.bits.data)
         // }
 
         // responses on TL D channel
@@ -1878,18 +1876,18 @@ class MemTraceLogger(
         // Only log trace when fired, e.g. both upstream and downstream is ready
         // and transaction happened.
         resp.valid := tlOut.d.fire
-        resp.size := tlOut.d.bits.size
-        resp.is_store := TLUtils.DOpcodeIsStore(
+        resp.bits.size := tlOut.d.bits.size
+        resp.bits.is_store := TLUtils.DOpcodeIsStore(
           tlOut.d.bits.opcode,
           tlOut.d.fire
         )
-        resp.source := tlOut.d.bits.source
+        resp.bits.source := tlOut.d.bits.source
         // NOTE: TL D channel doesn't carry address nor mask, so there's no easy
         // way to figure out which bytes the master actually use.  Since we
         // don't care too much about addresses in the trace anyway, just store
         // the entire bits.
-        resp.address := 0.U
-        resp.data := tlOut.d.bits.data
+        resp.bits.address := 0.U
+        resp.bits.data := tlOut.d.bits.data
     }
 
     // stats
@@ -1903,13 +1901,13 @@ class MemTraceLogger(
       }
     val reqBytesThisCycle =
       laneReqs
-        .map { l => Mux(l.valid, 1.U(64.W) << l.size, 0.U(64.W)) }
+        .map { l => Mux(l.valid, 1.U(64.W) << l.bits.size, 0.U(64.W)) }
         .reduce { (b0, b1) =>
           b0 + b1
         }
     val respBytesThisCycle =
       laneResps
-        .map { l => Mux(l.valid, 1.U(64.W) << l.size, 0.U(64.W)) }
+        .map { l => Mux(l.valid, 1.U(64.W) << l.bits.size, 0.U(64.W)) }
         .reduce { (b0, b1) =>
           b0 + b1
         }
@@ -1922,42 +1920,25 @@ class MemTraceLogger(
     //
     // This is a clunky workaround of the fact that Chisel doesn't allow partial
     // assignment to a bitfield range of a wide signal.
-    def flattenTrace(
-        simIO: Bundle with HasTraceLine,
-        perLane: Vec[TraceLine]
-    ) = {
-      // these will get optimized out
-      val vecValid = Wire(Vec(numLanes, chiselTypeOf(perLane(0).valid)))
-      val vecSource = Wire(Vec(numLanes, chiselTypeOf(perLane(0).source)))
-      val vecAddress = Wire(Vec(numLanes, chiselTypeOf(perLane(0).address)))
-      val vecIsStore = Wire(Vec(numLanes, chiselTypeOf(perLane(0).is_store)))
-      val vecSize = Wire(Vec(numLanes, chiselTypeOf(perLane(0).size)))
-      val vecData = Wire(Vec(numLanes, chiselTypeOf(perLane(0).data)))
-      perLane.zipWithIndex.foreach { case (l, i) =>
-        vecValid(i) := l.valid
-        vecSource(i) := l.source
-        vecAddress(i) := l.address
-        vecIsStore(i) := l.is_store
-        vecSize(i) := l.size
-        vecData(i) := l.data
-      }
-      simIO.valid := vecValid.asUInt
-      simIO.source := vecSource.asUInt
-      simIO.address := vecAddress.asUInt
-      simIO.is_store := vecIsStore.asUInt
-      simIO.size := vecSize.asUInt
-      simIO.data := vecData.asUInt
-    }
-
     if (simReq.isDefined) {
-      flattenTrace(simReq.get.io.trace_log, laneReqs)
+      simReq.get.io.trace_log.valid := VecInit(laneReqs.map(_.valid)).asUInt
+      simReq.get.io.trace_log.source := VecInit(laneReqs.map(_.bits.source)).asUInt
+      simReq.get.io.trace_log.address := VecInit(laneReqs.map(_.bits.address)).asUInt
+      simReq.get.io.trace_log.is_store := VecInit(laneReqs.map(_.bits.is_store)).asUInt
+      simReq.get.io.trace_log.size := VecInit(laneReqs.map(_.bits.size)).asUInt
+      simReq.get.io.trace_log.data := VecInit(laneReqs.map(_.bits.data)).asUInt
       assert(
         simReq.get.io.trace_log.ready === true.B,
         "MemTraceLogger is expected to be always ready"
       )
     }
     if (simResp.isDefined) {
-      flattenTrace(simResp.get.io.trace_log, laneResps)
+      simResp.get.io.trace_log.valid := VecInit(laneResps.map(_.valid)).asUInt
+      simResp.get.io.trace_log.source := VecInit(laneResps.map(_.bits.source)).asUInt
+      simResp.get.io.trace_log.address := VecInit(laneResps.map(_.bits.address)).asUInt
+      simResp.get.io.trace_log.is_store := VecInit(laneResps.map(_.bits.is_store)).asUInt
+      simResp.get.io.trace_log.size := VecInit(laneResps.map(_.bits.size)).asUInt
+      simResp.get.io.trace_log.data := VecInit(laneResps.map(_.bits.data)).asUInt
       assert(
         simResp.get.io.trace_log.ready === true.B,
         "MemTraceLogger is expected to be always ready"
@@ -1994,7 +1975,7 @@ class SimMemTraceLogger(
     val clock = Input(Clock())
     val reset = Input(Bool())
 
-    val trace_log = new Bundle with HasTraceLine {
+    val trace_log = new Bundle {
       val valid = Input(UInt(numLanes.W))
       val source = Input(UInt((sourceW * numLanes).W))
       // Chisel can't interface with Verilog 2D port, so flatten all lanes into
@@ -2074,24 +2055,40 @@ class MemFuzzerImp(
   sim.io.clock := clock
   sim.io.reset := reset.asBool
 
-  sim.io.a.ready := true.B // FIXME
+  sim.io.a.ready := VecInit(outer.laneNodes.map { node =>
+    val (tlOut, _) = node.out(0)
+    tlOut.a.ready
+  }).asUInt
 
   io.finished := sim.io.finished
 
-  // Read output from Verilog BlackBox
-  // Split output of SimMemTrace, which is flattened across all lanes,back to each lane's.
-  val laneReqs = Wire(Vec(config.numLanes, new TraceLine))
-  val addrW = laneReqs(0).address.getWidth
-  val sizeW = laneReqs(0).size.getWidth
-  val dataW = laneReqs(0).data.getWidth
+  // connect Verilog <-> Chisel IO
+  // Verilog IO flattened across all lanes
+  val laneReqs = Wire(Vec(config.numLanes, Decoupled(new TraceLine)))
+  val addrW = laneReqs(0).bits.address.getWidth
+  val sizeW = laneReqs(0).bits.size.getWidth
+  val dataW = laneReqs(0).bits.data.getWidth
   laneReqs.zipWithIndex.foreach { case (req, i) =>
     req.valid := sim.io.a.valid(i)
-    req.source := 0.U // DPI fuzzer doesn't generate contain source id
-    req.address := sim.io.a.address(addrW * (i + 1) - 1, addrW * i)
-    req.is_store := sim.io.a.is_store(i)
-    req.size := sim.io.a.size(sizeW * (i + 1) - 1, sizeW * i)
-    req.data := sim.io.a.data(dataW * (i + 1) - 1, dataW * i)
+    req.bits.source := 0.U // DPI fuzzer doesn't generate contain source id
+    req.bits.address := sim.io.a.address(addrW * (i + 1) - 1, addrW * i)
+    req.bits.is_store := sim.io.a.is_store(i)
+    req.bits.size := sim.io.a.size(sizeW * (i + 1) - 1, sizeW * i)
+    req.bits.data := sim.io.a.data(dataW * (i + 1) - 1, dataW * i)
   }
+  sim.io.a.ready := VecInit(laneReqs.map(_.ready)).asUInt
+
+  val laneResps = Wire(Vec(config.numLanes, Flipped(Decoupled(new TraceLine))))
+  laneResps.zipWithIndex.foreach { case (resp, i) =>
+    resp.ready := sim.io.d.ready(i)
+    // TODO: not handled in DPI
+    resp.bits.source := DontCare
+    resp.bits.address := DontCare
+    resp.bits.data := DontCare
+  }
+  sim.io.d.valid := VecInit(laneResps.map(_.valid)).asUInt
+  sim.io.d.is_store := VecInit(laneResps.map(_.bits.is_store)).asUInt
+  sim.io.d.size := VecInit(laneResps.map(_.bits.size)).asUInt
 
   val sourceGens = Seq.fill(config.numLanes)(
     Module(
@@ -2103,27 +2100,29 @@ class MemFuzzerImp(
   )
 
   // Take requests off of the queue and generate TL requests
-  (outer.laneNodes zip laneReqs).zipWithIndex.foreach {
-    case ((node, req), lane) =>
+  (outer.laneNodes zip (laneReqs zip laneResps)).zipWithIndex.foreach {
+    case ((node, (req, resp)), lane) =>
       val (tlOut, edge) = node.out(0)
 
+      // Requests --------------------------------------------------------------
+      //
       // Core only makes accesses of granularity larger than a word, so we want
       // the trace driver to act so as well.
       // That means if req.size is smaller than word size, we need to pad data
       // with zeros to generate a word-size request, and set mask accordingly.
-      val offsetInWord = req.address % config.wordSizeInBytes.U
-      val subword = req.size < log2Ceil(config.wordSizeInBytes).U
+      val offsetInWord = req.bits.address % config.wordSizeInBytes.U
+      val subword = req.bits.size < log2Ceil(config.wordSizeInBytes).U
 
       // `mask` is currently unused
       // val mask = Wire(UInt(config.wordSizeInBytes.W))
       val wordData = Wire(UInt((config.wordSizeInBytes * 8 * 2).W))
       val sizeInBytes = Wire(UInt((sizeW + 1).W))
-      sizeInBytes := (1.U) << req.size
+      sizeInBytes := (1.U) << req.bits.size
       // mask := Mux(subword, (~((~0.U(64.W)) << sizeInBytes)) << offsetInWord, ~0.U)
-      wordData := Mux(subword, req.data << (offsetInWord * 8.U), req.data)
+      wordData := Mux(subword, req.bits.data << (offsetInWord * 8.U), req.bits.data)
       val wordAlignedAddress =
-        req.address & ~((1 << log2Ceil(config.wordSizeInBytes)) - 1).U(addrW.W)
-      val wordAlignedSize = Mux(subword, 2.U, req.size)
+        req.bits.address & ~((1 << log2Ceil(config.wordSizeInBytes)) - 1).U(addrW.W)
+      val wordAlignedSize = Mux(subword, 2.U, req.bits.size)
 
       val sourceGen = sourceGens(lane)
       sourceGen.io.gen := tlOut.a.fire
@@ -2144,19 +2143,26 @@ class MemFuzzerImp(
         toAddress = wordAlignedAddress,
         lgSize = wordAlignedSize
       )
-      val legal = Mux(req.is_store, plegal, glegal)
-      val bits = Mux(req.is_store, pbits, gbits)
+      val legal = Mux(req.bits.is_store, plegal, glegal)
+      val bits = Mux(req.bits.is_store, pbits, gbits)
 
       tlOut.a.valid := req.valid && sourceGen.io.id.valid
-      // req.ready := tlOut.a.ready && sourceGen.io.id.valid
+      req.ready := tlOut.a.ready && sourceGen.io.id.valid
 
       when(tlOut.a.fire) {
         assert(legal, "illegal TL req gen")
       }
       tlOut.a.bits := bits
+
+      // Responses -------------------------------------------------------------
+      //
+      tlOut.d.ready := resp.ready
+      resp.valid := tlOut.d.valid
+      resp.bits.is_store := !edge.hasData(tlOut.d.bits)
+      resp.bits.size := tlOut.d.bits.size
+
       tlOut.b.ready := true.B
       tlOut.c.valid := false.B
-      tlOut.d.ready := sim.io.d.ready(lane) // FIXME
       tlOut.e.valid := false.B
 
       // debug
@@ -2168,9 +2174,9 @@ class MemFuzzerImp(
           tlOut.a.bits.address,
           tlOut.a.bits.size,
           tlOut.a.bits.mask,
-          req.is_store,
+          req.bits.is_store,
           tlOut.a.bits.data,
-          req.data
+          req.bits.data
         )
       }
       dontTouch(tlOut.a)
@@ -2210,6 +2216,9 @@ class SimMemFuzzer(numLanes: Int) extends BlackBox
     val d =
       new Bundle {
         val ready = Output(UInt(numLanes.W))
+        val valid = Input(UInt(numLanes.W))
+        val is_store = Input(UInt(numLanes.W))
+        val size = Input(UInt((sizeW * numLanes).W))
       }
   })
 
