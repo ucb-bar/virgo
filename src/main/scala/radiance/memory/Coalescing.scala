@@ -114,11 +114,10 @@ case class CoalescerConfig(
     s"than the request queue depth (${reqQueueDepth})")
 }
 
-
 object DefaultCoalescerConfig extends CoalescerConfig(
   enable = true,
   numLanes = 4,
-  reqQueueDepth = 2, // 1-deep request queues
+  reqQueueDepth = 2,
   timeCoalWindowSize = 1,
   waitTimeout = 8,
   addressWidth = 24,
@@ -418,6 +417,7 @@ class CoalShiftQueue[T <: Data](gen: T, entries: Int, config: CoalescerConfig)
       c && !(io.invalidate.valid && inv)
     }
     .reduce(_ || _)
+  dontTouch(shiftHint)
   val syncedEnqValid = io.queue.enq.map(_.valid).reduce(_ || _)
   // valid && !ready means we enable enqueueing to a full queue, provided the
   // arbiter is taking away all remaining valid queue heads in the next cycle so
@@ -2123,6 +2123,8 @@ class MemFuzzerImp(
       )
     )
   )
+  val anyInflight = sourceGens.map(_.io.inflight).reduce(_ || _)
+  sim.io.inflight := anyInflight
 
   // Take requests off of the queue and generate TL requests
   (outer.laneNodes zip (laneReqs zip laneResps)).zipWithIndex.foreach {
@@ -2217,7 +2219,8 @@ class MemFuzzerImp(
   // }
 }
 
-class SimMemFuzzer(numLanes: Int) extends BlackBox
+class SimMemFuzzer(numLanes: Int)
+    extends BlackBox(Map("NUM_LANES" -> numLanes))
     with HasBlackBoxResource {
   val traceLineT = new TraceLine
   val addrW = traceLineT.address.getWidth
@@ -2226,6 +2229,7 @@ class SimMemFuzzer(numLanes: Int) extends BlackBox
   val io = IO(new Bundle {
     val clock = Input(Clock())
     val reset = Input(Bool())
+    val inflight = Input(Bool())
     val finished = Output(Bool())
 
     val a =
