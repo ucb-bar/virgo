@@ -1185,8 +1185,6 @@ class Uncoalescer(
       offset: UInt,
       logSize: UInt
   ): UInt = {
-    assert(logSize === 2.U, "currently only supporting 4-byte accesses. TODO")
-
     // sizeInBits should be simulation-only construct
     val sizeInBits = ((1.U << logSize) << 3.U).asUInt
     assert(
@@ -1210,14 +1208,21 @@ class Uncoalescer(
   val coalRespPipeRegDeq = Queue(io.coalResp, 1, pipe = true)
   val tablePipeRegDeq = Queue(io.inflightLookup, 1, pipe = true)
 
-  // Only proceed uncoalescing when all enq ports of the response queue are
-  // ready.  This is necessary because uncoalescing logic is a combinational
-  // logic that produces all the split responses at the same cycle, so it needs
-  // to be guaranteed that all of them has somewhere to go.
-  val allRespQueueEnqReady =
-    io.respQueueIO.map(_.map(_.ready).reduce(_ && _)).reduce(_ && _)
-  tablePipeRegDeq.ready := allRespQueueEnqReady
-  coalRespPipeRegDeq.ready := allRespQueueEnqReady
+  // Pipeline registers staging the uncoalesced requests before it goes into
+  // respQueues.
+  val uncoalPipeRegs = Seq.fill(config.numLanes)(
+    Seq.fill(config.timeCoalWindowSize)(
+      Module(new Queue(new NonCoalescedResponse(config), 1, pipe = true)))
+  )
+  val allUncoalPipelineRegsReady =
+    uncoalPipeRegs.map(_.map(_.io.enq.ready).reduce(_ && _)).reduce(_ && _)
+
+  // Only proceed uncoalescing when all enq ports of the next pipeline
+  // registers are ready.  This is necessary because uncoalescing logic is a
+  // combinational logic that produces all the split responses at the same
+  // cycle, so it needs to be guaranteed that all of them has somewhere to go.
+  tablePipeRegDeq.ready := allUncoalPipelineRegsReady
+  coalRespPipeRegDeq.ready := allUncoalPipelineRegsReady
 
   assert(
     io.coalResp.fire === io.inflightLookup.fire,
@@ -1231,35 +1236,42 @@ class Uncoalescer(
   // Un-coalesce responses back to individual lanes. Connect uncoalesced
   // results back into each lane's response queue.
   val tableRow = tablePipeRegDeq
-  (io.respQueueIO zip tableRow.bits.lanes).zipWithIndex.foreach {
-    case ((enqIOs, lane), laneNum) =>
-      lane.reqs.zipWithIndex.foreach { case (req, depth) =>
-        val enqIO = enqIOs(depth)
-        enqIO.valid := false.B
-        enqIO.bits := DontCare
+  (uncoalPipeRegs zip tableRow.bits.lanes).zipWithIndex.foreach {
+    case ((laneRegs, tableLane), laneNum) =>
+      (laneRegs zip tableLane.reqs).foreach { case (pipeReg, tableReq) =>
+        val enqIO = pipeReg.io.enq
+        enqIO.valid := tableRow.fire && tableReq.valid
+        enqIO.bits.op := tableReq.op
+        enqIO.bits.source := tableReq.source
+        val logSize = tableRow.bits.sizeEnumT.enumToLogSize(tableReq.sizeEnum)
+        enqIO.bits.size := logSize
+        enqIO.bits.data :=
+          getCoalescedDataChunk(
+            coalRespPipeRegDeq.bits.data,
+            coalRespPipeRegDeq.bits.data.getWidth,
+            tableReq.offset,
+            logSize
+          )
+        // is this necessary?
+        enqIO.bits.error := DontCare
+
         // debug
         // when (resp.valid) {
         //   printf(s"${i}-th uncoalesced response came back from lane ${laneNum}\n")
         // }
         // dontTouch(q.io.enq(respQueueCoalPortOffset))
+      }
+  }
 
-        when(tableRow.valid && req.valid) {
-          enqIO.valid := tableRow.fire && req.valid
-          enqIO.bits.op := req.op
-          enqIO.bits.source := req.source
-          val logSize = tableRow.bits.sizeEnumT.enumToLogSize(req.sizeEnum)
-          enqIO.bits.size := logSize
-          enqIO.bits.data :=
-            getCoalescedDataChunk(
-              coalRespPipeRegDeq.bits.data,
-              coalRespPipeRegDeq.bits.data.getWidth,
-              req.offset,
-              logSize
-            )
-          // is this necessary?
-          enqIO.bits.error := DontCare
+  // connect pipeline reg output to respQueueIO
+  (io.respQueueIO zip uncoalPipeRegs).foreach {
+    case (laneQueue, laneRegs) => {
+      (laneQueue zip laneRegs).foreach {
+        case (respQIO, reg) => {
+          respQIO <> reg.io.deq
         }
       }
+    }
   }
 }
 
