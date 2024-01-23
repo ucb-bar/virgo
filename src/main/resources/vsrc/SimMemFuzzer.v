@@ -120,7 +120,7 @@ module SimMemFuzzer #(parameter NUM_LANES = 4) (
         __in_finished
       );
       for (integer tid = 0; tid < NUM_LANES; tid = tid + 1) begin
-        $display("verilog: %04d valid[%d]=%d, address[%d]=%d, __in_d_ready[%d]=%d",
+        $display("verilog: %04d a_valid[%d]=%d, a_address[%d]=0x%x, d_ready[%d]=%d",
           $time, tid, __in_a_valid[tid], tid, __in_a_address[tid], tid, __in_d_ready[tid]);
       end
 

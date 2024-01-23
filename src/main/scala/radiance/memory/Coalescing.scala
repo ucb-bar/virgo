@@ -2426,6 +2426,38 @@ class TLRAMCoalescerLoggerTest(filename: String, timeout: Int = 500000)(implicit
   io.finished := dut.io.finished
 }
 
+// // fuzzer --> coalescer --> tlram
+// class TLRAMCoalescerFuzzer(implicit p: Parameters) extends LazyModule {
+//   val numLanes = p(SIMTCoreKey).get.nLanes
+//   val config = DefaultCoalescerConfig.copy(numLanes = numLanes)
+
+//   val coal = LazyModule(new CoalescingUnit(config))
+//   val driver = LazyModule(new MemTraceDriver(config))
+//   val rams = Seq.fill(numLanes + 1)( // +1 for coalesced edge
+//     LazyModule(
+//       // NOTE: beatBytes here sets the data bitwidth of the upstream TileLink
+//       // edges globally, by way of Diplomacy communicating the TL slave
+//       // parameters to the upstream nodes.
+//       new TLRAM(
+//         address = AddressSet(0x0000, 0xffffff),
+//         beatBytes = (1 << config.dataBusWidth)
+//       )
+//     )
+//   )
+
+//   class Impl extends LazyModuleImp(this) with UnitTestModule {
+//     // io.start is unused since MemTraceDriver doesn't accept io.start
+//     io.finished := driver.module.io.finished
+//   }
+// }
+
+// class TLRAMCoalescerFuzzerTest(timeout: Int = 500000)(implicit p: Parameters)
+//     extends UnitTest(timeout) {
+//   val dut = Module(LazyModule(new TLRAMCoalescerFuzzer).module)
+//   dut.io.start := io.start
+//   io.finished := dut.io.finished
+// }
+
 // tracedriver --> coalescer --> tlram
 class TLRAMCoalescer(implicit p: Parameters) extends LazyModule {
   val numLanes = p(SIMTCoreKey).get.nLanes
