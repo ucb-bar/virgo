@@ -326,7 +326,7 @@ class VortexTile private (
     // base for bank 1: ff...000000|01|00
     // mask for bank 1; 00...111111|00|11
     val base = 0xff000000L | (bankId * 4 /*wordSize*/ )
-    val mask = 0x00ffffffL ^ ((numLsuLanes - 1) * 4 /*wordSize*/ )
+    val mask = 0x00001fffL ^ ((numLsuLanes - 1) * 4 /*wordSize*/ )
     LazyModule(new TLRAM(AddressSet(base, mask), beatBytes = 4 /*wordSize*/ ))
   }
   // smem lanes-to-banks crossbar
