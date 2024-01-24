@@ -133,23 +133,6 @@ class VortexTile private (
 
   regNode := TLFragmenter(4, 64) := tlSlaveXbar.node
 
-  // val dmemDevice = new SimpleDevice("dtim", Seq("sifive,dtim0"))
-  /*val dmemNode = TLManagerNode(Seq(TLSlavePortParameters.v1(
-    Seq(TLSlaveParameters.v1(
-      address = AddressSet.misaligned(tileParams.dcache.get.scratch.getOrElse(0),
-        tileParams.dcache.get.nSets * tileParams.dcache.get.blockBytes),
-      resources = dmemDevice.reg("mem"),
-      regionType = RegionType.IDEMPOTENT,
-      executable = true,
-      supportsArithmetic = /*if (usingAtomics) TransferSizes(4, coreDataBytes) else*/ TransferSizes.none,
-      supportsLogical = /*if (usingAtomics) TransferSizes(4, coreDataBytes) else*/ TransferSizes.none,
-      supportsPutPartial = TransferSizes(1, lazyCoreParamsView.coreDataBytes),
-      supportsPutFull = TransferSizes(1, lazyCoreParamsView.coreDataBytes),
-      supportsGet = TransferSizes(1, lazyCoreParamsView.coreDataBytes),
-      fifoId = Some(0))), // requests handled in FIFO order
-    beatBytes = lazyCoreParamsView.coreDataBytes,
-    minLatency = 1)))*/
-
   require(
     p(SIMTCoreKey).isDefined,
     "SIMTCoreKey not defined; make sure to use WithSimtLanes when using VortexTile"
@@ -358,6 +341,11 @@ class VortexTile private (
     tlMasterXbar.node :=* dcacheNode
   }
 
+  // ROCC
+  val roccs = p(BuildRoCC).map(_(p))
+  roccs.map(_.atlNode).foreach { atl => tlMasterXbar.node :=* atl }
+  roccs.map(_.tlNode).foreach { tl => tlOtherMastersNode :=* tl }
+
   /* below are copied from rocket */
 
   // val bus_error_unit = vortexParams.beuAddr map { a =>
@@ -390,9 +378,7 @@ class VortexTile private (
   val itimProperty =
     Nil // frontend.icache.itimProperty.toSeq.flatMap(p => Map("sifive,itim" -> p))
 
-  // val beuProperty = bus_error_unit
-  //   .map(d => Map("sifive,buserror" -> d.device.asProperty))
-  //   .getOrElse(Nil)
+  // missing bus_error_unit
 
   val cpuDevice: SimpleDevice = new SimpleDevice(
     "cpu",
@@ -679,6 +665,34 @@ class VortexTileModuleImp(outer: VortexTile) extends BaseTileModuleImp(outer) {
 
   // TODO: generalize for useVxCache
   if (!outer.vortexParams.useVxCache) {}
+
+  // RoCC
+  if (outer.roccs.size > 0) {
+    val (respArb, cmdRouter) = {
+      val respArb = Module(new RRArbiter(new RoCCResponse()(outer.p), outer.roccs.size))
+      val cmdRouter = Module(new RoccCommandRouter(outer.roccs.map(_.opcodes))(outer.p))
+      outer.roccs.zipWithIndex.foreach { case (rocc, i) =>
+        // ptwPorts ++= rocc.module.io.ptw
+        rocc.module.io.ptw <> DontCare
+        rocc.module.io.mem <> DontCare
+        rocc.module.io.cmd <> cmdRouter.io.out(i)
+        respArb.io.in(i) <> Queue(rocc.module.io.resp)
+      }
+      // Create this FPU just for RoCC
+      // val nFPUPorts = outer.roccs.filter(_.usesFPU).size
+      val fp_rocc_ios = outer.roccs.map(_.module.io)
+      fp_rocc_ios.map{ io =>
+        io.fpu_req.ready := false.B
+        io.fpu_resp.valid := false.B
+        io.fpu_resp.bits := DontCare
+      }
+      (respArb, cmdRouter)
+    }
+
+    cmdRouter.io.in <> DontCare
+    outer.roccs.foreach(_.module.io.exception := DontCare)
+    respArb.io.out <> DontCare
+  }
 }
 
 // Some @copypaste from CoalescerSourceGen.
