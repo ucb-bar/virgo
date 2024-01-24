@@ -17,6 +17,7 @@ import freechips.rocketchip.prci.ClockSinkParameters
 import freechips.rocketchip.regmapper.RegField
 import freechips.rocketchip.tile._
 import radiance.memory._
+import gemmini.{Gemmini, GemminiCustomConfigs}
 
 case class VortexTileParams(
     core: VortexCoreParams = VortexCoreParams(),
@@ -342,9 +343,13 @@ class VortexTile private (
   }
 
   // ROCC
-  val roccs = p(BuildRoCC).map(_(p))
-  roccs.map(_.atlNode).foreach { atl => tlMasterXbar.node :=* atl }
-  roccs.map(_.tlNode).foreach { tl => tlOtherMastersNode :=* tl }
+  // TODO: parametrize
+  val gemmini = LazyModule(new Gemmini(GemminiCustomConfigs.unifiedMemConfig))
+  val roccs: Seq[LazyRoCC] = Seq(gemmini)
+  tlMasterXbar.node :=* gemmini.atlNode
+  tlOtherMastersNode :=* gemmini.tlNode
+
+  gemmini.stlNode :=* TLWidthWidget(4) :=* smemXbar.node
 
   /* below are copied from rocket */
 
