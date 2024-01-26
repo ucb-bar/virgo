@@ -451,11 +451,11 @@ class VortexTileModuleImp(outer: VortexTile) extends BaseTileModuleImp(outer) {
   core.io.reset_vector := DontCare
 
   outer.regNode.regmap(
-    0x00 -> Seq(RegField.r(32, core.io.cease))
+    0x00 -> Seq(RegField.r(32, core.io.finished))
   )
 
-  // Report when the tile has ceased to retire instructions; for now the only cause is clock gating
-  outer.reportCease(outer.vortexParams.core.clockGate.option(core.io.cease))
+  // Report when the tile has ceased to retire instructions
+  outer.reportCease(Some(core.io.finished))
 
   outer.reportWFI(Some(core.io.wfi))
 
