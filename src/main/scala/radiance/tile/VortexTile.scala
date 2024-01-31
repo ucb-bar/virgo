@@ -350,6 +350,7 @@ class VortexTile private (
   tlOtherMastersNode :=* gemmini.tlNode
 
   gemmini.stlNode :=* TLWidthWidget(4) :=* smemXbar.node
+  gemmini.unified_mem_node :=* TLWidthWidget(4) :=* smemXbar.node
 
   /* below are copied from rocket */
 
