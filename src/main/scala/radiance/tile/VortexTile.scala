@@ -321,18 +321,18 @@ class VortexTile private (
   //
   // Instantiate the same number of banks as there are lanes.
   // TODO: parametrize
-  val smemBanks = Seq.tabulate(numLsuLanes) { bankId =>
-    // Banked-by-word (4 bytes)
-    // base for bank 1: ff...000000|01|00
-    // mask for bank 1; 00...111111|00|11
-    val base = 0xff000000L | (bankId * 4 /*wordSize*/ )
-    val mask = 0x00001fffL ^ ((numLsuLanes - 1) * 4 /*wordSize*/ )
-    LazyModule(new TLRAM(AddressSet(base, mask), beatBytes = 4 /*wordSize*/ ))
-  }
+  // val smemBanks = Seq.tabulate(numLsuLanes) { bankId =>
+  //   // Banked-by-word (4 bytes)
+  //   // base for bank 1: ff...000000|01|00
+  //   // mask for bank 1; 00...111111|00|11
+  //   val base = 0xff000000L | (bankId * 4 /*wordSize*/ )
+  //   val mask = 0x00001fffL ^ ((numLsuLanes - 1) * 4 /*wordSize*/ )
+  //   LazyModule(new TLRAM(AddressSet(base, mask), beatBytes = 4 /*wordSize*/ ))
+  // }
   // smem lanes-to-banks crossbar
   val smemXbar = LazyModule(new TLXbar)
   smemNodes.foreach(smemXbar.node := _)
-  smemBanks.foreach(_.node := smemXbar.node)
+  // smemBanks.foreach(_.node := smemXbar.node)
 
   if (vortexParams.useVxCache) {
     tlMasterXbar.node := TLWidthWidget(16) := memNode
@@ -350,6 +350,7 @@ class VortexTile private (
   tlOtherMastersNode :=* gemmini.tlNode
 
   gemmini.stlNode :=* TLWidthWidget(4) :=* smemXbar.node
+  gemmini.unified_mem_node :=* TLWidthWidget(4) :=* smemXbar.node
 
   /* below are copied from rocket */
 
