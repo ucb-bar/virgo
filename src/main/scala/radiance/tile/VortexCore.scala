@@ -100,7 +100,7 @@ class VortexBundle(tile: VortexTile)(implicit p: Parameters) extends CoreBundle 
   //val rocc = Flipped(new RoCCCoreIO(nTotalRoCCCSRs))
   //val trace = Output(new TraceBundle)
   //val bpwatch = Output(Vec(coreParams.nBreakpoints, new BPWatch(coreParams.retireWidth)))
-  val cease = Output(Bool())
+  val finished = Output(Bool())
   val wfi = Output(Bool())
   val traceStall = Input(Bool())
 }
