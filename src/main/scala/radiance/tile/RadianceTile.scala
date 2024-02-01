@@ -349,18 +349,16 @@ class VortexTile private (
   tlMasterXbar.node :=* gemmini.atlNode
   tlOtherMastersNode :=* gemmini.tlNode
 
+  // MMIO
   gemmini.stlNode :=* TLWidthWidget(4) :=* smemXbar.node
+  // sharedmem access
+  //
+  // FIXME: gemmini spad has 16B data width; core smem interface has 4B. Need
+  // to consolidate by either coalescing, or changing gemmini spad to
+  // strided-by-word
   gemmini.unified_mem_node :=* TLWidthWidget(4) :=* smemXbar.node
 
   /* below are copied from rocket */
-
-  // val bus_error_unit = vortexParams.beuAddr map { a =>
-  //   val beu =
-  //     LazyModule(new BusErrorUnit(new L1BusErrors, BusErrorUnitParams(a)))
-  //   intOutwardNode := beu.intNode
-  //   connectTLSlave(beu.node, xBytes)
-  //   beu
-  // }
 
   val tile_master_blocker =
     tileParams.blockerCtrlAddr
@@ -461,10 +459,6 @@ class VortexTileModuleImp(outer: VortexTile) extends BaseTileModuleImp(outer) {
   outer.reportWFI(Some(core.io.wfi))
 
   outer.decodeCoreInterrupts(core.io.interrupts) // Decode the interrupt vector
-
-  // outer.bus_error_unit.foreach { beu =>
-  //   core.io.interrupts.buserror.get := beu.module.io.interrupt
-  // }
 
   core.io.interrupts.nmi.foreach { nmi => nmi := outer.nmiSinkNode.get.bundle }
 
