@@ -5,7 +5,7 @@ package radiance.subsystem
 import freechips.rocketchip.subsystem._
 import radiance.tile._
 
-case class VortexTileAttachParams(
-  tileParams: VortexTileParams,
+case class RadianceTileAttachParams(
+  tileParams: RadianceTileParams,
   crossingParams: RocketCrossingParams
-) extends CanAttachTile { type TileType = VortexTile }
+) extends CanAttachTile { type TileType = RadianceTile }

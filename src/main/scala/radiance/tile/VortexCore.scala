@@ -33,7 +33,7 @@ class VortexBundleD(
   val data = UInt(dataWidth.W) // FIXME: hardcoded
 }
 
-class VortexBundle(tile: VortexTile)(implicit p: Parameters) extends CoreBundle {
+class VortexBundle(tile: RadianceTile)(implicit p: Parameters) extends CoreBundle {
   val clock = Input(Clock())
   val reset = Input(Reset())
   // val hartid = Input(UInt(tileIdLen.W))
@@ -105,7 +105,7 @@ class VortexBundle(tile: VortexTile)(implicit p: Parameters) extends CoreBundle 
   val traceStall = Input(Bool())
 }
 
-class Vortex(tile: VortexTile)(implicit p: Parameters)
+class Vortex(tile: RadianceTile)(implicit p: Parameters)
     extends BlackBox(
       // Each Vortex core gets tied-off tileId of 0, 1, 2, 3, ...
       // The actual MHARTID read by the program is different by warp, not core;

@@ -18,7 +18,7 @@ class WithRadianceCores(
   case TilesLocated(InSubsystem) => {
     val prev = up(TilesLocated(InSubsystem), site)
     val idOffset = prev.size
-    val vortex = VortexTileParams(
+    val vortex = RadianceTileParams(
       core = VortexCoreParams(fpu = None),
       btb = None,
       useVxCache = useVxCache,
@@ -41,7 +41,7 @@ class WithRadianceCores(
         nTLBBasePageSectors = 1,
         nTLBSuperpages = 1,
         blockBytes = site(CacheBlockBytes))))
-    List.tabulate(n)(i => VortexTileAttachParams(
+    List.tabulate(n)(i => RadianceTileAttachParams(
       vortex.copy(tileId = i + idOffset),
       RocketCrossingParams()
     )) ++ prev

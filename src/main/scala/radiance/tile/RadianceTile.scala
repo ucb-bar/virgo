@@ -20,7 +20,7 @@ import radiance.memory._
 import gemmini.{Gemmini, GemminiCustomConfigs}
 import radiance.subsystem.{GPUMemParams, GPUMemory}
 
-case class VortexTileParams(
+case class RadianceTileParams(
     core: VortexCoreParams = VortexCoreParams(),
     useVxCache: Boolean = false,
     icache: Option[ICacheParams] = None /* Some(ICacheParams()) */,
@@ -33,22 +33,22 @@ case class VortexTileParams(
     blockerCtrlAddr: Option[BigInt] = None,
     clockSinkParams: ClockSinkParameters = ClockSinkParameters(),
     boundaryBuffers: Option[RocketTileBoundaryBufferParams] = None
-) extends InstantiableTileParams[VortexTile] {
+) extends InstantiableTileParams[RadianceTile] {
   // TODO: want to use ICache/DCacheParams as well
   // require(icache.isDefined)
   // require(dcache.isDefined)
 
   def instantiate(crossing: HierarchicalElementCrossingParamsLike, lookup: LookupByHartIdImpl)(
       implicit p: Parameters
-  ): VortexTile = {
-    new VortexTile(this, crossing, lookup)
+  ): RadianceTile = {
+    new RadianceTile(this, crossing, lookup)
   }
   val baseName = name.getOrElse("radiance_tile")
   val uniqueName = s"${baseName}_$tileId"
 }
 
 // TODO: move to VortexCore
-// VortexTileParams extends TileParams which require a `core: CoreParams`
+// RadianceTileParams extends TileParams which require a `core: CoreParams`
 // field, so VortexCoreParams needs to extend from CoreParams as well,
 // requiring all these fields to be initialized.  Most of this is unnecessary
 // though. TODO see how BOOM does that
@@ -102,8 +102,8 @@ case class VortexCoreParams(
   val traceHasWdata: Boolean = false // ooo wb, so no wdata in trace
 }
 
-class VortexTile private (
-    val vortexParams: VortexTileParams,
+class RadianceTile private (
+    val vortexParams: RadianceTileParams,
     crossing: ClockCrossingType,
     lookup: LookupByHartIdImpl,
     q: Parameters
@@ -112,7 +112,7 @@ class VortexTile private (
     with SourcesExternalNotifications {
   // Private constructor ensures altered LazyModule.p is used implicitly
   def this(
-      params: VortexTileParams,
+      params: RadianceTileParams,
       crossing: HierarchicalElementCrossingParamsLike,
       lookup: LookupByHartIdImpl
   )(implicit p: Parameters) =
@@ -137,7 +137,7 @@ class VortexTile private (
 
   require(
     p(SIMTCoreKey).isDefined,
-    "SIMTCoreKey not defined; make sure to use WithSimtLanes when using VortexTile"
+    "SIMTCoreKey not defined; make sure to use WithSimtLanes when using RadianceTile"
   )
   val numLanes = p(SIMTCoreKey) match {
     case Some(simtParam) => simtParam.nLanes
@@ -410,7 +410,7 @@ class VortexTile private (
     Resource(cpuDevice, "reg").bind(ResourceAddress(tileId))
   }
 
-  override lazy val module = new VortexTileModuleImp(this)
+  override lazy val module = new RadianceTileModuleImp(this)
 
   override def makeMasterBoundaryBuffers(
       crossing: ClockCrossingType
@@ -443,7 +443,7 @@ class VortexTile private (
   }
 }
 
-class VortexTileModuleImp(outer: VortexTile) extends BaseTileModuleImp(outer) {
+class RadianceTileModuleImp(outer: RadianceTile) extends BaseTileModuleImp(outer) {
   Annotated.params(this, outer.vortexParams)
 
   val core = Module(new Vortex(outer)(outer.p))
