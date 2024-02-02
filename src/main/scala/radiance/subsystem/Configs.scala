@@ -172,3 +172,14 @@ class WithNCustomSmallRocketCores(
     )) ++ prev
   }
 })
+
+class WithExtGPUMem(address: BigInt = BigInt("0x100000000", 16),
+                    size: BigInt = 0x80000000) extends Config((site, here, up) => {
+  case GPUMemory() => Some(GPUMemParams(address, size))
+  case ExtMem => up(ExtMem, site).map(x => {
+    val gap = address - x.master.base - x.master.size
+    x.copy(master = x.master.copy(size = x.master.size + gap + size))
+  })
+})
+case class GPUMemParams(address: BigInt = BigInt("0x100000000", 16), size: BigInt = 0x80000000)
+case class GPUMemory() extends Field[Option[GPUMemParams]](None)

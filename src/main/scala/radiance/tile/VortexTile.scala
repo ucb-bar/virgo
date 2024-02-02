@@ -18,6 +18,7 @@ import freechips.rocketchip.regmapper.RegField
 import freechips.rocketchip.tile._
 import radiance.memory._
 import gemmini.{Gemmini, GemminiCustomConfigs}
+import radiance.subsystem.{GPUMemParams, GPUMemory}
 
 case class VortexTileParams(
     core: VortexCoreParams = VortexCoreParams(),
@@ -334,20 +335,26 @@ class VortexTile private (
   smemNodes.foreach(smemXbar.node := _)
   // smemBanks.foreach(_.node := smemXbar.node)
 
+  val base = p(GPUMemory()) match {
+    case Some(GPUMemParams(baseAddr, _)) => baseAddr
+    case _ => BigInt(0)
+  }
+
   if (vortexParams.useVxCache) {
-    tlMasterXbar.node := TLWidthWidget(16) := memNode
+    tlMasterXbar.node := AddressRewriterNode(base) := TLWidthWidget(16) := memNode
   } else {
     // imemNodes.foreach { tlMasterXbar.node := TLWidthWidget(4) := _ }
-    tlMasterXbar.node :=* icacheNode
-    tlMasterXbar.node :=* dcacheNode
+    tlMasterXbar.node :=* AddressRewriterNode(base) :=* icacheNode
+    tlMasterXbar.node :=* AddressRewriterNode(base) :=* dcacheNode
   }
+
 
   // ROCC
   // TODO: parametrize
   val gemmini = LazyModule(new Gemmini(GemminiCustomConfigs.unifiedMemConfig))
   val roccs: Seq[LazyRoCC] = Seq(gemmini)
-  tlMasterXbar.node :=* gemmini.atlNode
-  tlOtherMastersNode :=* gemmini.tlNode
+  tlMasterXbar.node :=* AddressRewriterNode(base) :=* gemmini.atlNode
+  tlOtherMastersNode :=* AddressRewriterNode(base) :=* gemmini.tlNode
 
   gemmini.stlNode :=* TLWidthWidget(4) :=* smemXbar.node
   gemmini.unified_mem_node :=* TLWidthWidget(4) :=* smemXbar.node
