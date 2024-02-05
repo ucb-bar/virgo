@@ -147,18 +147,13 @@ class RadianceTile private (
     case None            => 4
   }
 
-  // CAUTION: imemSourceWidth is dependent on the ibuffer size.  We have to
-  // make sure (1 << imemSourceWidth) is smaller than the per-warp ibuffer
-  // size; otherwise, more requests than what ibuffer can accommodate can fire,
-  // and responses might stall in the downstream.  This migth cause issues when
-  // there are also outstanding dmem responses that might get blocked from
-  // going back to the core by a previous imem response due to serialization at
-  // the narrow tile<->sbus port, leading to a deadlock.
-  //
-  // This condition should ideally be asserted at elaboration time, but since
-  // ibuffer size is set as a hardcoded macro IBUF_SIZE that's uncontrollable
-  // from Chisel, there's no easy solution.  We at least don't expose this as a
-  // Parameter and leave as a hardcoded value here.
+  // CAUTION: imemSourceWidth is dependent on the ibuffer size.  We have to make
+  // sure (1 << imemSourceWidth) is smaller than the per-warp ibuffer size;
+  // otherwise, more requests than what ibuffer can accommodate can fire, and
+  // responses might stall in the downstream.  This might cause issues when
+  // there is also an outstanding dmem response that gets blocked by a previous
+  // imem response due to serialization at the single tile<->sbus port, leading
+  // to a stall in the backend pipeline and resulting in a deadlock.
   val imemSourceWidth = 4 // 1 << imemSourceWidth == IBUF_SIZE
 
   val dmemSourceWidth = p(SIMTCoreKey) match {
