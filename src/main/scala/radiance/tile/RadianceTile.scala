@@ -27,7 +27,7 @@ case class RadianceTileParams(
     dcache: Option[DCacheParams] = None /* Some(DCacheParams()) */,
     btb: Option[BTBParams] = None, // Some(BTBParams()),
     dataScratchpadBytes: Int = 0,
-    name: Option[String] = Some("vortex_tile"),
+    name: Option[String] = Some("radiance_tile"),
     tileId: Int = 0,
     beuAddr: Option[BigInt] = None,
     blockerCtrlAddr: Option[BigInt] = None,
@@ -38,8 +38,11 @@ case class RadianceTileParams(
   // require(icache.isDefined)
   // require(dcache.isDefined)
 
-  def instantiate(crossing: HierarchicalElementCrossingParamsLike, lookup: LookupByHartIdImpl)(
-      implicit p: Parameters
+  def instantiate(
+      crossing: HierarchicalElementCrossingParamsLike,
+      lookup: LookupByHartIdImpl
+  )(implicit
+      p: Parameters
   ): RadianceTile = {
     new RadianceTile(this, crossing, lookup)
   }
@@ -103,11 +106,11 @@ case class VortexCoreParams(
 }
 
 class RadianceTile private (
-    val vortexParams: RadianceTileParams,
+    val radianceParams: RadianceTileParams,
     crossing: ClockCrossingType,
     lookup: LookupByHartIdImpl,
     q: Parameters
-) extends BaseTile(vortexParams, crossing, lookup, q)
+) extends BaseTile(radianceParams, crossing, lookup, q)
     with SinksExternalInterrupts
     with SourcesExternalNotifications {
   // Private constructor ensures altered LazyModule.p is used implicitly
@@ -125,7 +128,7 @@ class RadianceTile private (
   // Memory-mapped region for HTIF communication
   // We use fixed addresses instead of tohost/fromhost
   val regDevice =
-    new SimpleDevice("vortex-reg", Seq(s"vortex-reg${tileParams.tileId}"))
+    new SimpleDevice("radiance-reg", Seq(s"radiance-reg${tileParams.tileId}"))
   val regNode = TLRegisterNode(
     address = Seq(AddressSet(0x7c000000 + 0x1000 * tileParams.tileId, 0xfff)),
     device = regDevice,
@@ -191,7 +194,7 @@ class RadianceTile private (
           clients = Seq(
             TLMasterParameters.v1(
               sourceId = IdRange(0, 1 << imemSourceWidth),
-              name = s"Vortex Core ${vortexParams.tileId} I-Mem $i",
+              name = s"Vortex Core ${radianceParams.tileId} I-Mem $i",
               requestFifo = true,
               supportsProbe =
                 TransferSizes(1, lazyCoreParamsView.coreDataBytes),
@@ -210,7 +213,7 @@ class RadianceTile private (
           clients = Seq(
             TLMasterParameters.v1(
               sourceId = IdRange(0, 1 << dmemSourceWidth),
-              name = s"Vortex Core ${vortexParams.tileId} D-Mem Lane $i",
+              name = s"Vortex Core ${radianceParams.tileId} D-Mem Lane $i",
               requestFifo = true,
               supportsProbe =
                 TransferSizes(1, lazyCoreParamsView.coreDataBytes),
@@ -233,7 +236,7 @@ class RadianceTile private (
           clients = Seq(
             TLMasterParameters.v1(
               sourceId = IdRange(0, 1 << smemSourceWidth),
-              name = s"Vortex Core ${vortexParams.tileId} SharedMem Lane $i",
+              name = s"Vortex Core ${radianceParams.tileId} SharedMem Lane $i",
               requestFifo = true,
               supportsProbe =
                 TransferSizes(1, lazyCoreParamsView.coreDataBytes),
@@ -266,7 +269,7 @@ class RadianceTile private (
           TLMasterParameters.v1(
             // FIXME: need to also respect imemSourceWidth
             sourceId = IdRange(0, 1 << dmemSourceWidth),
-            name = s"Vortex Core ${vortexParams.tileId} Mem Interface",
+            name = s"Vortex Core ${radianceParams.tileId} Mem Interface",
             requestFifo = true,
             supportsProbe = TransferSizes(16, 16), // FIXME: hardcoded
             supportsGet = TransferSizes(16, 16),
@@ -340,7 +343,7 @@ class RadianceTile private (
     case _ => BigInt(0)
   }
 
-  if (vortexParams.useVxCache) {
+  if (radianceParams.useVxCache) {
     tlMasterXbar.node := AddressRewriterNode(base) := TLWidthWidget(16) := memNode
   } else {
     // imemNodes.foreach { tlMasterXbar.node := TLWidthWidget(4) := _ }
@@ -393,7 +396,7 @@ class RadianceTile private (
 
   val cpuDevice: SimpleDevice = new SimpleDevice(
     "cpu",
-    Seq(s"sifive,vortex${tileParams.tileId}", "riscv")
+    Seq(s"sifive,radiance${tileParams.tileId}", "riscv")
   ) {
     override def parent = Some(ResourceAnchors.cpus)
     override def describe(resources: ResourceBindings): Description = {
@@ -414,7 +417,7 @@ class RadianceTile private (
 
   override def makeMasterBoundaryBuffers(
       crossing: ClockCrossingType
-  )(implicit p: Parameters) = (vortexParams.boundaryBuffers, crossing) match {
+  )(implicit p: Parameters) = (radianceParams.boundaryBuffers, crossing) match {
     case (Some(RocketTileBoundaryBufferParams(true)), _) => TLBuffer()
     case (Some(RocketTileBoundaryBufferParams(false)), _: RationalCrossing) =>
       TLBuffer(
@@ -429,7 +432,7 @@ class RadianceTile private (
 
   override def makeSlaveBoundaryBuffers(
       crossing: ClockCrossingType
-  )(implicit p: Parameters) = (vortexParams.boundaryBuffers, crossing) match {
+  )(implicit p: Parameters) = (radianceParams.boundaryBuffers, crossing) match {
     case (Some(RocketTileBoundaryBufferParams(true)), _) => TLBuffer()
     case (Some(RocketTileBoundaryBufferParams(false)), _: RationalCrossing) =>
       TLBuffer(
@@ -443,8 +446,9 @@ class RadianceTile private (
   }
 }
 
-class RadianceTileModuleImp(outer: RadianceTile) extends BaseTileModuleImp(outer) {
-  Annotated.params(this, outer.vortexParams)
+class RadianceTileModuleImp(outer: RadianceTile)
+    extends BaseTileModuleImp(outer) {
+  Annotated.params(this, outer.radianceParams)
 
   val core = Module(new Vortex(outer)(outer.p))
 
@@ -485,7 +489,7 @@ class RadianceTileModuleImp(outer: RadianceTile) extends BaseTileModuleImp(outer
   // Translate Vortex memory interface to TileLink
   // ---------------------------------------------
 
-  if (outer.vortexParams.useVxCache) {
+  if (outer.radianceParams.useVxCache) {
     println(s"width of a channel data ${core.io.mem.get.a.bits.data.getWidth}")
     println(s"width of d channel data ${core.io.mem.get.d.bits.data.getWidth}")
 
@@ -557,7 +561,10 @@ class RadianceTileModuleImp(outer: RadianceTile) extends BaseTileModuleImp(outer
       val arb = Module(
         new RRArbiter(
           // FIXME: should really be source on D channel
-          new VortexBundleA(tagWidth = outer.dmemTagWidth, dataWidth = 32).source.cloneType,
+          new VortexBundleA(
+            tagWidth = outer.dmemTagWidth,
+            dataWidth = 32
+          ).source.cloneType,
           outer.numLsuLanes
         )
       )
@@ -671,7 +678,7 @@ class RadianceTileModuleImp(outer: RadianceTile) extends BaseTileModuleImp(outer
   }
 
   // TODO: generalize for useVxCache
-  if (!outer.vortexParams.useVxCache) {}
+  if (!outer.radianceParams.useVxCache) {}
 
   // RoCC
   if (outer.roccs.size > 0) {
@@ -688,7 +695,7 @@ class RadianceTileModuleImp(outer: RadianceTile) extends BaseTileModuleImp(outer
       // Create this FPU just for RoCC
       // val nFPUPorts = outer.roccs.filter(_.usesFPU).size
       val fp_rocc_ios = outer.roccs.map(_.module.io)
-      fp_rocc_ios.map{ io =>
+      fp_rocc_ios.map { io =>
         io.fpu_req.ready := false.B
         io.fpu_resp.valid := false.B
         io.fpu_resp.bits := DontCare

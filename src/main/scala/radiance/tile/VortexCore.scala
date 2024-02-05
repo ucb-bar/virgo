@@ -41,19 +41,19 @@ class VortexBundle(tile: RadianceTile)(implicit p: Parameters) extends CoreBundl
   val interrupts = Input(new freechips.rocketchip.rocket.CoreInterrupts(false/*hasBeu*/))
   
   // conditionally instantiate ports depending on whether we want to use VX_cache or not
-  val imem = if (!tile.vortexParams.useVxCache) Some(Vec(1, new Bundle {
+  val imem = if (!tile.radianceParams.useVxCache) Some(Vec(1, new Bundle {
     val a = Decoupled(new VortexBundleA(tagWidth = tile.imemTagWidth, dataWidth = 32))
     val d = Flipped(Decoupled(new VortexBundleD(tagWidth = tile.imemTagWidth, dataWidth = 32)))
   })) else None
-  val dmem = if (!tile.vortexParams.useVxCache) Some(Vec(tile.numLsuLanes, new Bundle {
+  val dmem = if (!tile.radianceParams.useVxCache) Some(Vec(tile.numLsuLanes, new Bundle {
     // val a = Decoupled(new VortexBundleA(tagWidth = tile.dmemTagWidth, dataWidth = 32))
     // val d = Flipped(Decoupled(new VortexBundleD(tagWidth = dmemTagWidth, dataWidth = 32)))
   })) else None
-  val smem = if (!tile.vortexParams.useVxCache) Some(Vec(tile.numLsuLanes, new Bundle {
+  val smem = if (!tile.radianceParams.useVxCache) Some(Vec(tile.numLsuLanes, new Bundle {
     // val a = Decoupled(new VortexBundleA(tagWidth = tile.smemTagWidth, dataWidth = 32))
     // val d = Flipped(Decoupled(new VortexBundleD(tagWidth = tile.smemTagWidth, dataWidth = 32)))
   })) else None
-  val mem = if (tile.vortexParams.useVxCache) Some(new Bundle { 
+  val mem = if (tile.radianceParams.useVxCache) Some(new Bundle {
     val a = Decoupled(new VortexBundleA(tagWidth = 15, dataWidth = 128))
     val d = Flipped(Decoupled(new VortexBundleD(tagWidth = 15, dataWidth = 128)))
     // val a = tile.memNode.out.head._1.a.cloneType
@@ -352,7 +352,7 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   // addResource("/vsrc/vortex/hw/rtl/afu/VX_avs_wrapper.sv")
   // addResource("/vsrc/vortex/hw/rtl/afu/VX_to_mem.sv")
   // addResource("/vsrc/vortex/sim/vlsim/vortex_afu_shim.sv")
-  if (tile.vortexParams.useVxCache) {
+  if (tile.radianceParams.useVxCache) {
     addResource("/vsrc/vortex/hw/rtl/libs/VX_pending_size.sv")
     addResource("/vsrc/vortex/hw/rtl/cache/VX_shared_mem.sv")
     addResource("/vsrc/vortex/hw/rtl/cache/VX_core_rsp_merge.sv")
