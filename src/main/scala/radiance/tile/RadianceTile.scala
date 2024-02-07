@@ -339,11 +339,11 @@ class RadianceTile private (
   }
 
   if (radianceParams.useVxCache) {
-    tlMasterXbar.node := AddressRewriterNode(base) := TLWidthWidget(16) := memNode
+    tlMasterXbar.node := AddressOrNode(base) := TLWidthWidget(16) := memNode
   } else {
     // imemNodes.foreach { tlMasterXbar.node := TLWidthWidget(4) := _ }
-    tlMasterXbar.node :=* AddressRewriterNode(base) :=* icacheNode
-    tlMasterXbar.node :=* AddressRewriterNode(base) :=* dcacheNode
+    tlMasterXbar.node :=* AddressOrNode(base) :=* icacheNode
+    tlMasterXbar.node :=* AddressOrNode(base) :=* dcacheNode
   }
 
 
@@ -351,8 +351,8 @@ class RadianceTile private (
   // TODO: parametrize
   val gemmini = LazyModule(new Gemmini(GemminiCustomConfigs.unifiedMemConfig))
   val roccs: Seq[LazyRoCC] = Seq(gemmini)
-  tlMasterXbar.node :=* AddressRewriterNode(base) :=* gemmini.atlNode
-  tlOtherMastersNode :=* AddressRewriterNode(base) :=* gemmini.tlNode
+  tlMasterXbar.node :=* AddressOrNode(base) :=* gemmini.atlNode
+  tlOtherMastersNode :=* AddressOrNode(base) :=* gemmini.tlNode
 
   // MMIO
   gemmini.stlNode :=* TLWidthWidget(4) :=* smemXbar.node
