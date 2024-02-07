@@ -1297,7 +1297,7 @@ class InFlightTable(
     config.sizeEnum
   )
   val entries = config.numNewSrcIds
-  val sourceWidth = log2Ceil(config.numOldSrcIds)
+  val newSourceWidth = log2Ceil(config.numNewSrcIds)
 
   val io = IO(new Bundle {
     // Enqueue/register IO
@@ -1324,17 +1324,11 @@ class InFlightTable(
     //
     // Initiates table lookup via (valid, sourceId).  The lookup result will be
     // placed on lookupResult.
-    val lookupSourceId = Input(Valid(UInt(sourceWidth.W)))
+    val lookupSourceId = Input(Valid(UInt(newSourceWidth.W)))
     // lookupResult.ready indicates when the user module consumed the table
     // entry, so that the entry can be safely deallocated for later use.
     val lookupResult = Decoupled(entryT)
   })
-
-  println(s"CoalescingUnit InFlightTable config: {")
-  println(s"    sourceWidth: ${sourceWidth}")
-  println(s"    offsetBits: ${offsetBits}")
-  println(s"    sizeEnumBits: ${entryT.sizeEnumT.getWidth}")
-  println(s"}")
 
   val table = Mem(
     entries,
