@@ -15,6 +15,7 @@ EXTRA_SIM_PREPROC_DEFINES += \
 	+define+SIMULATION \
 	+define+SV_DPI \
 	+define+GPR_RESET \
+	+define+LSU_DUP_DISABLE \
 	+define+DBG_TRACE_CORE_PIPELINE_VCS
 
 # cargo handles building of Rust files all on its own, so make this a PHONY
