@@ -17,7 +17,7 @@ import freechips.rocketchip.prci.ClockSinkParameters
 import freechips.rocketchip.regmapper.RegField
 import freechips.rocketchip.tile._
 import radiance.memory._
-import gemmini.{Gemmini, GemminiCustomConfigs}
+import gemmini.{CapacityInKilobytes, Gemmini, GemminiCustomConfigs, GemminiFPConfigs}
 import radiance.subsystem.{GPUMemParams, GPUMemory}
 
 case class RadianceTileParams(
@@ -349,7 +349,19 @@ class RadianceTile private (
 
   // ROCC
   // TODO: parametrize
-  val gemmini = LazyModule(new Gemmini(GemminiCustomConfigs.unifiedMemConfig))
+  val gemmini = LazyModule(new Gemmini(GemminiFPConfigs.FP32DefaultConfig.copy(
+    has_training_convs = false,
+    has_max_pool = false,
+    use_tl_ext_mem = true,
+    tl_ext_mem_base = x"ff000000",
+    sp_singleported = false,
+    spad_read_delay = 8,
+    use_shared_ext_mem = true,
+    acc_sub_banks = 1,
+    has_normalizations = false,
+    sp_capacity = CapacityInKilobytes(16),
+    acc_capacity = CapacityInKilobytes(8),
+  )))
   val roccs: Seq[LazyRoCC] = Seq(gemmini)
   tlMasterXbar.node :=* AddressOrNode(base) :=* gemmini.atlNode
   tlOtherMastersNode :=* AddressOrNode(base) :=* gemmini.tlNode
@@ -362,6 +374,7 @@ class RadianceTile private (
   // to consolidate by either coalescing, or changing gemmini spad to
   // strided-by-word
   gemmini.unified_mem_node :=* TLWidthWidget(4) :=* smemXbar.node
+  TLRAM(AddressSet(x"ff004000", 0xfff)) := TLFragmenter(4, 4) := smemXbar.node
 
   /* below are copied from rocket */
 
