@@ -8,7 +8,7 @@ import freechips.rocketchip.subsystem.{BaseSubsystemConfig}
 import freechips.rocketchip.devices.tilelink._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
-import radiance.subsystem.WithSimtLanes
+import radiance.subsystem.WithSimtConfig
 import freechips.rocketchip.unittest._
 //import rocket.VortexFatBankTest
 
@@ -27,7 +27,7 @@ class WithCoalescingUnitTests extends Config((site, _, _) => {
       // Module(new TLRAMCoalescerLoggerTest(filename="sfilter.core1.thread4.trace", timeout=timeout)),
       // Module(new TLRAMCoalescerLoggerTest(filename="nearn.core1.thread4.trace", timeout=50000000 * site(TestDurationMultiplier))),
       // Module(new TLRAMCoalescerLoggerTest(filename="psort.core1.thread4.trace", timeout=timeout)),
-      // Module(new TLRAMCoalescerLoggerTest(filename="nvbit.vecadd.n100000.filter_sm0.trace", timeout=timeout)(new WithSimtLanes(32))),
+      // Module(new TLRAMCoalescerLoggerTest(filename="nvbit.vecadd.n100000.filter_sm0.trace", timeout=timeout)(new WithSimtConfig(32))),
       // Module(new TLRAMCoalescerLoggerTest(filename="nvbit.vecadd.n100000.filter_sm0.lane4.trace", timeout=timeout)),
     ) }
 })
@@ -48,12 +48,12 @@ class WithCoalescingUnitSynthesisDummy(nLanes: Int) extends Config((site, _, _) 
     implicit val p = q
     val timeout = 50000 * site(TestDurationMultiplier)
     Seq(
-      Module(new DummyCoalescerTest(timeout=timeout)(new WithSimtLanes(nLanes=4))),
+      Module(new DummyCoalescerTest(timeout=timeout)(new WithSimtConfig(nMemLanes=4))),
     ) }
 })
 
-class CoalescingUnitTestConfig extends Config(new WithCoalescingUnitTests ++ new WithTestDuration(10) ++ new WithSimtLanes(nLanes=4) ++ new BaseSubsystemConfig)
-//class VortexFatBankUnitTestConfig extends Config(new WithVortexFatBankUnitTests ++ new WithTestDuration(10) ++ new WithSimtLanes(nLanes=4) ++ new BaseSubsystemConfig)
+class CoalescingUnitTestConfig extends Config(new WithCoalescingUnitTests ++ new WithTestDuration(10) ++ new WithSimtConfig(nMemLanes=4) ++ new BaseSubsystemConfig)
+//class VortexFatBankUnitTestConfig extends Config(new WithVortexFatBankUnitTests ++ new WithTestDuration(10) ++ new WithSimtConfig(nLanes=4) ++ new BaseSubsystemConfig)
 
 // Dummy configs of various sizes for synthesis
 class CoalescingSynthesisDummyLane4Config extends Config(new WithCoalescingUnitSynthesisDummy(4) ++ new WithTestDuration(10) ++ new BaseSubsystemConfig)

@@ -140,10 +140,21 @@ class RadianceTile private (
 
   require(
     p(SIMTCoreKey).isDefined,
-    "SIMTCoreKey not defined; make sure to use WithSimtLanes when using RadianceTile"
+    "SIMTCoreKey not defined; make sure to use WithSimtConfig when using RadianceTile"
   )
-  val numLanes = p(SIMTCoreKey) match {
-    case Some(simtParam) => simtParam.nLanes
+
+  // NOTE: when changing these, remember to change +define+NUM_THREADS/WARPS in
+  // EXTRA_SIM_PREPROC_DEFINES as well!
+  val numWarps = p(SIMTCoreKey) match {
+    case Some(simtParam) => simtParam.nWarps
+    case None            => 4
+  }
+  val numCoreLanes = p(SIMTCoreKey) match {
+    case Some(simtParam) => simtParam.nCoreLanes
+    case None            => 4
+  }
+  val numLsuLanes = p(SIMTCoreKey) match {
+    case Some(simtParam) => simtParam.nMemLanes
     case None            => 4
   }
 
@@ -170,13 +181,14 @@ class RadianceTile private (
 
   val smemSourceWidth = 4 // FIXME: hardcoded
 
-  val numWarps = 4 // TODO: parametrize
+  // Replicates some of the logic of how Vortex determines the tag width of
+  // memory requests so that Chisel and Verilog are in agreement on bitwidths.
+  // See VX_gpu_pkg.sv
   val NW_WIDTH = (if (numWarps == 1) 1 else log2Ceil(numWarps))
   val UUID_WIDTH = 44
   val imemTagWidth = UUID_WIDTH + NW_WIDTH
-  val numLsuLanes = 4
-  // see VX_gpu_pkg.sv
-  val LSUQ_SIZE = 8 * (numLanes / numLsuLanes)
+
+  val LSUQ_SIZE = 8 * (numCoreLanes / numLsuLanes)
   val LSUQ_TAG_BITS = log2Ceil(LSUQ_SIZE) + 1 /*DCACHE_BATCH_SEL_BITS*/
   val dmemTagWidth = UUID_WIDTH + LSUQ_TAG_BITS
   // dmem and smem shares the same tag width, DCACHE_NOSM_TAG_WIDTH
@@ -764,7 +776,6 @@ class VortexTLAdapter(
   io.outReq.bits.corrupt := 0.U
   io.inReq.ready := io.outReq.ready
   // VortexBundleD <> TLBundleD
-  // Filtering out write requests is handled inside the wrapper Verilog
   io.inResp.valid := io.outResp.valid
   io.inResp.bits.opcode := io.outResp.bits.opcode
   io.inResp.bits.size := io.outResp.bits.size

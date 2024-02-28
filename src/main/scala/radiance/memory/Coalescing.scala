@@ -12,8 +12,13 @@ import freechips.rocketchip.tilelink._
 
 // TODO: find better place for these
 
-// Note: numNewSrcId is not a part of CoreParam, because the SIMT core should be agnostic to how inflight coalesced request can be genertated
-case class SIMTCoreParams(nLanes: Int = 4, nSrcIds: Int = 8)
+case class SIMTCoreParams(
+    nWarps: Int = 4,     // # of warps in the core
+    nCoreLanes: Int = 4, // # of SIMT threads in the core
+    nMemLanes: Int = 4,  // # of memory lanes in the memory interface to the
+                         // cache; relates to the LSU lanes
+    nSrcIds: Int = 8     // # of source IDs allocated to each of the nMemLanes
+)
 case class MemtraceCoreParams(
     tracefilename: String = "undefined",
     traceHasSource: Boolean = false
@@ -2325,7 +2330,7 @@ class DummyDriverImp(outer: DummyDriver, config: CoalescerConfig)
 // A dummy harness around the coalescer for use in VLSI flow.
 // Should not instantiate any memtrace modules.
 class DummyCoalescer(implicit p: Parameters) extends LazyModule {
-  val numLanes = p(SIMTCoreKey).get.nLanes
+  val numLanes = p(SIMTCoreKey).get.nMemLanes
   val config = DefaultCoalescerConfig.copy(numLanes = numLanes)
 
   val driver = LazyModule(new DummyDriver(config))
@@ -2362,7 +2367,7 @@ class DummyCoalescerTest(timeout: Int = 500000)(implicit p: Parameters)
 // tracedriver --> coalescer --> tracelogger --> tlram
 class TLRAMCoalescerLogger(filename: String)(implicit p: Parameters)
     extends LazyModule {
-  val numLanes = p(SIMTCoreKey).get.nLanes
+  val numLanes = p(SIMTCoreKey).get.nMemLanes
   val config = DefaultCoalescerConfig.copy(numLanes = numLanes)
 
   val driver = LazyModule(new MemTraceDriver(config, filename))
@@ -2454,7 +2459,7 @@ class TLRAMCoalescerLoggerTest(filename: String, timeout: Int = 500000)(implicit
 
 // tracedriver --> coalescer --> tlram
 class TLRAMCoalescer(implicit p: Parameters) extends LazyModule {
-  val numLanes = p(SIMTCoreKey).get.nLanes
+  val numLanes = p(SIMTCoreKey).get.nMemLanes
   val config = DefaultCoalescerConfig.copy(numLanes = numLanes)
 
   val filename = "vecadd.core1.thread4.trace"

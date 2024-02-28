@@ -60,7 +60,7 @@ class FuzzerTile private (
   // val statusNode = BundleBridgeSource(() => new GroundTestStatus)
 
   val (numLanes, numSrcIds) = p(SIMTCoreKey) match {
-      case Some(param) => (param.nLanes, param.nSrcIds)
+      case Some(param) => (param.nMemLanes, param.nSrcIds)
       case None => {
         require(false, "fuzzer requires SIMTCoreKey to be defined")
         (0, 0)

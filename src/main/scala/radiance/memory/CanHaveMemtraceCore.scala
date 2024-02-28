@@ -17,10 +17,10 @@ trait CanHaveMemtraceCore { this: BaseSubsystem =>
     // Safe to use get as WithMemtraceCore requires WithNLanes to be defined
     val simtParam = p(SIMTCoreKey).get
     val config = DefaultCoalescerConfig.copy(
-      numLanes = simtParam.nLanes, 
+      numLanes = simtParam.nMemLanes, 
       numOldSrcIds = simtParam.nSrcIds
       )
-    val numLanes = simtParam.nLanes
+    val numLanes = simtParam.nMemLanes
     val filename = param.tracefilename
 
     // Need to explicitly generate clock domain; see rocket-chip 8881ccd

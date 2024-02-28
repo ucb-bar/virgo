@@ -66,10 +66,13 @@ class WithFuzzerCores(
 })
 
 // `nSrcIds`: number of source IDs for dmem requests on each SIMT lane
-class WithSimtLanes(nLanes: Int, nSrcIds: Int = 8) extends Config((site, _, up) => {
+class WithSimtConfig(nWarps: Int = 4, nCoreLanes: Int = 4, nMemLanes: Int = 4, nSrcIds: Int = 8)
+extends Config((site, _, up) => {
   case SIMTCoreKey => {
     Some(up(SIMTCoreKey, site).getOrElse(SIMTCoreParams()).copy(
-      nLanes = nLanes,
+      nWarps = nWarps,
+      nCoreLanes = nCoreLanes,
+      nMemLanes = nMemLanes,
       nSrcIds = nSrcIds
       ))
   }
@@ -105,7 +108,7 @@ class WithVortexL1Banks(nBanks: Int = 4) extends Config ((site, _, up) => {
 class WithCoalescer(nNewSrcIds: Int = 8, enable : Boolean = true) extends Config((site, _, up) => {
   case CoalescerKey => {
     val (nLanes, numOldSrcIds) = up(SIMTCoreKey, site) match {
-      case Some(param) => (param.nLanes, param.nSrcIds)
+      case Some(param) => (param.nMemLanes, param.nSrcIds)
       case None => (1,1)
     }
 
