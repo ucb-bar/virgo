@@ -13,10 +13,12 @@ import radiance.memory._
 
 class WithRadianceCores(
   n: Int,
+  location: HierarchicalLocation,
+  crossing: RocketCrossingParams,
   useVxCache: Boolean
 ) extends Config((site, _, up) => {
-  case TilesLocated(InSubsystem) => {
-    val prev = up(TilesLocated(InSubsystem), site)
+  case TilesLocated(`location`) => {
+    val prev = up(TilesLocated(`location`), site)
     val idOffset = prev.size
     val vortex = RadianceTileParams(
       core = VortexCoreParams(fpu = None),
@@ -43,10 +45,19 @@ class WithRadianceCores(
         blockBytes = site(CacheBlockBytes))))
     List.tabulate(n)(i => RadianceTileAttachParams(
       vortex.copy(tileId = i + idOffset),
-      RocketCrossingParams()
+      crossing
     )) ++ prev
   }
-})
+}) {
+  def this(n: Int, location: HierarchicalLocation = InSubsystem, useVxCache: Boolean = false) = this(n, location, RocketCrossingParams(
+    master = HierarchicalElementMasterPortParams.locationDefault(location),
+    slave = HierarchicalElementSlavePortParams.locationDefault(location),
+    mmioBaseAddressPrefixWhere = location match {
+      case InSubsystem => CBUS
+      case InCluster(clusterId) => CCBUS(clusterId)
+    }
+  ), useVxCache)
+}
 
 class WithFuzzerCores(
   n: Int,
