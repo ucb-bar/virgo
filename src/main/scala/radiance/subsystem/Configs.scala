@@ -76,6 +76,25 @@ class WithFuzzerCores(
   }
 })
 
+class WithRadianceCluster(
+  clusterId: Int,
+  location: HierarchicalLocation = InSubsystem,
+  crossing: RocketCrossingParams = RocketCrossingParams() // TODO make this not rocket
+) extends Config((site, here, up) => {
+  case ClustersLocated(`location`) => up(ClustersLocated(location)) :+ RadianceClusterAttachParams(
+    RadianceClusterParams(clusterId = clusterId),
+    crossing)
+  case TLNetworkTopologyLocated(InCluster(`clusterId`)) => List(
+    ClusterBusTopologyParams(
+      clusterId = clusterId,
+      csbus = site(SystemBusKey),
+      ccbus = site(ControlBusKey).copy(errorDevice = None),
+      coherence = site(ClusterBankedCoherenceKey(clusterId))
+    )
+  )
+  case PossibleTileLocations => up(PossibleTileLocations) :+ InCluster(clusterId)
+})
+
 // `nSrcIds`: number of source IDs for dmem requests on each SIMT lane
 class WithSimtConfig(nWarps: Int = 4, nCoreLanes: Int = 4, nMemLanes: Int = 4, nSrcIds: Int = 8)
 extends Config((site, _, up) => {
