@@ -143,8 +143,8 @@ class RadianceTile private (
     "SIMTCoreKey not defined; make sure to use WithSimtConfig when using RadianceTile"
   )
 
-  // NOTE: when changing these, remember to change +define+NUM_THREADS/WARPS in
-  // EXTRA_SIM_PREPROC_DEFINES as well!
+  // NOTE: when changing these, remember to change +define+NUM_CORES/THREADS/WARPS in
+  // radiance.mk as well!
   val numWarps = p(SIMTCoreKey) match {
     case Some(simtParam) => simtParam.nWarps
     case None            => 4
@@ -303,9 +303,6 @@ class RadianceTile private (
   // Conditionally instantiate L1 cache
   val (icacheNode, dcacheNode): (TLNode, TLNode) = p(VortexL1Key) match {
     case Some(vortexL1Config) => {
-      println(
-        s"============ Using Vortex L1 cache ================="
-      )
       // require(
       //   p(CoalescerKey).isDefined,
       //   "Vortex L1 configuration currently only works when coalescer is also enabled."
@@ -328,23 +325,6 @@ class RadianceTile private (
     }
   }
 
-  // Instantiate sharedmem banks
-  //
-  // Instantiate the same number of banks as there are lanes.
-  // TODO: parametrize
-  // val smemBanks = Seq.tabulate(numLsuLanes) { bankId =>
-  //   // Banked-by-word (4 bytes)
-  //   // base for bank 1: ff...000000|01|00
-  //   // mask for bank 1; 00...111111|00|11
-  //   val base = 0xff000000L | (bankId * 4 /*wordSize*/ )
-  //   val mask = 0x00001fffL ^ ((numLsuLanes - 1) * 4 /*wordSize*/ )
-  //   LazyModule(new TLRAM(AddressSet(base, mask), beatBytes = 4 /*wordSize*/ ))
-  // }
-  // smem lanes-to-banks crossbar
-  val smemXbar = LazyModule(new TLXbar)
-  smemNodes.foreach(smemXbar.node := _)
-  // smemBanks.foreach(_.node := smemXbar.node)
-
   val base = p(GPUMemory()) match {
     case Some(GPUMemParams(baseAddr, _)) => baseAddr
     case _ => BigInt(0)
@@ -361,32 +341,32 @@ class RadianceTile private (
 
   // ROCC
   // TODO: parametrize
-  val gemmini = LazyModule(new Gemmini(GemminiFPConfigs.FP32DefaultConfig.copy(
-    has_training_convs = false,
-    has_max_pool = false,
-    use_tl_ext_mem = true,
-    tl_ext_mem_base = x"ff000000",
-    sp_singleported = false,
-    spad_read_delay = 8,
-    use_shared_ext_mem = true,
-    acc_sub_banks = 1,
-    has_normalizations = false,
-    sp_capacity = CapacityInKilobytes(16),
-    acc_capacity = CapacityInKilobytes(8),
-  )))
-  val roccs: Seq[LazyRoCC] = Seq(gemmini)
-  tlMasterXbar.node :=* AddressOrNode(base) :=* gemmini.atlNode
-  tlOtherMastersNode :=* AddressOrNode(base) :=* gemmini.tlNode
+  // val gemmini = LazyModule(new Gemmini(GemminiFPConfigs.FP32DefaultConfig.copy(
+  //   has_training_convs = false,
+  //   has_max_pool = false,
+  //   use_tl_ext_mem = true,
+  //   tl_ext_mem_base = x"ff000000",
+  //   sp_singleported = false,
+  //   spad_read_delay = 8,
+  //   use_shared_ext_mem = true,
+  //   acc_sub_banks = 1,
+  //   has_normalizations = false,
+  //   sp_capacity = CapacityInKilobytes(16),
+  //   acc_capacity = CapacityInKilobytes(8),
+  // )))
+  // val roccs: Seq[LazyRoCC] = Seq(gemmini)
+  // tlMasterXbar.node :=* AddressOrNode(base) :=* gemmini.atlNode
+  // tlOtherMastersNode :=* AddressOrNode(base) :=* gemmini.tlNode
 
   // MMIO
-  gemmini.stlNode :=* TLWidthWidget(4) :=* smemXbar.node
+  // gemmini.stlNode :=* TLWidthWidget(4) :=* smemXbar.node
   // sharedmem access
   //
   // FIXME: gemmini spad has 16B data width; core smem interface has 4B. Need
   // to consolidate by either coalescing, or changing gemmini spad to
   // strided-by-word
-  gemmini.unified_mem_node :=* TLWidthWidget(4) :=* smemXbar.node
-  TLRAM(AddressSet(x"ff004000", 0xfff)) := TLFragmenter(4, 4) := smemXbar.node
+  // gemmini.unified_mem_node :=* TLWidthWidget(4) :=* smemXbar.node
+  // TLRAM(AddressSet(x"ff004000", 0xfff)) := TLFragmenter(4, 4) := smemXbar.node
 
   /* below are copied from rocket */
 
@@ -700,33 +680,33 @@ class RadianceTileModuleImp(outer: RadianceTile)
   // TODO: generalize for useVxCache
   if (!outer.radianceParams.useVxCache) {}
 
-  // RoCC
-  if (outer.roccs.size > 0) {
-    val (respArb, cmdRouter) = {
-      val respArb = Module(new RRArbiter(new RoCCResponse()(outer.p), outer.roccs.size))
-      val cmdRouter = Module(new RoccCommandRouter(outer.roccs.map(_.opcodes))(outer.p))
-      outer.roccs.zipWithIndex.foreach { case (rocc, i) =>
-        // ptwPorts ++= rocc.module.io.ptw
-        rocc.module.io.ptw <> DontCare
-        rocc.module.io.mem <> DontCare
-        rocc.module.io.cmd <> cmdRouter.io.out(i)
-        respArb.io.in(i) <> Queue(rocc.module.io.resp)
-      }
-      // Create this FPU just for RoCC
-      // val nFPUPorts = outer.roccs.filter(_.usesFPU).size
-      val fp_rocc_ios = outer.roccs.map(_.module.io)
-      fp_rocc_ios.map { io =>
-        io.fpu_req.ready := false.B
-        io.fpu_resp.valid := false.B
-        io.fpu_resp.bits := DontCare
-      }
-      (respArb, cmdRouter)
-    }
+  // // RoCC
+  // if (outer.roccs.size > 0) {
+  //   val (respArb, cmdRouter) = {
+  //     val respArb = Module(new RRArbiter(new RoCCResponse()(outer.p), outer.roccs.size))
+  //     val cmdRouter = Module(new RoccCommandRouter(outer.roccs.map(_.opcodes))(outer.p))
+  //     outer.roccs.zipWithIndex.foreach { case (rocc, i) =>
+  //       // ptwPorts ++= rocc.module.io.ptw
+  //       rocc.module.io.ptw <> DontCare
+  //       rocc.module.io.mem <> DontCare
+  //       rocc.module.io.cmd <> cmdRouter.io.out(i)
+  //       respArb.io.in(i) <> Queue(rocc.module.io.resp)
+  //     }
+  //     // Create this FPU just for RoCC
+  //     // val nFPUPorts = outer.roccs.filter(_.usesFPU).size
+  //     val fp_rocc_ios = outer.roccs.map(_.module.io)
+  //     fp_rocc_ios.map { io =>
+  //       io.fpu_req.ready := false.B
+  //       io.fpu_resp.valid := false.B
+  //       io.fpu_resp.bits := DontCare
+  //     }
+  //     (respArb, cmdRouter)
+  //   }
 
-    cmdRouter.io.in <> DontCare
-    outer.roccs.foreach(_.module.io.exception := DontCare)
-    respArb.io.out <> DontCare
-  }
+  //   cmdRouter.io.in <> DontCare
+  //   outer.roccs.foreach(_.module.io.exception := DontCare)
+  //   respArb.io.out <> DontCare
+  // }
 }
 
 // Some @copypaste from CoalescerSourceGen.
