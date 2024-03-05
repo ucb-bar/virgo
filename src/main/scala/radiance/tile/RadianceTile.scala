@@ -617,6 +617,28 @@ class RadianceTileModuleImp(outer: RadianceTile)
       }
       core.io.dmem_d_valid := dmem_d_valid_vec.asUInt
 
+      // performance counters
+      val pendingReqsCumulative = RegInit(UInt(32.W), 0.U)
+      val totalReqs = RegInit(UInt(32.W), 0.U)
+
+      val reqFireCountPerCycle = PopCount(dmemTLAdapters.map(_.io.inReq.fire))
+      val respFireCountPerCycle = PopCount(dmemTLAdapters.map(_.io.inResp.fire))
+      totalReqs := totalReqs + reqFireCountPerCycle
+
+      val pendingReqsPerCycle = reqFireCountPerCycle - respFireCountPerCycle
+      pendingReqsCumulative := pendingReqsCumulative + pendingReqsPerCycle
+
+      val prevFinished = RegNext(core.io.finished)
+      val justFinished = !prevFinished && core.io.finished
+      when (justFinished) {
+        printf("PERF: dmem: pending requests cumulative: %d\n", pendingReqsCumulative)
+        printf("PERF: dmem: total requests: %d\n", totalReqs)
+      }
+
+      dontTouch(totalReqs)
+      dontTouch(pendingReqsCumulative)
+
+      // now connect TL adapter downstream ports to the tile egress ports
       (dmemTLAdapters zip dmemTLBundles) foreach { case (tlAdapter, tlOut) =>
         tlOut.a <> tlAdapter.io.outReq
         tlAdapter.io.outResp <> tlOut.d
@@ -666,6 +688,28 @@ class RadianceTileModuleImp(outer: RadianceTile)
           tlAdapter.io.inResp.ready := core.io.smem_d_ready(i)
       }
 
+      // performance counters
+      val pendingReqsCumulative = RegInit(UInt(32.W), 0.U)
+      val totalReqs = RegInit(UInt(32.W), 0.U)
+
+      val reqFireCountPerCycle = PopCount(smemTLAdapters.map(_.io.inReq.fire))
+      val respFireCountPerCycle = PopCount(smemTLAdapters.map(_.io.inResp.fire))
+      totalReqs := totalReqs + reqFireCountPerCycle
+
+      val pendingReqsPerCycle = reqFireCountPerCycle - respFireCountPerCycle
+      pendingReqsCumulative := pendingReqsCumulative + pendingReqsPerCycle
+
+      val prevFinished = RegNext(core.io.finished)
+      val justFinished = !prevFinished && core.io.finished
+      when (justFinished) {
+        printf("PERF: smem: pending requests cumulative: %d\n", pendingReqsCumulative)
+        printf("PERF: smem: total requests: %d\n", totalReqs)
+      }
+
+      dontTouch(totalReqs)
+      dontTouch(pendingReqsCumulative)
+
+      // now connect TL adapter downstream ports to the tile egress ports
       (smemTLAdapters zip smemTLBundles) foreach { case (tlAdapter, tlOut) =>
         tlOut.a <> tlAdapter.io.outReq
         tlAdapter.io.outResp <> tlOut.d
