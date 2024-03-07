@@ -524,6 +524,38 @@ class RadianceTileModuleImp(outer: RadianceTile)
       imemTLAdapter.io.outResp <> outer.imemNodes(0).out(0)._1.d
     }
 
+    def performanceCounters(reqBundles: Seq[DecoupledIO[VortexBundleA]],
+                            respBundles: Seq[DecoupledIO[VortexBundleD]],
+                            desc: String) = {
+      val currentPendingReqs = RegInit(SInt(32.W), 0.S)
+      val pendingReqsCumulative = RegInit(SInt(32.W), 0.S)
+      val totalReqs = RegInit(UInt(32.W), 0.U)
+
+      val reqFireCountPerCycle = Wire(UInt(32.W))
+      val respFireCountPerCycle = Wire(UInt(32.W))
+      val reqReadFires = reqBundles.map { b => b.fire && b.bits.opcode === 4.U /* Get */ }
+      val respReadFires = respBundles.map { b => b.fire && b.bits.opcode === 1.U /* AccessAckData */}
+      reqFireCountPerCycle := PopCount(reqReadFires)
+      respFireCountPerCycle := PopCount(respReadFires)
+      totalReqs := totalReqs + reqFireCountPerCycle
+
+      val diffPendingReqs = reqFireCountPerCycle.asSInt - respFireCountPerCycle.asSInt
+      currentPendingReqs := currentPendingReqs + diffPendingReqs
+      pendingReqsCumulative := pendingReqsCumulative + currentPendingReqs
+
+      val prevFinished = RegNext(core.io.finished)
+      val justFinished = !prevFinished && core.io.finished
+      when (justFinished) {
+        printf(s"PERF: ${desc}: pending requests cumulative: %d\n", pendingReqsCumulative)
+        printf(s"PERF: ${desc}: total requests: %d\n", totalReqs)
+      }
+
+      dontTouch(totalReqs)
+      dontTouch(diffPendingReqs)
+      dontTouch(currentPendingReqs)
+      dontTouch(pendingReqsCumulative)
+    }
+
     def connectDmem = {
       // @perf: this would duplicate SourceGenerator table for every lane and eat
       // up some area
@@ -617,26 +649,8 @@ class RadianceTileModuleImp(outer: RadianceTile)
       }
       core.io.dmem_d_valid := dmem_d_valid_vec.asUInt
 
-      // performance counters
-      val pendingReqsCumulative = RegInit(UInt(32.W), 0.U)
-      val totalReqs = RegInit(UInt(32.W), 0.U)
-
-      val reqFireCountPerCycle = PopCount(dmemTLAdapters.map(_.io.inReq.fire))
-      val respFireCountPerCycle = PopCount(dmemTLAdapters.map(_.io.inResp.fire))
-      totalReqs := totalReqs + reqFireCountPerCycle
-
-      val pendingReqsPerCycle = reqFireCountPerCycle - respFireCountPerCycle
-      pendingReqsCumulative := pendingReqsCumulative + pendingReqsPerCycle
-
-      val prevFinished = RegNext(core.io.finished)
-      val justFinished = !prevFinished && core.io.finished
-      when (justFinished) {
-        printf("PERF: dmem: pending requests cumulative: %d\n", pendingReqsCumulative)
-        printf("PERF: dmem: total requests: %d\n", totalReqs)
-      }
-
-      dontTouch(totalReqs)
-      dontTouch(pendingReqsCumulative)
+      performanceCounters(dmemTLAdapters.map(_.io.inReq), dmemTLAdapters.map(_.io.inResp),
+        desc = s"core${outer.tileId}-dmem")
 
       // now connect TL adapter downstream ports to the tile egress ports
       (dmemTLAdapters zip dmemTLBundles) foreach { case (tlAdapter, tlOut) =>
@@ -688,26 +702,8 @@ class RadianceTileModuleImp(outer: RadianceTile)
           tlAdapter.io.inResp.ready := core.io.smem_d_ready(i)
       }
 
-      // performance counters
-      val pendingReqsCumulative = RegInit(UInt(32.W), 0.U)
-      val totalReqs = RegInit(UInt(32.W), 0.U)
-
-      val reqFireCountPerCycle = PopCount(smemTLAdapters.map(_.io.inReq.fire))
-      val respFireCountPerCycle = PopCount(smemTLAdapters.map(_.io.inResp.fire))
-      totalReqs := totalReqs + reqFireCountPerCycle
-
-      val pendingReqsPerCycle = reqFireCountPerCycle - respFireCountPerCycle
-      pendingReqsCumulative := pendingReqsCumulative + pendingReqsPerCycle
-
-      val prevFinished = RegNext(core.io.finished)
-      val justFinished = !prevFinished && core.io.finished
-      when (justFinished) {
-        printf("PERF: smem: pending requests cumulative: %d\n", pendingReqsCumulative)
-        printf("PERF: smem: total requests: %d\n", totalReqs)
-      }
-
-      dontTouch(totalReqs)
-      dontTouch(pendingReqsCumulative)
+      performanceCounters(smemTLAdapters.map(_.io.inReq), smemTLAdapters.map(_.io.inResp),
+        desc = s"core${outer.tileId}-smem")
 
       // now connect TL adapter downstream ports to the tile egress ports
       (smemTLAdapters zip smemTLBundles) foreach { case (tlAdapter, tlOut) =>
