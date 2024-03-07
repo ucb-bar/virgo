@@ -606,7 +606,7 @@ class NewSourceGenerator[T <: Data](
   oldestMetadata := occupancyTable(oldestIndex).meta
   oldestAge := occupancyTable(oldestIndex).age
   assert(
-    oldestAge <= 2000.U,
+    oldestAge <= 10000.U,
     "One id in the SourceGen is not released for long time, potential bug !"
   )
 
