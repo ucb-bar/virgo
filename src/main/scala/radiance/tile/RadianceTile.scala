@@ -303,12 +303,13 @@ class RadianceTile private (
   // Conditionally instantiate L1 cache
   val (icacheNode, dcacheNode): (TLNode, TLNode) = p(VortexL1Key) match {
     case Some(vortexL1Config) => {
+      println("VortexL1Cache instantiated")
       // require(
       //   p(CoalescerKey).isDefined,
       //   "Vortex L1 configuration currently only works when coalescer is also enabled."
       // )
 
-      val icache = LazyModule(new VortexL1Cache(vortexL1Config))
+      val icache = LazyModule(new VortexL1Cache(vortexL1Config.copy(numBanks = 1)))
       val dcache = LazyModule(new VortexL1Cache(vortexL1Config))
       // imemNodes.foreach { icache.coresideNode := TLWidthWidget(4) := _ }
       assert(imemNodes.length == 1) // FIXME
