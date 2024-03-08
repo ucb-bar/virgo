@@ -17,6 +17,7 @@ EXTRA_SIM_PREPROC_DEFINES += \
 	+define+GPR_RESET \
 	+define+LSU_DUP_DISABLE \
 	+define+DBG_TRACE_CORE_PIPELINE_VCS \
+	+define+PERF_ENABLE \
 	+define+NUM_THREADS=8 +define+NUM_WARPS=8
 
 # cargo handles building of Rust files all on its own, so make this a PHONY
