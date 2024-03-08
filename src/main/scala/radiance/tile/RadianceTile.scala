@@ -520,40 +520,13 @@ class RadianceTileModuleImp(outer: RadianceTile)
       // TODO: make imemNodes not a vector
       imemTLAdapter.io.inReq <> core.io.imem.get(0).a
       core.io.imem.get(0).d <> imemTLAdapter.io.inResp
+
+      performanceCounters(Seq(imemTLAdapter.io.inReq), Seq(imemTLAdapter.io.inResp),
+        desc = s"core${outer.tileId}-imem")
+
+      // now connect TL adapter downstream ports to the tile egress ports
       outer.imemNodes(0).out(0)._1.a <> imemTLAdapter.io.outReq
       imemTLAdapter.io.outResp <> outer.imemNodes(0).out(0)._1.d
-    }
-
-    def performanceCounters(reqBundles: Seq[DecoupledIO[VortexBundleA]],
-                            respBundles: Seq[DecoupledIO[VortexBundleD]],
-                            desc: String) = {
-      val currentPendingReqs = RegInit(SInt(32.W), 0.S)
-      val pendingReqsCumulative = RegInit(SInt(32.W), 0.S)
-      val totalReqs = RegInit(UInt(32.W), 0.U)
-
-      val reqFireCountPerCycle = Wire(UInt(32.W))
-      val respFireCountPerCycle = Wire(UInt(32.W))
-      val reqReadFires = reqBundles.map { b => b.fire && b.bits.opcode === 4.U /* Get */ }
-      val respReadFires = respBundles.map { b => b.fire && b.bits.opcode === 1.U /* AccessAckData */}
-      reqFireCountPerCycle := PopCount(reqReadFires)
-      respFireCountPerCycle := PopCount(respReadFires)
-      totalReqs := totalReqs + reqFireCountPerCycle
-
-      val diffPendingReqs = reqFireCountPerCycle.asSInt - respFireCountPerCycle.asSInt
-      currentPendingReqs := currentPendingReqs + diffPendingReqs
-      pendingReqsCumulative := pendingReqsCumulative + currentPendingReqs
-
-      val prevFinished = RegNext(core.io.finished)
-      val justFinished = !prevFinished && core.io.finished
-      when (justFinished) {
-        printf(s"PERF: ${desc}: pending requests cumulative: %d\n", pendingReqsCumulative)
-        printf(s"PERF: ${desc}: total requests: %d\n", totalReqs)
-      }
-
-      dontTouch(totalReqs)
-      dontTouch(diffPendingReqs)
-      dontTouch(currentPendingReqs)
-      dontTouch(pendingReqsCumulative)
     }
 
     def connectDmem = {
@@ -710,6 +683,38 @@ class RadianceTileModuleImp(outer: RadianceTile)
         tlOut.a <> tlAdapter.io.outReq
         tlAdapter.io.outResp <> tlOut.d
       }
+    }
+
+    def performanceCounters(reqBundles: Seq[DecoupledIO[VortexBundleA]],
+                            respBundles: Seq[DecoupledIO[VortexBundleD]],
+                            desc: String) = {
+      val currentPendingReqs = RegInit(SInt(32.W), 0.S)
+      val pendingReqsCumulative = RegInit(SInt(32.W), 0.S)
+      val totalReqs = RegInit(UInt(32.W), 0.U)
+
+      val reqFireCountPerCycle = Wire(UInt(32.W))
+      val respFireCountPerCycle = Wire(UInt(32.W))
+      val reqReadFires = reqBundles.map { b => b.fire && b.bits.opcode === 4.U /* Get */ }
+      val respReadFires = respBundles.map { b => b.fire && b.bits.opcode === 1.U /* AccessAckData */}
+      reqFireCountPerCycle := PopCount(reqReadFires)
+      respFireCountPerCycle := PopCount(respReadFires)
+      totalReqs := totalReqs + reqFireCountPerCycle
+
+      val diffPendingReqs = reqFireCountPerCycle.asSInt - respFireCountPerCycle.asSInt
+      currentPendingReqs := currentPendingReqs + diffPendingReqs
+      pendingReqsCumulative := pendingReqsCumulative + currentPendingReqs
+
+      val prevFinished = RegNext(core.io.finished)
+      val justFinished = !prevFinished && core.io.finished
+      when (justFinished) {
+        printf(s"PERF: ${desc}: pending requests cumulative: %d\n", pendingReqsCumulative)
+        printf(s"PERF: ${desc}: total requests: %d\n", totalReqs)
+      }
+
+      dontTouch(totalReqs)
+      dontTouch(diffPendingReqs)
+      dontTouch(currentPendingReqs)
+      dontTouch(pendingReqsCumulative)
     }
 
     connectImem
