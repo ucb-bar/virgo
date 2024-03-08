@@ -10,6 +10,7 @@ import org.chipsalliance.cde.config.{Parameters, Field}
 case object VortexL1Key extends Field[Option[VortexL1Config]](None /*default*/ )
 
 case class VortexL1Config(
+    cacheSize: Int, // total cache size in bytes
     numBanks: Int,
     wordSize: Int, // This is the read/write granularity of the L1 cache
     cacheLineSize: Int,
@@ -34,6 +35,7 @@ case class VortexL1Config(
 
 object defaultVortexL1Config
     extends VortexL1Config(
+      cacheSize = 16384,
       numBanks = 4,
       wordSize = 16,
       cacheLineSize = 16,
@@ -203,6 +205,7 @@ class VortexBankImp(
   val vxCache = Module(
     new VX_cache_top(
       WORD_SIZE = config.wordSize,
+      CACHE_SIZE = config.cacheSize / config.numBanks,
       CACHE_LINE_SIZE = config.cacheLineSize,
       CORE_TAG_WIDTH = config.coreTagPlusSizeWidth,
       MSHR_SIZE = config.mshrSize
@@ -389,7 +392,7 @@ class VortexBankImp(
 class VX_cache_top(
     // these values should match the default settings in Verilog
     // TODO: INSTANCE_ID
-    CACHE_SIZE: Int = 16384 / 4, // <FIXME, divided by 4 for faster simulation
+    CACHE_SIZE: Int = 16384,
     CACHE_LINE_SIZE: Int = 16,
     NUM_WAYS: Int = 4,
     // for single-bank configuration, set NUM_REQS = 1 and instead set
@@ -408,10 +411,10 @@ class VX_cache_top(
 ) extends BlackBox(
       Map(
         // NOTE: NUM_REQS is analogous to SIMD width, whereas NUM_BANKS is the
-        // actual number of banks.  VX_cache.sv instantiates VX_stream_xbar
-        // that arbitrates the higher NUM_REQS into NUM_BANKS.  Since we do
-        // that logic ourselves using TL units, fix those params to 1 for the
-        // Verilog side.
+        // actual number of banks.  In the original Vortex code, VX_cache has
+        // VX_stream_xbar that arbitrates the incoming NUM_REQS into outgoing
+        // NUM_BANKS.  Since we do that logic ourselves using TL Xbars, fix
+        // those params to 1 for Verilog.
         "NUM_REQS" -> 1,
         "CACHE_SIZE" -> CACHE_SIZE,
         "LINE_SIZE" -> CACHE_LINE_SIZE,
