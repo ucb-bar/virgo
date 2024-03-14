@@ -708,8 +708,8 @@ class RadianceTileModuleImp(outer: RadianceTile)
       val prevFinished = RegNext(core.io.finished)
       val justFinished = !prevFinished && core.io.finished
       when (justFinished) {
-        printf(s"PERF: ${desc}: pending requests cumulative: %d\n", pendingReqsCumulative)
-        printf(s"PERF: ${desc}: total requests: %d\n", totalReqs)
+        printf(s"PERF: ${desc}: average request latency (cum_pending / total): %d / %d\n",
+               pendingReqsCumulative, totalReqs)
       }
 
       dontTouch(totalReqs)
