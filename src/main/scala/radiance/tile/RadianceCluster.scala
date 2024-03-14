@@ -9,7 +9,8 @@ import chisel3.util._
 import org.chipsalliance.cde.config.{Field, Parameters}
 import freechips.rocketchip.subsystem._
 import freechips.rocketchip.tilelink._
-import freechips.rocketchip.diplomacy.{LazyModule, AddressSet, ClockCrossingType}
+import freechips.rocketchip.diplomacy.{LazyModule, AddressSet, SimpleDevice, ClockCrossingType}
+import freechips.rocketchip.regmapper.RegField
 import freechips.rocketchip.prci.ClockSinkParameters
 
 case class RadianceClusterParams(
@@ -49,22 +50,32 @@ class RadianceCluster (
   }
   smemBanks.foreach(_.node := clbus.outwardNode)
 
-  // HACK: This is a work around the normal bus connecting API by downcasting
-  // tile and directly accessing the node inside that is not exposed as a
-  // master in HierarchicalElementCrossingParamsLike.
-  val tile = leafTiles(0).asInstanceOf[RadianceTile]
-  val perSmemPortXbars = Seq.fill(tile.smemNodes.size) { LazyModule(new TLXbar) }
+  // HACK: This is a workaround of the CanAttachTile bus connecting API that
+  // works by downcasting tile and directly accessing the node inside that is
+  // not exposed as a master in HierarchicalElementCrossingParamsLike.
+  // val tile = leafTiles(0).asInstanceOf[RadianceTile]
+  // val perSmemPortXbars = Seq.fill(tile.smemNodes.size) { LazyModule(new TLXbar) }
 
   // Tie corresponding smem ports from every tile into a single port using
   // Xbars so that the number of ports going into the sharedmem do not scale
   // with the number of tiles.
   leafTiles.foreach { case (id, tile: RadianceTile) =>
-    (perSmemPortXbars zip tile.smemNodes).foreach {
-      case (xbar, node) => xbar.node := node
-    }
-    // tile.smemNodes.foreach (clbus.inwardNode := _)
+    // (perSmemPortXbars zip tile.smemNodes).foreach {
+    //   case (xbar, node) => xbar.node := node
+    // }
+    tile.smemNodes.foreach (clbus.inwardNode := _)
   }
-  perSmemPortXbars.foreach { clbus.inwardNode := _.node }
+  // perSmemPortXbars.foreach { clbus.inwardNode := _.node }
+
+  // Memory-mapped register for barrier synchronization
+  val regDevice = new SimpleDevice("radiance-cluster-barrier-reg",
+                                   Seq(s"radiance-cluster-barrier-reg${clusterId}"))
+  val regNode = TLRegisterNode(
+    address = Seq(AddressSet(0xff003f00L, 0xff)),
+    device = regDevice,
+    beatBytes = wordSize,
+    concurrency = 1)
+  regNode := clbus.outwardNode
 
   override lazy val module = new RadianceClusterModuleImp(this)
 }
@@ -72,14 +83,37 @@ class RadianceCluster (
 class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(outer) {
   outer.leafTiles.foreach { case (id, tile: RadianceTile) =>
     // println(s"======= RadianceCluster: tile.smemXbar.node.edge = ${tile.smemXbar.node.out.size}")
-    println(s"======= RadianceCluster: clbus inward edges = ${outer.clbus.inwardNode.inward.inputs.size}")
+    println(s"======= RadianceCluster: clbus inward edges = ${outer.clbus.inwardNode.inward.inputs.length}")
     println(s"======= RadianceCluster: clbus name = ${outer.clbus.busName}")
   }
 
-  outer.perSmemPortXbars(0).node.out(0)._2.slave.slaves(0).address.foreach { addrSet =>
-    println(s"====== perSmemPortXbars(0).slaves(0).addr: ${addrSet.toString()}")
+  val numCores = outer.leafTiles.size
+  val numBarriers = 4 // FIXME: hardcoded
+  val allSyncedRegs = Seq.fill(numBarriers)(Wire(UInt(32.W)))
+  val perCoreSyncedRegs = Seq.fill(numBarriers)(Seq.fill(numCores)(RegInit(0.U(32.W))))
+  (allSyncedRegs zip perCoreSyncedRegs).foreach{ case (all, per) =>
+    all := per.reduce((x0, x1) => (x0 =/= 0.U) && (x1 =/= 0.U))
+
+    val allPassed = per.map(_ === 2.U).reduce(_ && _)
+    when(allPassed) {
+      per.foreach(_ := 0.U)
+    }
+
+    dontTouch(all)
   }
-  outer.perSmemPortXbars(0).node.out(0)._2.master.masters(0).visibility.foreach { addrSet =>
-    println(s"====== perSmemPortXbars(0).masters(0).addr: ${addrSet.toString()}")
-  }
+  // FIXME: 4 cores per cluster hardcoded
+  outer.regNode.regmap(
+    0x00 -> Seq(RegField.r(32, allSyncedRegs(0))),
+    0x04 -> Seq(RegField(32, perCoreSyncedRegs(0)(0))),
+    0x08 -> Seq(RegField(32, perCoreSyncedRegs(0)(1))),
+    0x10 -> Seq(RegField.r(32, allSyncedRegs(1))),
+    0x14 -> Seq(RegField(32, perCoreSyncedRegs(1)(0))),
+    0x18 -> Seq(RegField(32, perCoreSyncedRegs(1)(1))),
+    0x20 -> Seq(RegField.r(32, allSyncedRegs(2))),
+    0x24 -> Seq(RegField(32, perCoreSyncedRegs(2)(0))),
+    0x28 -> Seq(RegField(32, perCoreSyncedRegs(2)(1))),
+    0x30 -> Seq(RegField.r(32, allSyncedRegs(3))),
+    0x34 -> Seq(RegField(32, perCoreSyncedRegs(3)(0))),
+    0x38 -> Seq(RegField(32, perCoreSyncedRegs(3)(1))),
+  )
 }

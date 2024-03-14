@@ -100,7 +100,7 @@ class VortexBankPassThrough(config: VortexL1Config)(implicit p: Parameters)
     TLMasterPortParameters.v1(
       clients = Seq(
         TLMasterParameters.v1(
-          name = "VortexBank",
+          name = "VortexBankPassthrough",
           sourceId = IdRange(
             0,
             1 << (log2Ceil(
@@ -175,7 +175,7 @@ class VortexBank(
     TLMasterPortParameters.v1(
       clients = Seq(
         TLMasterParameters.v1(
-          name = "VortexBank",
+          name = s"VortexBank${bankId}",
           sourceId = IdRange(0, config.memSideSourceIds),
           supportsProbe = TransferSizes(1, config.wordSize),
           supportsGet = TransferSizes(1, config.wordSize),
@@ -205,6 +205,7 @@ class VortexBankImp(
   val vxCache = Module(
     new VX_cache_top(
       WORD_SIZE = config.wordSize,
+      // distribute total size across numBanks
       CACHE_SIZE = config.cacheSize / config.numBanks,
       CACHE_LINE_SIZE = config.cacheLineSize,
       CORE_TAG_WIDTH = config.coreTagPlusSizeWidth,
