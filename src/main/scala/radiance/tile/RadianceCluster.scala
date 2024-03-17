@@ -4,12 +4,13 @@
 package radiance.tile
 
 import chisel3._
+import chisel3.experimental.SourceInfo
 import chisel3.util._
 
 import org.chipsalliance.cde.config.{Field, Parameters}
 import freechips.rocketchip.subsystem._
 import freechips.rocketchip.tilelink._
-import freechips.rocketchip.diplomacy.{LazyModule, AddressSet, SimpleDevice, ClockCrossingType}
+import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.regmapper.RegField
 import freechips.rocketchip.prci.ClockSinkParameters
 
@@ -50,6 +51,11 @@ class RadianceCluster (
   }
   smemBanks.foreach(_.node := clbus.outwardNode)
 
+  val numCores = leafTiles.size
+
+  // Diplomacy sink nodes for cluster-wide barrier sync signal
+  val barrierSlaveNode = BarrierSlaveNode(numCores)
+
   // HACK: This is a workaround of the CanAttachTile bus connecting API that
   // works by downcasting tile and directly accessing the node inside that is
   // not exposed as a master in HierarchicalElementCrossingParamsLike.
@@ -63,11 +69,12 @@ class RadianceCluster (
     // (perSmemPortXbars zip tile.smemNodes).foreach {
     //   case (xbar, node) => xbar.node := node
     // }
-    tile.smemNodes.foreach (clbus.inwardNode := _)
+    tile.smemNodes.foreach(clbus.inwardNode := _)
+    barrierSlaveNode := tile.barrierMasterNode
   }
   // perSmemPortXbars.foreach { clbus.inwardNode := _.node }
 
-  // Memory-mapped register for barrier synchronization
+  // Memory-mapped register for barrier sync
   val regDevice = new SimpleDevice("radiance-cluster-barrier-reg",
                                    Seq(s"radiance-cluster-barrier-reg${clusterId}"))
   val regNode = TLRegisterNode(
@@ -76,6 +83,10 @@ class RadianceCluster (
     beatBytes = wordSize,
     concurrency = 1)
   regNode := clbus.outwardNode
+
+  nodes.foreach({ node =>
+      println(s"======= RadianceCluster node.name: ${node.name}")
+  })
 
   override lazy val module = new RadianceClusterModuleImp(this)
 }
@@ -86,6 +97,16 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
     println(s"======= RadianceCluster: clbus inward edges = ${outer.clbus.inwardNode.inward.inputs.length}")
     println(s"======= RadianceCluster: clbus name = ${outer.clbus.busName}")
   }
+
+  outer.barrierSlaveNode.in.foreach { case (b, e) =>
+    b.req.ready := true.B // barrier module is always ready
+    b.resp.valid := 0.U
+    b.resp.bits.barrierId := 0.U
+  }
+
+  auto.elements.foreach({case (name, _) =>
+      println(s"======= RadianceCluster.elements.name: ${name}")
+  })
 
   val numCores = outer.leafTiles.size
   val numBarriers = 4 // FIXME: hardcoded
@@ -116,4 +137,48 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
     0x34 -> Seq(RegField(32, perCoreSyncedRegs(3)(0))),
     0x38 -> Seq(RegField(32, perCoreSyncedRegs(3)(1))),
   )
+
+  println(s"======== barrierSlaveNode: ${outer.barrierSlaveNode.in(0)._2.barrierIdBits}")
 }
+
+case class EmptyParams()
+
+case class BarrierParams(
+  barrierIdBits: Int,
+  numCoreBits: Int
+)
+
+class BarrierRequestBits(
+  param: BarrierParams
+) extends Bundle {
+  val barrierId = UInt(param.barrierIdBits.W)
+  val sizeMinusOne = UInt(param.numCoreBits.W)
+  val coreId = UInt(param.numCoreBits.W)
+}
+
+class BarrierResponseBits(
+  param: BarrierParams
+) extends Bundle {
+  val barrierId = UInt(param.barrierIdBits.W)
+}
+
+class BarrierBundle(param: BarrierParams) extends Bundle {
+  val req = Decoupled(new BarrierRequestBits(param))
+  val resp = Flipped(Decoupled(new BarrierResponseBits(param)))
+}
+
+// FIXME Separate BarrierEdgeParams from BarrierParams
+object BarrierNodeImp extends SimpleNodeImp[BarrierParams, EmptyParams, BarrierParams, BarrierBundle] {
+  def edge(pd: BarrierParams, pu: EmptyParams, p: Parameters, sourceInfo: SourceInfo) = {
+    // barrier parameters flow strictly downward from the master node
+    pd
+  }
+  def bundle(e: BarrierParams) = new BarrierBundle(e)
+  // FIXME render
+  def render(e: BarrierParams) = RenderedEdge(colour = "ffffff", label = "X")
+}
+
+case class BarrierMasterNode(val srcParams: BarrierParams)(implicit valName: ValName)
+    extends SourceNode(BarrierNodeImp)(Seq(srcParams))
+case class BarrierSlaveNode(val numEdges: Int)(implicit valName: ValName)
+    extends SinkNode(BarrierNodeImp)(Seq.fill(numEdges)(EmptyParams()))

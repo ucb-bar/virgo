@@ -326,6 +326,11 @@ class RadianceTile private (
     }
   }
 
+  // Barrier synchronization node
+  // FIXME: hardcoded params
+  val barrierParams = BarrierParams(barrierIdBits = 2, numCoreBits = 1)
+  val barrierMasterNode = BarrierMasterNode(barrierParams)
+
   val base = p(GPUMemory()) match {
     case Some(GPUMemParams(baseAddr, _)) => baseAddr
     case _ => BigInt(0)
@@ -338,7 +343,6 @@ class RadianceTile private (
     tlMasterXbar.node :=* AddressOrNode(base) :=* icacheNode
     tlMasterXbar.node :=* AddressOrNode(base) :=* dcacheNode
   }
-
 
   // ROCC
   // TODO: parametrize
@@ -450,6 +454,10 @@ class RadianceTile private (
 class RadianceTileModuleImp(outer: RadianceTile)
     extends BaseTileModuleImp(outer) {
   Annotated.params(this, outer.radianceParams)
+
+  auto.elements.foreach({case (name, _) => 
+      println(s"======= RadianceTile.elements.name: ${name}")
+  })
 
   val core = Module(new Vortex(outer)(outer.p))
 
@@ -686,6 +694,17 @@ class RadianceTileModuleImp(outer: RadianceTile)
       }
     }
 
+    def connectBarrier = {
+      require(outer.barrierMasterNode.out.length == 1)
+      // FIXME: bits not flattened
+      outer.barrierMasterNode.out(0)._1.req.valid := core.io.gbar_req_valid
+      outer.barrierMasterNode.out(0)._1.req.bits.barrierId := core.io.gbar_req_id
+      outer.barrierMasterNode.out(0)._1.req.bits.coreId := core.io.gbar_req_core_id
+      core.io.gbar_req_ready := outer.barrierMasterNode.out(0)._1.req.ready
+      core.io.gbar_rsp_valid := outer.barrierMasterNode.out(0)._1.resp.valid
+      core.io.gbar_rsp_id := outer.barrierMasterNode.out(0)._1.resp.bits.barrierId
+    }
+
     def performanceCounters(reqBundles: Seq[DecoupledIO[VortexBundleA]],
                             respBundles: Seq[DecoupledIO[VortexBundleD]],
                             desc: String) = {
@@ -721,6 +740,7 @@ class RadianceTileModuleImp(outer: RadianceTile)
     connectImem
     connectDmem
     connectSmem
+    connectBarrier
   }
 
   // TODO: generalize for useVxCache
@@ -753,6 +773,22 @@ class RadianceTileModuleImp(outer: RadianceTile)
   //   outer.roccs.foreach(_.module.io.exception := DontCare)
   //   respArb.io.out <> DontCare
   // }
+}
+
+class ClusterSynchronizer(
+  barrierIdWidth: Int,
+  numCoreWidth: Int,
+) extends Module {
+  val io = IO(new Bundle {
+    val req = Flipped(Decoupled(new Bundle {
+      val barrierId = UInt(barrierIdWidth.W)
+      val sizeMinusOne = UInt(numCoreWidth.W)
+      val coreId = UInt(numCoreWidth.W)
+    }))
+    val resp = Decoupled(new Bundle {
+      val barrierId = UInt(barrierIdWidth.W)
+    })
+  })
 }
 
 // Some @copypaste from CoalescerSourceGen.

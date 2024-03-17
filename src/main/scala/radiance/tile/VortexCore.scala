@@ -41,17 +41,10 @@ class VortexBundle(tile: RadianceTile)(implicit p: Parameters) extends CoreBundl
   val interrupts = Input(new freechips.rocketchip.rocket.CoreInterrupts(false/*hasBeu*/))
   
   // conditionally instantiate ports depending on whether we want to use VX_cache or not
+  // TODO: flatten this like dmem and smem
   val imem = if (!tile.radianceParams.useVxCache) Some(Vec(1, new Bundle {
     val a = Decoupled(new VortexBundleA(tagWidth = tile.imemTagWidth, dataWidth = 32))
     val d = Flipped(Decoupled(new VortexBundleD(tagWidth = tile.imemTagWidth, dataWidth = 32)))
-  })) else None
-  val dmem = if (!tile.radianceParams.useVxCache) Some(Vec(tile.numLsuLanes, new Bundle {
-    // val a = Decoupled(new VortexBundleA(tagWidth = tile.dmemTagWidth, dataWidth = 32))
-    // val d = Flipped(Decoupled(new VortexBundleD(tagWidth = dmemTagWidth, dataWidth = 32)))
-  })) else None
-  val smem = if (!tile.radianceParams.useVxCache) Some(Vec(tile.numLsuLanes, new Bundle {
-    // val a = Decoupled(new VortexBundleA(tagWidth = tile.smemTagWidth, dataWidth = 32))
-    // val d = Flipped(Decoupled(new VortexBundleD(tagWidth = tile.smemTagWidth, dataWidth = 32)))
   })) else None
   val mem = if (tile.radianceParams.useVxCache) Some(new Bundle {
     val a = Decoupled(new VortexBundleA(tagWidth = 15, dataWidth = 128))
@@ -96,6 +89,18 @@ class VortexBundle(tile: RadianceTile)(implicit p: Parameters) extends CoreBundl
   val smem_d_bits_data = Input(UInt((tile.numLsuLanes * 32).W))
   val smem_d_ready = Output(UInt((tile.numLsuLanes * 1).W))
 
+  // FIXME: hardcoded
+  val numCoresPerCluster = 2
+  val NB_WIDTH = 2
+  val NC_WIDTH = 1
+  val gbar_req_valid = Output(UInt((numCoresPerCluster * 1).W))
+  val gbar_req_id = Output(UInt((numCoresPerCluster * NB_WIDTH).W))
+  val gbar_req_size_m1 = Output(UInt((numCoresPerCluster * NC_WIDTH).W))
+  val gbar_req_core_id = Output(UInt((numCoresPerCluster * NC_WIDTH).W))
+  val gbar_req_ready = Input(UInt((numCoresPerCluster * 1).W))
+  val gbar_rsp_valid = Input(UInt((numCoresPerCluster * 1).W))
+  val gbar_rsp_id = Input(UInt((numCoresPerCluster * NB_WIDTH).W))
+
   // val fpu = Flipped(new FPUCoreIO())
   //val rocc = Flipped(new RoCCCoreIO(nTotalRoCCCSRs))
   //val trace = Output(new TraceBundle)
@@ -112,6 +117,7 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
       // see VX_csr_data that implements the read logic for CSR_MHARTID/GWID.
       Map(
         "CORE_ID" -> tile.tileParams.tileId,
+        "CORES_PER_CLUSTER" -> 2, // FIXME: hardcoded
         // TODO: can we get this as a parameter?
         "BOOTROM_HANG100" -> 0x10100,
         "NUM_THREADS" -> tile.numLsuLanes
@@ -194,10 +200,6 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   // addResource("/vsrc/vortex/hw/rtl/cache/VX_cache_tags.sv")
   // addResource("/vsrc/vortex/hw/rtl/cache/VX_cache_wrap.sv")
 
-  // gbar is only used in the socket/cluster hierarchy
-  // addResource("/vsrc/vortex/hw/rtl/mem/VX_gbar_arb.sv")
-  // addResource("/vsrc/vortex/hw/rtl/mem/VX_gbar_bus_if.sv")
-  // addResource("/vsrc/vortex/hw/rtl/mem/VX_gbar_unit.sv")
   // mem_arb is used in VX_socket or VX_cache_cluster
   // addResource("/vsrc/vortex/hw/rtl/mem/VX_mem_arb.sv")
   addResource("/vsrc/vortex/hw/rtl/mem/VX_mem_bus_if.sv")
@@ -220,6 +222,10 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   // used when PERF_ENABLE is defined
   addResource("/vsrc/vortex/hw/rtl/mem/VX_mem_perf_if.sv")
   addResource("/vsrc/vortex/hw/rtl/interfaces/VX_pipeline_perf_if.sv")
+  // used when GBAR_ENABLE is defined
+  addResource("/vsrc/vortex/hw/rtl/mem/VX_gbar_bus_if.sv")
+  // addResource("/vsrc/vortex/hw/rtl/mem/VX_gbar_arb.sv")
+  // addResource("/vsrc/vortex/hw/rtl/mem/VX_gbar_unit.sv")
 
   addResource("/vsrc/vortex/hw/rtl/libs/VX_allocator.sv")
   // addResource("/vsrc/vortex/hw/rtl/libs/VX_avs_adapter.sv")
