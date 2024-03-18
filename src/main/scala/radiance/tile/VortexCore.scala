@@ -90,16 +90,15 @@ class VortexBundle(tile: RadianceTile)(implicit p: Parameters) extends CoreBundl
   val smem_d_ready = Output(UInt((tile.numLsuLanes * 1).W))
 
   // FIXME: hardcoded
-  val numCoresPerCluster = 2
   val NB_WIDTH = 2
   val NC_WIDTH = 1
-  val gbar_req_valid = Output(UInt((numCoresPerCluster * 1).W))
-  val gbar_req_id = Output(UInt((numCoresPerCluster * NB_WIDTH).W))
-  val gbar_req_size_m1 = Output(UInt((numCoresPerCluster * NC_WIDTH).W))
-  val gbar_req_core_id = Output(UInt((numCoresPerCluster * NC_WIDTH).W))
-  val gbar_req_ready = Input(UInt((numCoresPerCluster * 1).W))
-  val gbar_rsp_valid = Input(UInt((numCoresPerCluster * 1).W))
-  val gbar_rsp_id = Input(UInt((numCoresPerCluster * NB_WIDTH).W))
+  val gbar_req_valid = Output(Bool())
+  val gbar_req_id = Output(UInt(NB_WIDTH.W))
+  val gbar_req_size_m1 = Output(UInt(NC_WIDTH.W))
+  val gbar_req_core_id = Output(UInt(NC_WIDTH.W))
+  val gbar_req_ready = Input(Bool())
+  val gbar_rsp_valid = Input(Bool())
+  val gbar_rsp_id = Input(UInt(NB_WIDTH.W))
 
   // val fpu = Flipped(new FPUCoreIO())
   //val rocc = Flipped(new RoCCCoreIO(nTotalRoCCCSRs))

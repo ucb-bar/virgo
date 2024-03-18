@@ -7,10 +7,10 @@ import chisel3._
 import chisel3.experimental.SourceInfo
 import chisel3.util._
 
-import org.chipsalliance.cde.config.{Field, Parameters}
+import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.subsystem._
 import freechips.rocketchip.tilelink._
-import freechips.rocketchip.diplomacy._
+import freechips.rocketchip.diplomacy.{LazyModule, AddressSet, SimpleDevice, ClockCrossingType}
 import freechips.rocketchip.regmapper.RegField
 import freechips.rocketchip.prci.ClockSinkParameters
 
@@ -98,20 +98,28 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
     println(s"======= RadianceCluster: clbus name = ${outer.clbus.busName}")
   }
 
-  outer.barrierSlaveNode.in.foreach { case (b, e) =>
-    b.req.ready := true.B // barrier module is always ready
-    b.resp.valid := 0.U
-    b.resp.bits.barrierId := 0.U
+  val numBarriers = 4 // FIXME: hardcoded
+
+  // @cleanup: This assumes barrier params on all edges are the same, i.e. all
+  // cores are configured to have the same barrier id range.  While true, might
+  // be better to actually assert this
+  val barrierParam = outer.barrierSlaveNode.in(0)._2
+  val synchronizer = Module(new BarrierSynchronizer(barrierParam))
+  (synchronizer.io.reqs zip outer.barrierSlaveNode.in).foreach { case (req, (b, _)) =>
+    req <> b.req
+    b.resp <> synchronizer.io.resp // broadcast
   }
 
-  auto.elements.foreach({case (name, _) =>
-      println(s"======= RadianceCluster.elements.name: ${name}")
-  })
+  // outer.barrierSlaveNode.in.foreach { case (b, e) =>
+  //   val fakeBarrierRespId = RegNext(b.req.bits.barrierId)
+  //   val fakeBarrierRespValid = RegNext(b.req.fire)
+  //   b.req.ready := true.B // barrier module is always ready
+  //   b.resp.valid := fakeBarrierRespValid
+  //   b.resp.bits.barrierId := fakeBarrierRespId
+  // }
 
-  val numCores = outer.leafTiles.size
-  val numBarriers = 4 // FIXME: hardcoded
   val allSyncedRegs = Seq.fill(numBarriers)(Wire(UInt(32.W)))
-  val perCoreSyncedRegs = Seq.fill(numBarriers)(Seq.fill(numCores)(RegInit(0.U(32.W))))
+  val perCoreSyncedRegs = Seq.fill(numBarriers)(Seq.fill(outer.numCores)(RegInit(0.U(32.W))))
   (allSyncedRegs zip perCoreSyncedRegs).foreach{ case (all, per) =>
     all := per.reduce((x0, x1) => (x0 =/= 0.U) && (x1 =/= 0.U))
 
@@ -140,45 +148,3 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
 
   println(s"======== barrierSlaveNode: ${outer.barrierSlaveNode.in(0)._2.barrierIdBits}")
 }
-
-case class EmptyParams()
-
-case class BarrierParams(
-  barrierIdBits: Int,
-  numCoreBits: Int
-)
-
-class BarrierRequestBits(
-  param: BarrierParams
-) extends Bundle {
-  val barrierId = UInt(param.barrierIdBits.W)
-  val sizeMinusOne = UInt(param.numCoreBits.W)
-  val coreId = UInt(param.numCoreBits.W)
-}
-
-class BarrierResponseBits(
-  param: BarrierParams
-) extends Bundle {
-  val barrierId = UInt(param.barrierIdBits.W)
-}
-
-class BarrierBundle(param: BarrierParams) extends Bundle {
-  val req = Decoupled(new BarrierRequestBits(param))
-  val resp = Flipped(Decoupled(new BarrierResponseBits(param)))
-}
-
-// FIXME Separate BarrierEdgeParams from BarrierParams
-object BarrierNodeImp extends SimpleNodeImp[BarrierParams, EmptyParams, BarrierParams, BarrierBundle] {
-  def edge(pd: BarrierParams, pu: EmptyParams, p: Parameters, sourceInfo: SourceInfo) = {
-    // barrier parameters flow strictly downward from the master node
-    pd
-  }
-  def bundle(e: BarrierParams) = new BarrierBundle(e)
-  // FIXME render
-  def render(e: BarrierParams) = RenderedEdge(colour = "ffffff", label = "X")
-}
-
-case class BarrierMasterNode(val srcParams: BarrierParams)(implicit valName: ValName)
-    extends SourceNode(BarrierNodeImp)(Seq(srcParams))
-case class BarrierSlaveNode(val numEdges: Int)(implicit valName: ValName)
-    extends SinkNode(BarrierNodeImp)(Seq.fill(numEdges)(EmptyParams()))

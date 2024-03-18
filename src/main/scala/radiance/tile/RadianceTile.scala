@@ -701,8 +701,11 @@ class RadianceTileModuleImp(outer: RadianceTile)
       outer.barrierMasterNode.out(0)._1.req.bits.barrierId := core.io.gbar_req_id
       outer.barrierMasterNode.out(0)._1.req.bits.coreId := core.io.gbar_req_core_id
       core.io.gbar_req_ready := outer.barrierMasterNode.out(0)._1.req.ready
+
       core.io.gbar_rsp_valid := outer.barrierMasterNode.out(0)._1.resp.valid
       core.io.gbar_rsp_id := outer.barrierMasterNode.out(0)._1.resp.bits.barrierId
+      // core doesn't have a resp.ready port
+      outer.barrierMasterNode.out(0)._1.resp.ready := true.B
     }
 
     def performanceCounters(reqBundles: Seq[DecoupledIO[VortexBundleA]],
