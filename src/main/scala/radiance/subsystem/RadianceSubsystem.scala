@@ -9,3 +9,10 @@ case class RadianceTileAttachParams(
   tileParams: RadianceTileParams,
   crossingParams: RocketCrossingParams
 ) extends CanAttachTile { type TileType = RadianceTile }
+
+case class RadianceClusterAttachParams (
+  clusterParams: RadianceClusterParams,
+  crossingParams: HierarchicalElementCrossingParamsLike
+) extends CanAttachCluster {
+  type ClusterType = RadianceCluster
+}

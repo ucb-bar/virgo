@@ -13,10 +13,12 @@ import radiance.memory._
 
 class WithRadianceCores(
   n: Int,
+  location: HierarchicalLocation,
+  crossing: RocketCrossingParams,
   useVxCache: Boolean
 ) extends Config((site, _, up) => {
-  case TilesLocated(InSubsystem) => {
-    val prev = up(TilesLocated(InSubsystem), site)
+  case TilesLocated(`location`) => {
+    val prev = up(TilesLocated(`location`), site)
     val idOffset = prev.size
     val vortex = RadianceTileParams(
       core = VortexCoreParams(fpu = None),
@@ -43,10 +45,19 @@ class WithRadianceCores(
         blockBytes = site(CacheBlockBytes))))
     List.tabulate(n)(i => RadianceTileAttachParams(
       vortex.copy(tileId = i + idOffset),
-      RocketCrossingParams()
+      crossing
     )) ++ prev
   }
-})
+}) {
+  def this(n: Int, location: HierarchicalLocation = InSubsystem, useVxCache: Boolean = false) = this(n, location, RocketCrossingParams(
+    master = HierarchicalElementMasterPortParams.locationDefault(location),
+    slave = HierarchicalElementSlavePortParams.locationDefault(location),
+    mmioBaseAddressPrefixWhere = location match {
+      case InSubsystem => CBUS
+      case InCluster(clusterId) => CCBUS(clusterId)
+    }
+  ), useVxCache)
+}
 
 class WithFuzzerCores(
   n: Int,
@@ -65,11 +76,33 @@ class WithFuzzerCores(
   }
 })
 
+class WithRadianceCluster(
+  clusterId: Int,
+  location: HierarchicalLocation = InSubsystem,
+  crossing: RocketCrossingParams = RocketCrossingParams() // TODO make this not rocket
+) extends Config((site, here, up) => {
+  case ClustersLocated(`location`) => up(ClustersLocated(location)) :+ RadianceClusterAttachParams(
+    RadianceClusterParams(clusterId = clusterId),
+    crossing)
+  case TLNetworkTopologyLocated(InCluster(`clusterId`)) => List(
+    ClusterBusTopologyParams(
+      clusterId = clusterId,
+      csbus = site(SystemBusKey),
+      ccbus = site(ControlBusKey).copy(errorDevice = None),
+      coherence = site(ClusterBankedCoherenceKey(clusterId))
+    )
+  )
+  case PossibleTileLocations => up(PossibleTileLocations) :+ InCluster(clusterId)
+})
+
 // `nSrcIds`: number of source IDs for dmem requests on each SIMT lane
-class WithSimtLanes(nLanes: Int, nSrcIds: Int = 8) extends Config((site, _, up) => {
+class WithSimtConfig(nWarps: Int = 4, nCoreLanes: Int = 4, nMemLanes: Int = 4, nSrcIds: Int = 8)
+extends Config((site, _, up) => {
   case SIMTCoreKey => {
     Some(up(SIMTCoreKey, site).getOrElse(SIMTCoreParams()).copy(
-      nLanes = nLanes,
+      nWarps = nWarps,
+      nCoreLanes = nCoreLanes,
+      nMemLanes = nMemLanes,
       nSrcIds = nSrcIds
       ))
   }
@@ -105,7 +138,7 @@ class WithVortexL1Banks(nBanks: Int = 4) extends Config ((site, _, up) => {
 class WithCoalescer(nNewSrcIds: Int = 8, enable : Boolean = true) extends Config((site, _, up) => {
   case CoalescerKey => {
     val (nLanes, numOldSrcIds) = up(SIMTCoreKey, site) match {
-      case Some(param) => (param.nLanes, param.nSrcIds)
+      case Some(param) => (param.nMemLanes, param.nSrcIds)
       case None => (1,1)
     }
 

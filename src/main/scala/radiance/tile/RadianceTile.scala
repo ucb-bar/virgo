@@ -140,10 +140,21 @@ class RadianceTile private (
 
   require(
     p(SIMTCoreKey).isDefined,
-    "SIMTCoreKey not defined; make sure to use WithSimtLanes when using RadianceTile"
+    "SIMTCoreKey not defined; make sure to use WithSimtConfig when using RadianceTile"
   )
-  val numLanes = p(SIMTCoreKey) match {
-    case Some(simtParam) => simtParam.nLanes
+
+  // NOTE: when changing these, remember to change +define+NUM_CORES/THREADS/WARPS in
+  // radiance.mk as well!
+  val numWarps = p(SIMTCoreKey) match {
+    case Some(simtParam) => simtParam.nWarps
+    case None            => 4
+  }
+  val numCoreLanes = p(SIMTCoreKey) match {
+    case Some(simtParam) => simtParam.nCoreLanes
+    case None            => 4
+  }
+  val numLsuLanes = p(SIMTCoreKey) match {
+    case Some(simtParam) => simtParam.nMemLanes
     case None            => 4
   }
 
@@ -170,13 +181,14 @@ class RadianceTile private (
 
   val smemSourceWidth = 4 // FIXME: hardcoded
 
-  val numWarps = 4 // TODO: parametrize
+  // Replicates some of the logic of how Vortex determines the tag width of
+  // memory requests so that Chisel and Verilog are in agreement on bitwidths.
+  // See VX_gpu_pkg.sv
   val NW_WIDTH = (if (numWarps == 1) 1 else log2Ceil(numWarps))
   val UUID_WIDTH = 44
   val imemTagWidth = UUID_WIDTH + NW_WIDTH
-  val numLsuLanes = 4
-  // see VX_gpu_pkg.sv
-  val LSUQ_SIZE = 8 * (numLanes / numLsuLanes)
+
+  val LSUQ_SIZE = 8 * (numCoreLanes / numLsuLanes)
   val LSUQ_TAG_BITS = log2Ceil(LSUQ_SIZE) + 1 /*DCACHE_BATCH_SEL_BITS*/
   val dmemTagWidth = UUID_WIDTH + LSUQ_TAG_BITS
   // dmem and smem shares the same tag width, DCACHE_NOSM_TAG_WIDTH
@@ -291,15 +303,13 @@ class RadianceTile private (
   // Conditionally instantiate L1 cache
   val (icacheNode, dcacheNode): (TLNode, TLNode) = p(VortexL1Key) match {
     case Some(vortexL1Config) => {
-      println(
-        s"============ Using Vortex L1 cache ================="
-      )
+      println("VortexL1Cache instantiated")
       // require(
       //   p(CoalescerKey).isDefined,
       //   "Vortex L1 configuration currently only works when coalescer is also enabled."
       // )
 
-      val icache = LazyModule(new VortexL1Cache(vortexL1Config))
+      val icache = LazyModule(new VortexL1Cache(vortexL1Config.copy(numBanks = 1)))
       val dcache = LazyModule(new VortexL1Cache(vortexL1Config))
       // imemNodes.foreach { icache.coresideNode := TLWidthWidget(4) := _ }
       assert(imemNodes.length == 1) // FIXME
@@ -316,22 +326,10 @@ class RadianceTile private (
     }
   }
 
-  // Instantiate sharedmem banks
-  //
-  // Instantiate the same number of banks as there are lanes.
-  // TODO: parametrize
-  // val smemBanks = Seq.tabulate(numLsuLanes) { bankId =>
-  //   // Banked-by-word (4 bytes)
-  //   // base for bank 1: ff...000000|01|00
-  //   // mask for bank 1; 00...111111|00|11
-  //   val base = 0xff000000L | (bankId * 4 /*wordSize*/ )
-  //   val mask = 0x00001fffL ^ ((numLsuLanes - 1) * 4 /*wordSize*/ )
-  //   LazyModule(new TLRAM(AddressSet(base, mask), beatBytes = 4 /*wordSize*/ ))
-  // }
-  // smem lanes-to-banks crossbar
-  val smemXbar = LazyModule(new TLXbar)
-  smemNodes.foreach(smemXbar.node := _)
-  // smemBanks.foreach(_.node := smemXbar.node)
+  // Barrier synchronization node
+  // FIXME: hardcoded params
+  val barrierParams = BarrierParams(barrierIdBits = 2, numCoreBits = 1)
+  val barrierMasterNode = BarrierMasterNode(barrierParams)
 
   val base = p(GPUMemory()) match {
     case Some(GPUMemParams(baseAddr, _)) => baseAddr
@@ -345,7 +343,6 @@ class RadianceTile private (
     tlMasterXbar.node :=* AddressOrNode(base) :=* icacheNode
     tlMasterXbar.node :=* AddressOrNode(base) :=* dcacheNode
   }
-
 
   // ROCC
   // TODO: parametrize
@@ -371,14 +368,14 @@ class RadianceTile private (
   tlOtherMastersNode :=* AddressOrNode(base) :=* gemmini.tlNode
 
   // MMIO
-  gemmini.stlNode :=* TLWidthWidget(4) :=* smemXbar.node
+  // gemmini.stlNode :=* TLWidthWidget(4) :=* smemXbar.node
   // sharedmem access
   //
   // FIXME: gemmini spad has 16B data width; core smem interface has 4B. Need
   // to consolidate by either coalescing, or changing gemmini spad to
   // strided-by-word
-  gemmini.unified_mem_node :=* TLWidthWidget(4) :=* smemXbar.node
-  TLRAM(AddressSet(x"ff004000", 0xfff)) := TLFragmenter(4, 4) := smemXbar.node
+  // gemmini.unified_mem_node :=* TLWidthWidget(4) :=* smemXbar.node
+  // TLRAM(AddressSet(x"ff004000", 0xfff)) := TLFragmenter(4, 4) := smemXbar.node
 
   /* below are copied from rocket */
 
@@ -462,6 +459,10 @@ class RadianceTileModuleImp(outer: RadianceTile)
     extends BaseTileModuleImp(outer) {
   Annotated.params(this, outer.radianceParams)
 
+  auto.elements.foreach({case (name, _) => 
+      println(s"======= RadianceTile.elements.name: ${name}")
+  })
+
   val core = Module(new Vortex(outer)(outer.p))
 
   core.io.clock := clock
@@ -532,6 +533,11 @@ class RadianceTileModuleImp(outer: RadianceTile)
       // TODO: make imemNodes not a vector
       imemTLAdapter.io.inReq <> core.io.imem.get(0).a
       core.io.imem.get(0).d <> imemTLAdapter.io.inResp
+
+      performanceCounters(Seq(imemTLAdapter.io.inReq), Seq(imemTLAdapter.io.inResp),
+        desc = s"core${outer.tileId}-imem")
+
+      // now connect TL adapter downstream ports to the tile egress ports
       outer.imemNodes(0).out(0)._1.a <> imemTLAdapter.io.outReq
       imemTLAdapter.io.outResp <> outer.imemNodes(0).out(0)._1.d
     }
@@ -629,6 +635,10 @@ class RadianceTileModuleImp(outer: RadianceTile)
       }
       core.io.dmem_d_valid := dmem_d_valid_vec.asUInt
 
+      performanceCounters(dmemTLAdapters.map(_.io.inReq), dmemTLAdapters.map(_.io.inResp),
+        desc = s"core${outer.tileId}-dmem")
+
+      // now connect TL adapter downstream ports to the tile egress ports
       (dmemTLAdapters zip dmemTLBundles) foreach { case (tlAdapter, tlOut) =>
         tlOut.a <> tlAdapter.io.outReq
         tlAdapter.io.outResp <> tlOut.d
@@ -678,47 +688,114 @@ class RadianceTileModuleImp(outer: RadianceTile)
           tlAdapter.io.inResp.ready := core.io.smem_d_ready(i)
       }
 
+      performanceCounters(smemTLAdapters.map(_.io.inReq), smemTLAdapters.map(_.io.inResp),
+        desc = s"core${outer.tileId}-smem")
+
+      // now connect TL adapter downstream ports to the tile egress ports
       (smemTLAdapters zip smemTLBundles) foreach { case (tlAdapter, tlOut) =>
         tlOut.a <> tlAdapter.io.outReq
         tlAdapter.io.outResp <> tlOut.d
       }
     }
 
+    def connectBarrier = {
+      require(outer.barrierMasterNode.out.length == 1)
+      // FIXME: bits not flattened
+      outer.barrierMasterNode.out(0)._1.req.valid := core.io.gbar_req_valid
+      outer.barrierMasterNode.out(0)._1.req.bits.barrierId := core.io.gbar_req_id
+      outer.barrierMasterNode.out(0)._1.req.bits.coreId := core.io.gbar_req_core_id
+      core.io.gbar_req_ready := outer.barrierMasterNode.out(0)._1.req.ready
+
+      core.io.gbar_rsp_valid := outer.barrierMasterNode.out(0)._1.resp.valid
+      core.io.gbar_rsp_id := outer.barrierMasterNode.out(0)._1.resp.bits.barrierId
+      // core doesn't have a resp.ready port
+      outer.barrierMasterNode.out(0)._1.resp.ready := true.B
+    }
+
+    def performanceCounters(reqBundles: Seq[DecoupledIO[VortexBundleA]],
+                            respBundles: Seq[DecoupledIO[VortexBundleD]],
+                            desc: String) = {
+      val currentPendingReqs = RegInit(SInt(32.W), 0.S)
+      val pendingReqsCumulative = RegInit(SInt(32.W), 0.S)
+      val totalReqs = RegInit(UInt(32.W), 0.U)
+
+      val reqFireCountPerCycle = Wire(UInt(32.W))
+      val respFireCountPerCycle = Wire(UInt(32.W))
+      val reqReadFires = reqBundles.map { b => b.fire && b.bits.opcode === 4.U /* Get */ }
+      val respReadFires = respBundles.map { b => b.fire && b.bits.opcode === 1.U /* AccessAckData */}
+      reqFireCountPerCycle := PopCount(reqReadFires)
+      respFireCountPerCycle := PopCount(respReadFires)
+      totalReqs := totalReqs + reqFireCountPerCycle
+
+      val diffPendingReqs = reqFireCountPerCycle.asSInt - respFireCountPerCycle.asSInt
+      currentPendingReqs := currentPendingReqs + diffPendingReqs
+      pendingReqsCumulative := pendingReqsCumulative + currentPendingReqs
+
+      val prevFinished = RegNext(core.io.finished)
+      val justFinished = !prevFinished && core.io.finished
+      when (justFinished) {
+        printf(s"PERF: ${desc}: average request latency (cum_pending / total): %d / %d\n",
+               pendingReqsCumulative, totalReqs)
+      }
+
+      dontTouch(totalReqs)
+      dontTouch(diffPendingReqs)
+      dontTouch(currentPendingReqs)
+      dontTouch(pendingReqsCumulative)
+    }
+
     connectImem
     connectDmem
     connectSmem
+    connectBarrier
   }
 
   // TODO: generalize for useVxCache
   if (!outer.radianceParams.useVxCache) {}
 
-  // RoCC
-  if (outer.roccs.size > 0) {
-    val (respArb, cmdRouter) = {
-      val respArb = Module(new RRArbiter(new RoCCResponse()(outer.p), outer.roccs.size))
-      val cmdRouter = Module(new RoccCommandRouter(outer.roccs.map(_.opcodes))(outer.p))
-      outer.roccs.zipWithIndex.foreach { case (rocc, i) =>
-        // ptwPorts ++= rocc.module.io.ptw
-        rocc.module.io.ptw <> DontCare
-        rocc.module.io.mem <> DontCare
-        rocc.module.io.cmd <> cmdRouter.io.out(i)
-        respArb.io.in(i) <> Queue(rocc.module.io.resp)
-      }
-      // Create this FPU just for RoCC
-      // val nFPUPorts = outer.roccs.filter(_.usesFPU).size
-      val fp_rocc_ios = outer.roccs.map(_.module.io)
-      fp_rocc_ios.map { io =>
-        io.fpu_req.ready := false.B
-        io.fpu_resp.valid := false.B
-        io.fpu_resp.bits := DontCare
-      }
-      (respArb, cmdRouter)
-    }
+  // // RoCC
+  // if (outer.roccs.size > 0) {
+  //   val (respArb, cmdRouter) = {
+  //     val respArb = Module(new RRArbiter(new RoCCResponse()(outer.p), outer.roccs.size))
+  //     val cmdRouter = Module(new RoccCommandRouter(outer.roccs.map(_.opcodes))(outer.p))
+  //     outer.roccs.zipWithIndex.foreach { case (rocc, i) =>
+  //       // ptwPorts ++= rocc.module.io.ptw
+  //       rocc.module.io.ptw <> DontCare
+  //       rocc.module.io.mem <> DontCare
+  //       rocc.module.io.cmd <> cmdRouter.io.out(i)
+  //       respArb.io.in(i) <> Queue(rocc.module.io.resp)
+  //     }
+  //     // Create this FPU just for RoCC
+  //     // val nFPUPorts = outer.roccs.filter(_.usesFPU).size
+  //     val fp_rocc_ios = outer.roccs.map(_.module.io)
+  //     fp_rocc_ios.map { io =>
+  //       io.fpu_req.ready := false.B
+  //       io.fpu_resp.valid := false.B
+  //       io.fpu_resp.bits := DontCare
+  //     }
+  //     (respArb, cmdRouter)
+  //   }
 
-    cmdRouter.io.in <> DontCare
-    outer.roccs.foreach(_.module.io.exception := DontCare)
-    respArb.io.out <> DontCare
-  }
+  //   cmdRouter.io.in <> DontCare
+  //   outer.roccs.foreach(_.module.io.exception := DontCare)
+  //   respArb.io.out <> DontCare
+  // }
+}
+
+class ClusterSynchronizer(
+  barrierIdWidth: Int,
+  numCoreWidth: Int,
+) extends Module {
+  val io = IO(new Bundle {
+    val req = Flipped(Decoupled(new Bundle {
+      val barrierId = UInt(barrierIdWidth.W)
+      val sizeMinusOne = UInt(numCoreWidth.W)
+      val coreId = UInt(numCoreWidth.W)
+    }))
+    val resp = Decoupled(new Bundle {
+      val barrierId = UInt(barrierIdWidth.W)
+    })
+  })
 }
 
 // Some @copypaste from CoalescerSourceGen.
@@ -768,7 +845,6 @@ class VortexTLAdapter(
   io.outReq.bits.corrupt := 0.U
   io.inReq.ready := io.outReq.ready
   // VortexBundleD <> TLBundleD
-  // Filtering out write requests is handled inside the wrapper Verilog
   io.inResp.valid := io.outResp.valid
   io.inResp.bits.opcode := io.outResp.bits.opcode
   io.inResp.bits.size := io.outResp.bits.size
