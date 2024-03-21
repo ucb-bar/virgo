@@ -110,41 +110,5 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
     b.resp <> synchronizer.io.resp // broadcast
   }
 
-  // outer.barrierSlaveNode.in.foreach { case (b, e) =>
-  //   val fakeBarrierRespId = RegNext(b.req.bits.barrierId)
-  //   val fakeBarrierRespValid = RegNext(b.req.fire)
-  //   b.req.ready := true.B // barrier module is always ready
-  //   b.resp.valid := fakeBarrierRespValid
-  //   b.resp.bits.barrierId := fakeBarrierRespId
-  // }
-
-  val allSyncedRegs = Seq.fill(numBarriers)(Wire(UInt(32.W)))
-  val perCoreSyncedRegs = Seq.fill(numBarriers)(Seq.fill(outer.numCores)(RegInit(0.U(32.W))))
-  (allSyncedRegs zip perCoreSyncedRegs).foreach{ case (all, per) =>
-    all := per.reduce((x0, x1) => (x0 =/= 0.U) && (x1 =/= 0.U))
-
-    val allPassed = per.map(_ === 2.U).reduce(_ && _)
-    when(allPassed) {
-      per.foreach(_ := 0.U)
-    }
-
-    dontTouch(all)
-  }
-  // FIXME: 4 cores per cluster hardcoded
-  outer.regNode.regmap(
-    0x00 -> Seq(RegField.r(32, allSyncedRegs(0))),
-    0x04 -> Seq(RegField(32, perCoreSyncedRegs(0)(0))),
-    0x08 -> Seq(RegField(32, perCoreSyncedRegs(0)(1))),
-    0x10 -> Seq(RegField.r(32, allSyncedRegs(1))),
-    0x14 -> Seq(RegField(32, perCoreSyncedRegs(1)(0))),
-    0x18 -> Seq(RegField(32, perCoreSyncedRegs(1)(1))),
-    0x20 -> Seq(RegField.r(32, allSyncedRegs(2))),
-    0x24 -> Seq(RegField(32, perCoreSyncedRegs(2)(0))),
-    0x28 -> Seq(RegField(32, perCoreSyncedRegs(2)(1))),
-    0x30 -> Seq(RegField.r(32, allSyncedRegs(3))),
-    0x34 -> Seq(RegField(32, perCoreSyncedRegs(3)(0))),
-    0x38 -> Seq(RegField(32, perCoreSyncedRegs(3)(1))),
-  )
-
   println(s"======== barrierSlaveNode: ${outer.barrierSlaveNode.in(0)._2.barrierIdBits}")
 }
