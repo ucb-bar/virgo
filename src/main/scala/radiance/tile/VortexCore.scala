@@ -90,15 +90,13 @@ class VortexBundle(tile: RadianceTile)(implicit p: Parameters) extends CoreBundl
   val smem_d_ready = Output(UInt((tile.numLsuLanes * 1).W))
 
   // FIXME: hardcoded
-  val NB_WIDTH = 2
-  val NC_WIDTH = 1
   val gbar_req_valid = Output(Bool())
-  val gbar_req_id = Output(UInt(NB_WIDTH.W))
-  val gbar_req_size_m1 = Output(UInt(NC_WIDTH.W))
-  val gbar_req_core_id = Output(UInt(NC_WIDTH.W))
+  val gbar_req_id = Output(UInt(tile.barrierIdBits.W))
+  val gbar_req_size_m1 = Output(UInt(tile.coreIdBits.W))
+  val gbar_req_core_id = Output(UInt(tile.coreIdBits.W))
   val gbar_req_ready = Input(Bool())
   val gbar_rsp_valid = Input(Bool())
-  val gbar_rsp_id = Input(UInt(NB_WIDTH.W))
+  val gbar_rsp_id = Input(UInt(tile.barrierIdBits.W))
 
   // val fpu = Flipped(new FPUCoreIO())
   //val rocc = Flipped(new RoCCCoreIO(nTotalRoCCCSRs))
@@ -116,7 +114,6 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
       // see VX_csr_data that implements the read logic for CSR_MHARTID/GWID.
       Map(
         "CORE_ID" -> tile.tileParams.tileId,
-        "CORES_PER_CLUSTER" -> 2, // FIXME: hardcoded
         // TODO: can we get this as a parameter?
         "BOOTROM_HANG100" -> 0x10100,
         "NUM_THREADS" -> tile.numLsuLanes

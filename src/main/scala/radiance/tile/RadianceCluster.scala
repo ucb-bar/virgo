@@ -98,8 +98,6 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
     println(s"======= RadianceCluster: clbus name = ${outer.clbus.busName}")
   }
 
-  val numBarriers = 4 // FIXME: hardcoded
-
   // @cleanup: This assumes barrier params on all edges are the same, i.e. all
   // cores are configured to have the same barrier id range.  While true, might
   // be better to actually assert this

@@ -328,7 +328,11 @@ class RadianceTile private (
 
   // Barrier synchronization node
   // FIXME: hardcoded params
-  val barrierParams = BarrierParams(barrierIdBits = 2, numCoreBits = 1)
+  val numBarriers = 8
+  val numCores = 2
+  def barrierIdBits = log2Ceil(numBarriers)
+  def coreIdBits = log2Ceil(numCores)
+  val barrierParams = BarrierParams(barrierIdBits = barrierIdBits, numCoreBits = coreIdBits)
   val barrierMasterNode = BarrierMasterNode(barrierParams)
 
   val base = p(GPUMemory()) match {
