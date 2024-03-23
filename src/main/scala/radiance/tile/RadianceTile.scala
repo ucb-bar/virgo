@@ -329,11 +329,8 @@ class RadianceTile private (
   // Barrier synchronization node
   // FIXME: hardcoded params
   val numBarriers = 8
-  val numCores = 2
   def barrierIdBits = log2Ceil(numBarriers)
-  def coreIdBits = log2Ceil(numCores)
-  val barrierParams = BarrierParams(barrierIdBits = barrierIdBits, numCoreBits = coreIdBits)
-  val barrierMasterNode = BarrierMasterNode(barrierParams)
+  val barrierMasterNode = BarrierMasterNode(barrierIdBits)
 
   val base = p(GPUMemory()) match {
     case Some(GPUMemParams(baseAddr, _)) => baseAddr
@@ -784,22 +781,6 @@ class RadianceTileModuleImp(outer: RadianceTile)
   //   outer.roccs.foreach(_.module.io.exception := DontCare)
   //   respArb.io.out <> DontCare
   // }
-}
-
-class ClusterSynchronizer(
-  barrierIdWidth: Int,
-  numCoreWidth: Int,
-) extends Module {
-  val io = IO(new Bundle {
-    val req = Flipped(Decoupled(new Bundle {
-      val barrierId = UInt(barrierIdWidth.W)
-      val sizeMinusOne = UInt(numCoreWidth.W)
-      val coreId = UInt(numCoreWidth.W)
-    }))
-    val resp = Decoupled(new Bundle {
-      val barrierId = UInt(barrierIdWidth.W)
-    })
-  })
 }
 
 // Some @copypaste from CoalescerSourceGen.

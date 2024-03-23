@@ -102,6 +102,7 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
   // cores are configured to have the same barrier id range.  While true, might
   // be better to actually assert this
   val barrierParam = outer.barrierSlaveNode.in(0)._2
+  println(s"======= barrierParam: ${barrierParam}")
   val synchronizer = Module(new BarrierSynchronizer(barrierParam))
   (synchronizer.io.reqs zip outer.barrierSlaveNode.in).foreach { case (req, (b, _)) =>
     req <> b.req

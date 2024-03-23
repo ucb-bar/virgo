@@ -90,13 +90,15 @@ class VortexBundle(tile: RadianceTile)(implicit p: Parameters) extends CoreBundl
   val smem_d_ready = Output(UInt((tile.numLsuLanes * 1).W))
 
   // FIXME: hardcoded
+  val barrierIdBits = tile.barrierMasterNode.out(0)._2.barrierIdBits
+  val coreIdBits = tile.barrierMasterNode.out(0)._2.numCoreBits
   val gbar_req_valid = Output(Bool())
-  val gbar_req_id = Output(UInt(tile.barrierIdBits.W))
-  val gbar_req_size_m1 = Output(UInt(tile.coreIdBits.W))
-  val gbar_req_core_id = Output(UInt(tile.coreIdBits.W))
+  val gbar_req_id = Output(UInt(barrierIdBits.W))
+  val gbar_req_size_m1 = Output(UInt(coreIdBits.W))
+  val gbar_req_core_id = Output(UInt(coreIdBits.W))
   val gbar_req_ready = Input(Bool())
   val gbar_rsp_valid = Input(Bool())
-  val gbar_rsp_id = Input(UInt(tile.barrierIdBits.W))
+  val gbar_rsp_id = Input(UInt(barrierIdBits.W))
 
   // val fpu = Flipped(new FPUCoreIO())
   //val rocc = Flipped(new RoCCCoreIO(nTotalRoCCCSRs))
