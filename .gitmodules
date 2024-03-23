@@ -1,6 +1,6 @@
 [submodule "src/main/resources/vsrc/vortex"]
 	path = src/main/resources/vsrc/vortex
-	url = https://github.com/hansungk/vortex-private
+	url = git@github.com:hansungk/vortex-private.git
 [submodule "radpie"]
 	path = radpie
 	url = git@github.com:hansungk/radpie.git
