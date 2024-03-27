@@ -14,12 +14,12 @@ import freechips.rocketchip.diplomacy._
 case class EmptyParams()
 
 case class BarrierParams(
-  barrierIdBits: Int,
-  numCoreBits: Int
+    barrierIdBits: Int,
+    numCoreBits: Int
 )
 
 class BarrierRequestBits(
-  param: BarrierParams
+    param: BarrierParams
 ) extends Bundle {
   val barrierId = UInt(param.barrierIdBits.W)
   val sizeMinusOne = UInt(param.numCoreBits.W)
@@ -27,7 +27,7 @@ class BarrierRequestBits(
 }
 
 class BarrierResponseBits(
-  param: BarrierParams
+    param: BarrierParams
 ) extends Bundle {
   val barrierId = UInt(param.barrierIdBits.W)
 }
@@ -38,25 +38,42 @@ class BarrierBundle(param: BarrierParams) extends Bundle {
 }
 
 // FIXME Separate BarrierEdgeParams from BarrierParams
-object BarrierNodeImp extends SimpleNodeImp[BarrierParams, EmptyParams, BarrierParams, BarrierBundle] {
-  def edge(pd: BarrierParams, pu: EmptyParams, p: Parameters, sourceInfo: SourceInfo) = {
-    // barrier parameters flow strictly downward from the master node
-    pd
+object BarrierNodeImp extends SimpleNodeImp[BarrierParams, BarrierParams, BarrierParams, BarrierBundle] {
+  def edge(pd: BarrierParams, pu: BarrierParams, p: Parameters, sourceInfo: SourceInfo) = {
+    println(s"==== BarrierNodeImp: barrierIdBits=${pd.barrierIdBits}, numCoreBits=${pu.numCoreBits}")
+    require(pd.barrierIdBits >= 0 && pu.numCoreBits >= 0)
+    BarrierParams(barrierIdBits = pd.barrierIdBits, numCoreBits = pu.numCoreBits)
   }
   def bundle(e: BarrierParams) = new BarrierBundle(e)
   // FIXME render
   def render(e: BarrierParams) = RenderedEdge(colour = "ffffff", label = "X")
 }
 
-case class BarrierMasterNode(val srcParams: BarrierParams)(implicit valName: ValName)
-    extends SourceNode(BarrierNodeImp)(Seq(srcParams))
-case class BarrierSlaveNode(val numEdges: Int)(implicit valName: ValName)
-    extends SinkNode(BarrierNodeImp)(Seq.fill(numEdges)(EmptyParams()))
+case class BarrierMasterNode(val barrierIdBits: Int)(implicit valName: ValName)
+    extends SourceNode(BarrierNodeImp)({
+      require(barrierIdBits >= 0)
+      Seq(BarrierParams(barrierIdBits = barrierIdBits, numCoreBits = -1 /* unset */))
+    })
+case class BarrierSlaveNode(val numCores: Int)(implicit valName: ValName)
+    extends SinkNode(BarrierNodeImp)({
+      require(numCores > 0)
+      val numCoreBits = log2Ceil(numCores)
+      Seq.fill(numCores)(
+        BarrierParams(barrierIdBits = -1 /* unset */, numCoreBits = numCoreBits)
+      )
+    })
 
-class BarrierSynchronizer(param: BarrierParams) extends Module {
-  val numBarrierIds = 1 << param.barrierIdBits
+// `delay`: number of cycles used to delay the response after all cores are
+// synchronized.  This is used for debugging purposes to give some time for the
+// cores to "settle" after the barrier synchronization, e.g. resolve
+// outstanding smem requests.
+class BarrierSynchronizer(
+    param: BarrierParams,
+    delay: Option[Int] = None
+) extends Module {
+  val numBarriers = 1 << param.barrierIdBits
   val numCores = 1 << param.numCoreBits
-  println(s"numBarrierIds: ${numBarrierIds}, numCores: ${numCores}")
+  println(s"numBarriers: ${numBarriers}, numCores: ${numCores}")
 
   val io = IO(new Bundle {
     val reqs = Vec(numCores, Flipped(Decoupled(new BarrierRequestBits(param))))
@@ -64,35 +81,42 @@ class BarrierSynchronizer(param: BarrierParams) extends Module {
   })
 
   // 2-dimensional table of per-id, per-core "done" signals
-  val table = RegInit(VecInit(Seq.fill(numBarrierIds)(VecInit(Seq.fill(numCores)(false.B)))))
-  val done = Wire(Vec(numBarrierIds, Bool()))
-  table.zipWithIndex.foreach { case (row, i) =>
-    done(i) := row.reduce(_ && _)
+  val table = RegInit(
+    VecInit(Seq.fill(numBarriers)(VecInit(Seq.fill(numCores)(false.B))))
+  )
+  val done = Seq.fill(numBarriers)(Wire(Bool()))
+  val delayer = delay.map(n => Seq.fill(numBarriers)(Counter(n)))
+
+  (table zip done).zipWithIndex.foreach { case ((row, d), i) =>
+    d := row.reduce(_ && _)
+    delayer.foreach { dl => when(d) { dl(i).inc() } }
+    dontTouch(d)
   }
-  dontTouch(done)
 
   io.reqs.zipWithIndex.foreach { case (req, coreId) =>
     // always ready; all this module does is latch to boolean regs
     req.ready := true.B
     when(req.fire) {
       assert(coreId.U === req.bits.coreId)
-      // FIXME: don't need coreId to be hardware here
+      // @cleanup: coreId don't need to be hardware
       table(req.bits.barrierId)(coreId.U) := true.B
     }
   }
 
-  val doneArbiter = Module(new RRArbiter(Bool(), numBarrierIds))
+  val doneArbiter = Module(new RRArbiter(Bool(), numBarriers))
   (doneArbiter.io.in zip done).zipWithIndex.foreach { case ((in, d), i) =>
-    in.valid := d
+    val alarm = delayer match {
+      case Some(dl) => dl(i).value === (dl(i).n - 1).U
+      case None     => true.B
+    }
+    in.valid := (d && alarm)
     in.bits := d
     when(in.fire) {
       table(i).foreach(_ := false.B)
+      delayer.foreach(_(i).reset())
     }
   }
   io.resp.valid := doneArbiter.io.out.valid
   io.resp.bits.barrierId := doneArbiter.io.chosen
-  when(io.resp.fire) {
-    table(io.resp.bits.barrierId).foreach(_ := false.B)
-  }
   doneArbiter.io.out.ready := io.resp.ready
 }
