@@ -4,10 +4,12 @@
 package radiance.subsystem
 
 import chisel3.util._
+import freechips.rocketchip.diplomacy.BigIntHexContext
 import org.chipsalliance.cde.config._
 import freechips.rocketchip.rocket._
 import freechips.rocketchip.tile._
 import freechips.rocketchip.subsystem._
+import gemmini.{CapacityInKilobytes, GemminiFPConfigs}
 import radiance.tile._
 import radiance.memory._
 
@@ -57,6 +59,51 @@ class WithRadianceCores(
       case InCluster(clusterId) => CCBUS(clusterId)
     }
   ), useVxCache)
+}
+
+class WithRadianceGemmini(location: HierarchicalLocation,
+                          crossing: RocketCrossingParams,
+                          dim: Int, extMemBase: BigInt,
+                          spSizeInKB: Int, accSizeInKB: Int) extends Config((site, _, up) => {
+  case TilesLocated(`location`) => {
+    val prev = up(TilesLocated(`location`), site)
+    val idOffset = prev.size
+    if (idOffset == 0) {
+      println("******WARNING****** gemmini tile id is 0! radiance tiles in the same cluster needs to be before gemmini")
+    }
+    val gemmini = GemminiTileParams(gemminiConfig = GemminiFPConfigs.FP32DefaultConfig.copy(
+      has_training_convs = false,
+      has_max_pool = false,
+      use_tl_ext_mem = true,
+      tl_ext_mem_base = extMemBase,
+      sp_singleported = false,
+      spad_read_delay = 4,
+      use_shared_ext_mem = true,
+      acc_sub_banks = 1,
+      has_normalizations = false,
+      meshRows = dim,
+      meshColumns = dim,
+      dma_buswidth = dim * 32,
+      tile_latency = 0,
+      sp_capacity = CapacityInKilobytes(spSizeInKB),
+      acc_capacity = CapacityInKilobytes(accSizeInKB),
+    ))
+    List.tabulate(1)(i => GemminiTileAttachParams(
+      gemmini.copy(tileId = i + idOffset),
+      crossing
+    )) ++ prev
+  }
+}) {
+  def this(location: HierarchicalLocation = InSubsystem,
+           dim: Int, extMemBase: BigInt, spSizeInKB: Int, accSizeInKB: Int) =
+    this(location, RocketCrossingParams(
+      master = HierarchicalElementMasterPortParams.locationDefault(location),
+      slave = HierarchicalElementSlavePortParams.locationDefault(location),
+      mmioBaseAddressPrefixWhere = location match {
+        case InSubsystem => CBUS
+        case InCluster(clusterId) => CCBUS(clusterId)
+      }
+    ), dim, extMemBase, spSizeInKB, accSizeInKB)
 }
 
 class WithFuzzerCores(
