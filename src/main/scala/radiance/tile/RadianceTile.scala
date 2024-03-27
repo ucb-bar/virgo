@@ -5,19 +5,17 @@ package radiance.tile
 
 import chisel3._
 import chisel3.util._
-import org.chipsalliance.cde.config._
 import freechips.rocketchip.devices.tilelink._
 import freechips.rocketchip.diplomacy._
-import freechips.rocketchip.interrupts._
-import freechips.rocketchip.tilelink._
-import freechips.rocketchip.rocket._
-import freechips.rocketchip.subsystem.HierarchicalElementCrossingParamsLike
-import freechips.rocketchip.util._
 import freechips.rocketchip.prci.ClockSinkParameters
 import freechips.rocketchip.regmapper.RegField
+import freechips.rocketchip.rocket._
+import freechips.rocketchip.subsystem.HierarchicalElementCrossingParamsLike
 import freechips.rocketchip.tile._
+import freechips.rocketchip.tilelink._
+import freechips.rocketchip.util._
+import org.chipsalliance.cde.config._
 import radiance.memory._
-import gemmini.{CapacityInKilobytes, Gemmini, GemminiCustomConfigs, GemminiFPConfigs}
 import radiance.subsystem.{GPUMemParams, GPUMemory}
 
 case class RadianceTileParams(
@@ -57,14 +55,14 @@ case class RadianceTileParams(
 // though. TODO see how BOOM does that
 case class VortexCoreParams(
   bootFreqHz: BigInt = 0,
-  useVM: Boolean = true,
+  useVM: Boolean = false,
   useUser: Boolean = false,
   useSupervisor: Boolean = false,
   useHypervisor: Boolean = false,
   useDebug: Boolean = true,
-  useAtomics: Boolean = true,
+  useAtomics: Boolean = false,
   useAtomicsOnlyForIO: Boolean = false,
-  useCompressed: Boolean = true,
+  useCompressed: Boolean = false,
   useRVE: Boolean = false,
   useConditionalZero: Boolean = false,
   nLocalInterrupts: Int = 0,
@@ -89,8 +87,8 @@ case class VortexCoreParams(
   clockGate: Boolean = false,
   mvendorid: Int = 0, // 0 means non-commercial implementation
   mimpid: Int = 0x20181004, // release date in BCD
-  mulDiv: Option[MulDivParams] = Some(MulDivParams()),
-  fpu: Option[FPUParams] = Some(FPUParams()),
+  mulDiv: Option[MulDivParams] = None,
+  fpu: Option[FPUParams] = None,
   debugROB: Boolean = false, // if enabled, uses a C++ debug ROB to generate trace-with-wdata
   haveCease: Boolean = true, // non-standard CEASE instruction
   haveSimTimeout: Boolean = true // add plusarg for simulation timeout
@@ -343,39 +341,6 @@ class RadianceTile private (
     tlMasterXbar.node :=* AddressOrNode(base) :=* icacheNode
     tlMasterXbar.node :=* AddressOrNode(base) :=* dcacheNode
   }
-
-  // ROCC
-  // TODO: parametrize
-  val gemmini = LazyModule(new Gemmini(GemminiFPConfigs.FP32DefaultConfig.copy(
-    has_training_convs = false,
-    has_max_pool = false,
-    use_tl_ext_mem = true,
-    tl_ext_mem_base = x"ff000000",
-    sp_singleported = false,
-    spad_read_delay = 4,
-    use_shared_ext_mem = true,
-    acc_sub_banks = 1,
-    has_normalizations = false,
-    meshRows = 8,
-    meshColumns = 8,
-    dma_buswidth = 256,
-    tile_latency = 0,
-    sp_capacity = CapacityInKilobytes(16),
-    acc_capacity = CapacityInKilobytes(8),
-  )))
-  val roccs: Seq[LazyRoCC] = Seq(gemmini)
-  tlMasterXbar.node :=* AddressOrNode(base) :=* gemmini.atlNode
-  tlOtherMastersNode :=* AddressOrNode(base) :=* gemmini.tlNode
-
-  // MMIO
-  // gemmini.stlNode :=* TLWidthWidget(4) :=* smemXbar.node
-  // sharedmem access
-  //
-  // FIXME: gemmini spad has 16B data width; core smem interface has 4B. Need
-  // to consolidate by either coalescing, or changing gemmini spad to
-  // strided-by-word
-  // gemmini.unified_mem_node :=* TLWidthWidget(4) :=* smemXbar.node
-  // TLRAM(AddressSet(x"ff004000", 0xfff)) := TLFragmenter(4, 4) := smemXbar.node
 
   /* below are copied from rocket */
 
