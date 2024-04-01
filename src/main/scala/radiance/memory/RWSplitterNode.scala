@@ -27,7 +27,7 @@ class RWSplitterNode(name: String = "rw_splitter")(implicit p: Parameters) exten
       require(isPow2(vis_mask + 1) || vis_mask == -1)
       println(f"combined visibilities of splitter memory node clients: ${vis_min}, ${vis_mask}")
 
-      seq(0).v1copy(
+      seq.head.v1copy(
         echoFields = BundleField.union(seq.flatMap(_.echoFields)),
         requestFields = BundleField.union(seq.flatMap(_.requestFields)),
         responseKeys = seq.flatMap(_.responseKeys).distinct,
@@ -56,9 +56,8 @@ class RWSplitterNode(name: String = "rw_splitter")(implicit p: Parameters) exten
       )
     },
     managerFn = { seq =>
-      println(seq.flatMap(_.slaves.map(_.supports)))
       // val fifoIdFactory = TLXbar.relabeler()
-      seq(0).v1copy(
+      seq.head.v1copy(
         responseFields = BundleField.union(seq.flatMap(_.responseFields)),
         requestKeys = seq.flatMap(_.requestKeys).distinct,
         minLatency = seq.map(_.minLatency).min,
@@ -81,7 +80,7 @@ class RWSplitterNode(name: String = "rw_splitter")(implicit p: Parameters) exten
     val u_out = node.out
     val u_in = node.in
     assert(u_out.length == 2)
-    println(f"gemmini unified memory node has ${u_in.length} incoming client(s)")
+    println(f"${name} has ${u_in.length} incoming client(s)")
 
     val r_out = u_out.head
     val w_out = u_out.last
