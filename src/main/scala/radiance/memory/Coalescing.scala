@@ -344,13 +344,18 @@ class SourceGenerator[T <: Data](
   io.id.valid := (if (ignoreInUse) true.B else !lowestFreeRow.valid)
   io.id.bits := lowestFree
   when(io.gen && io.id.valid /* fire */ ) {
-    occupancyTable(io.id.bits).valid := true.B // mark in use
-    if (metadata.isDefined) {
-      occupancyTable(io.id.bits).meta := io.meta
+    // handle reclaim at the same cycle, e.g. for 0-latency D channel response
+    when (!io.reclaim.valid || io.reclaim.bits =/= io.id.bits) {
+      occupancyTable(io.id.bits).valid := true.B // mark in use
+      if (metadata.isDefined) {
+        occupancyTable(io.id.bits).meta := io.meta
+      }
     }
   }
   when(io.reclaim.valid) {
     // @perf: would this require multiple write ports?
+    // NOTE: this does not seem sufficient to handle same-cycle gen-reclaimon
+    // its own
     occupancyTable(io.reclaim.bits).valid := false.B // mark freed
   }
   io.peek := {

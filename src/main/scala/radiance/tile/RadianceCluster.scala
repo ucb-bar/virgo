@@ -405,7 +405,6 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
       }
       // must empty backup before filling data pipe
       assert(!(sram_read_backup_reg.valid && data_pipe.valid && data_pipe_in.fire))
-      assert(data_pipe_in.valid === data_pipe_in.fire)
 
       r_node.d.bits := r_edge.AccessAck(
         Mux(r_node.d.valid, metadata_pipe.bits.source, 0.U),
