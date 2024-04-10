@@ -9,7 +9,8 @@ import freechips.rocketchip.util.BundleField
 import org.chipsalliance.cde.config.Parameters
 
 
-class RWSplitterNode(name: String = "rw_splitter")(implicit p: Parameters) extends LazyModule {
+class RWSplitterNode(visibility: Option[AddressSet], override val name: String = "rw_splitter")
+                    (implicit p: Parameters) extends LazyModule {
   // this node accepts both read and write requests,
   // splits & arbitrates them into one client node per type of operation;
   // there will be N incoming edges, two outgoing edges, with two N:1 muxes;
@@ -21,11 +22,9 @@ class RWSplitterNode(name: String = "rw_splitter")(implicit p: Parameters) exten
       assert((read_src_range.start == 0) && isPow2(read_src_range.end))
       val write_src_range = read_src_range.shift(read_src_range.size)
       val visibilities = seq.flatMap(_.masters.flatMap(_.visibility))
-      val vis_min = visibilities.map(_.base).min
-      val vis_max = visibilities.map{ x => x.base + x.mask }.max
-      val vis_mask = vis_max - vis_min
-      require(isPow2(vis_mask + 1) || vis_mask == -1)
-      println(f"combined visibilities of splitter memory node clients: ${vis_min}, ${vis_mask}")
+      val unified_vis = if (visibilities.map(_ == AddressSet.everything).reduce(_ || _)) Seq(AddressSet.everything)
+        else AddressSet.unify(visibilities)
+      println(s"$name has input visibilities $visibilities, unified to $unified_vis")
 
       seq.head.v1copy(
         echoFields = BundleField.union(seq.flatMap(_.echoFields)),
@@ -36,7 +35,7 @@ class RWSplitterNode(name: String = "rw_splitter")(implicit p: Parameters) exten
           TLMasterParameters.v1(
             name = s"${name}_read_client",
             sourceId = read_src_range,
-            visibility = Seq(AddressSet(vis_min, vis_mask)),
+            visibility = Seq(visibility.getOrElse(unified_vis)),
             supportsProbe = TransferSizes.mincover(seq.map(_.anyEmitClaims.get)),
             supportsGet = TransferSizes.mincover(seq.map(_.anyEmitClaims.get)),
             supportsPutFull = TransferSizes.none,
@@ -45,7 +44,7 @@ class RWSplitterNode(name: String = "rw_splitter")(implicit p: Parameters) exten
           TLMasterParameters.v1(
             name = s"${name}_write_client",
             sourceId = write_src_range,
-            visibility = Seq(AddressSet(vis_min, vis_mask)),
+            visibility = Seq(visibility.getOrElse(unified_vis)),
             supportsProbe = TransferSizes.mincover(
               seq.map(_.anyEmitClaims.putFull) ++seq.map(_.anyEmitClaims.putPartial)),
             supportsGet = TransferSizes.none,
@@ -57,6 +56,10 @@ class RWSplitterNode(name: String = "rw_splitter")(implicit p: Parameters) exten
     },
     managerFn = { seq =>
       // val fifoIdFactory = TLXbar.relabeler()
+      println(f"combined address range of $name managers: " +
+        f"${AddressSet.unify(seq.flatMap(_.slaves.flatMap(_.address)))}, supports:" +
+        f"${seq.map(_.anySupportClaims).reduce(_ mincover _)}")
+
       seq.head.v1copy(
         responseFields = BundleField.union(seq.flatMap(_.responseFields)),
         requestKeys = seq.flatMap(_.requestKeys).distinct,
@@ -65,11 +68,7 @@ class RWSplitterNode(name: String = "rw_splitter")(implicit p: Parameters) exten
         managers = Seq(TLSlaveParameters.v2(
           name = Some(s"${name}_manager"),
           address = AddressSet.unify(seq.flatMap(_.slaves.flatMap(_.address))),
-          supports = TLMasterToSlaveTransferSizes(
-            get = TransferSizes.mincover(seq.flatMap(_.slaves.map(_.supportsGet))),
-            putFull = TransferSizes.mincover(seq.flatMap(_.slaves.map(_.supportsPutFull))),
-            putPartial = TransferSizes.mincover(seq.flatMap(_.slaves.map(_.supportsPutPartial)))
-          ),
+          supports = seq.map(_.anySupportClaims).reduce(_ mincover _),
           fifoId = Some(0),
         ))
       )
@@ -79,8 +78,7 @@ class RWSplitterNode(name: String = "rw_splitter")(implicit p: Parameters) exten
   lazy val module = new LazyModuleImp(this) {
     val u_out = node.out
     val u_in = node.in
-    assert(u_out.length == 2)
-    println(f"${name} has ${u_in.length} incoming client(s)")
+    assert(u_out.length == 2, s"$name should have 2 outgoing edges but has ${u_out.length}")
 
     val r_out = u_out.head
     val w_out = u_out.last
@@ -154,10 +152,16 @@ class RWSplitterNode(name: String = "rw_splitter")(implicit p: Parameters) exten
 
 object RWSplitterNode {
   def apply()(implicit p: Parameters, valName: ValName, sourceInfo: SourceInfo): TLNexusNode = {
-    LazyModule(new RWSplitterNode(name = valName.name)).node
+    LazyModule(new RWSplitterNode(None, name = valName.name)).node
   }
 
-  def apply(name: String)(implicit p: Parameters, valName: ValName, sourceInfo: SourceInfo): TLNexusNode = {
-    LazyModule(new RWSplitterNode(name = name)).node
+  def apply(visibility: AddressSet)
+           (implicit p: Parameters, valName: ValName, sourceInfo: SourceInfo): TLNexusNode = {
+    apply(visibility, valName.name)
+  }
+
+  def apply(visibility: AddressSet, name: String)
+           (implicit p: Parameters, valName: ValName, sourceInfo: SourceInfo): TLNexusNode = {
+    LazyModule(new RWSplitterNode(Some(visibility), name = name)).node
   }
 }
