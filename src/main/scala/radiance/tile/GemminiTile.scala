@@ -140,5 +140,7 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
 
   tieOffGemminiRocc
 
-  outer.reportCease(None)
+  // hacky, but cluster will AND the cease signals from all tiles, and we want
+  // the core tiles to determine cluster cease not Gemmini
+  outer.reportCease(Some(true.B))
 }
