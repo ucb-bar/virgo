@@ -35,7 +35,7 @@ class RWSplitterNode(visibility: Option[AddressSet], override val name: String =
           TLMasterParameters.v1(
             name = s"${name}_read_client",
             sourceId = read_src_range,
-            visibility = Seq(visibility.getOrElse(unified_vis)),
+            visibility = visibility.map(Seq(_)).getOrElse(unified_vis),
             supportsProbe = TransferSizes.mincover(seq.map(_.anyEmitClaims.get)),
             supportsGet = TransferSizes.mincover(seq.map(_.anyEmitClaims.get)),
             supportsPutFull = TransferSizes.none,
@@ -44,7 +44,7 @@ class RWSplitterNode(visibility: Option[AddressSet], override val name: String =
           TLMasterParameters.v1(
             name = s"${name}_write_client",
             sourceId = write_src_range,
-            visibility = Seq(visibility.getOrElse(unified_vis)),
+            visibility = visibility.map(Seq(_)).getOrElse(unified_vis),
             supportsProbe = TransferSizes.mincover(
               seq.map(_.anyEmitClaims.putFull) ++seq.map(_.anyEmitClaims.putPartial)),
             supportsGet = TransferSizes.none,
