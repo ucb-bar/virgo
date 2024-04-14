@@ -317,6 +317,38 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_to_csr_if.sv")
   addResource("/vsrc/vortex/hw/rtl/core/VX_fpu_unit.sv")
 
+  // fpnew
+  // compile order matters; package definitions (ex. fpnew_pkg) should be
+  // compiled before all the other modules that reference them.  They are added
+  // to vcs.mk
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpnew_cast_multi.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpnew_classifier.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpnew_divsqrt_multi.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpnew_divsqrt_th_32.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpnew_fma_multi.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpnew_fma.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpnew_noncomp.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpnew_opgroup_block.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpnew_opgroup_fmt_slice.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpnew_opgroup_multifmt_slice.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpnew_rounding.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpnew_top.sv")
+
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpu_div_sqrt_mvp/hdl/control_mvp.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpu_div_sqrt_mvp/hdl/div_sqrt_mvp_wrapper.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpu_div_sqrt_mvp/hdl/div_sqrt_top_mvp.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpu_div_sqrt_mvp/hdl/iteration_div_sqrt_mvp.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpu_div_sqrt_mvp/hdl/norm_div_sqrt_mvp.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpu_div_sqrt_mvp/hdl/nrbd_nrsc_mvp.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/fpu_div_sqrt_mvp/hdl/preprocess_mvp.sv")
+
+  // only include referenced modules in fpnew/common_cells; otherwise results
+  // in elaboration error
+  addResource("/vsrc/vortex/third_party/fpnew/src/common_cells/src/gray_to_binary.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/common_cells/src/lzc.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/common_cells/src/rr_arb_tree.sv")
+  addResource("/vsrc/vortex/third_party/fpnew/src/common_cells/src/spill_register.sv")
+
   addResource("/vsrc/vortex/hw/rtl/interfaces/VX_branch_ctl_if.sv")
   addResource("/vsrc/vortex/hw/rtl/interfaces/VX_commit_csr_if.sv")
   addResource("/vsrc/vortex/hw/rtl/interfaces/VX_commit_if.sv")
