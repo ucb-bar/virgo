@@ -21,6 +21,7 @@ EXTRA_SIM_PREPROC_DEFINES += \
 	+define+ICACHE_DISABLE +define+DCACHE_DISABLE \
 	+define+GBAR_ENABLE \
 	+define+GBAR_CLUSTER_ENABLE \
+	+define+FPU_FPNEW \
 	+define+NUM_BARRIERS=8 \
 	+define+NUM_CORES=2 +define+NUM_THREADS=8 +define+NUM_WARPS=8
 	# Can't increase this to above 14, since the binary accesses 0xff0040..
