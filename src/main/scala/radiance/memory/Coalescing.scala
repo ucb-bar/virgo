@@ -354,7 +354,7 @@ class SourceGenerator[T <: Data](
   }
   when(io.reclaim.valid) {
     // @perf: would this require multiple write ports?
-    // NOTE: this does not seem sufficient to handle same-cycle gen-reclaimon
+    // NOTE: this does not seem sufficient to handle same-cycle gen-reclaim on
     // its own
     occupancyTable(io.reclaim.bits).valid := false.B // mark freed
   }
