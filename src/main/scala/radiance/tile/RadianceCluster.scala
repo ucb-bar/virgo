@@ -82,7 +82,25 @@ class RadianceCluster (
 
   val stride_by_word = true
   val filter_aligned = true
-  val disable_monitors = false // otherwise it generate 1k+ different tl monitors
+  val disable_monitors = true // otherwise it generate 1k+ different tl monitors
+
+  def guard_monitors[T](callback: Parameters => T)(implicit p: Parameters): Unit = {
+    if (disable_monitors) {
+      DisableMonitors { callback }
+    } else {
+      callback(p)
+    }
+  }
+  def connect_one[T <: BaseNode with TLNode](from: TLNode, to: () => T): T = {
+    val t = to()
+    guard_monitors { implicit p => t := from }
+    t
+  }
+  def connect_xbar(from: TLNode): TLNode = {
+    val t = TLXbar()
+    guard_monitors { implicit p => t := from }
+    t
+  }
 
   val radiance_smem_fanout = radianceTiles.zipWithIndex.flatMap { case (tile, cid) =>
     tile.smemNodes.zipWithIndex.map { case (m, lid) =>
@@ -156,40 +174,21 @@ class RadianceCluster (
     }
   }
 
-  def connect_one[T <: BaseNode with TLNode](from: TLNode, to: () => T): T = {
-    val t = to()
-    if (disable_monitors) {
-      DisableMonitors { implicit p => t := from}
-    } else {
-      t := from
-    }
-    t
-  }
-  def connect_xbar(from: TLNode): TLNode = {
-    val t = TLXbar()
-    if (disable_monitors) {
-      DisableMonitors { implicit p => t := from}
-    } else {
-      t := from
-    }
-    t
-  }
-
   if (stride_by_word) {
     // ask if you need to deal with this, it's not supposed to be readable
 
     val spad_read_nodes = Seq.fill(smem_banks) {
       val r_dist = DistributorNode(from = smem_width, to = wordSize)
-      r_dist := gemmini.spad_read_nodes
+      guard_monitors { implicit p => r_dist := gemmini.spad_read_nodes }
       Seq.fill(smem_subbanks) { connect_one(r_dist, TLIdentityNode.apply) }
     }
     val spad_write_nodes = Seq.fill(smem_banks) {
       val w_dist = DistributorNode(from = smem_width, to = wordSize)
-      w_dist := gemmini.spad_write_nodes
+      guard_monitors { implicit p => w_dist := gemmini.spad_write_nodes }
       Seq.fill(smem_subbanks) { connect_one(w_dist, TLIdentityNode.apply) }
     }
     val ws_dist = DistributorNode(from = smem_width, to = wordSize)
-    ws_dist := gemmini.spad.spad_writer.node // this is the dma write node
+    guard_monitors { implicit p => ws_dist := gemmini.spad.spad_writer.node } // this is the dma write node
     val spad_sp_write_nodes = Seq.fill(smem_subbanks) { connect_xbar(ws_dist) }
 
     val (uniform_r_nodes, uniform_w_nodes, nonuniform_r_nodes, nonuniform_w_nodes):
@@ -217,7 +216,20 @@ class RadianceCluster (
         }
       }
       val f_aligned = Seq.fill(2)(filter_nodes.map(_.map(_._1).map(connect_xbar)))
-      val f_unaligned = Seq.fill(2)(filter_nodes.map(_.map(_._2).map(connect_xbar)))
+      // val f_unaligned = Seq.fill(2)(filter_nodes.map(_.map(_._2).map(connect_xbar)))
+
+      val f_unaligned = Seq.fill(2) {
+        val serialized_node = TLEphemeralNode()
+        val serialized_in_xbar = TLXbar()
+        val serialized_out_xbar = TLXbar()
+        guard_monitors { implicit p =>
+          filter_nodes.foreach(_.map(_._2).foreach(serialized_in_xbar := _))
+          serialized_node := serialized_in_xbar
+          serialized_out_xbar := serialized_node
+        }
+        Seq(serialized_out_xbar)
+      }
+
 
       val uniform_r_nodes: Seq[Seq[Seq[TLNode]]] = spad_read_nodes.map { rb =>
         (rb zip f_aligned.head).map { case (rw, fa) => Seq(rw) ++ fa }
@@ -229,7 +241,7 @@ class RadianceCluster (
       }
 
       // all to all xbar
-      val Seq(nonuniform_r_nodes, nonuniform_w_nodes) = f_unaligned.map(_.flatten)
+      val Seq(nonuniform_r_nodes, nonuniform_w_nodes) = f_unaligned // f_unaligned.map(_.flatten)
 
       (uniform_r_nodes, uniform_w_nodes, nonuniform_r_nodes, nonuniform_w_nodes)
     } else {
@@ -248,7 +260,7 @@ class RadianceCluster (
       (uniform_r_nodes, uniform_w_nodes, nonuniform_r_nodes, nonuniform_w_nodes)
     }
 
-    radiance_smem_fanout.foreach(clbus.inwardNode := _)
+    guard_monitors { implicit p => radiance_smem_fanout.foreach(clbus.inwardNode := _) }
 
     smem_bank_mgrs.grouped(smem_subbanks).zipWithIndex.foreach { case (bank_mgrs, bid) =>
       bank_mgrs.zipWithIndex.foreach { case (Seq(r, w), wid) =>
@@ -256,7 +268,7 @@ class RadianceCluster (
         val subbank_r_xbar = TLXbar(TLArbiter.lowestIndexFirst)
         val subbank_w_xbar = TLXbar(TLArbiter.lowestIndexFirst)
 
-        def connect_smem_banks(): Unit = {
+        guard_monitors { implicit p =>
           r := subbank_r_xbar
           w := subbank_w_xbar
           uniform_r_nodes(bid)(wid).foreach( subbank_r_xbar := _ )
@@ -264,12 +276,6 @@ class RadianceCluster (
 
           nonuniform_r_nodes.foreach( subbank_r_xbar := _ )
           nonuniform_w_nodes.foreach( subbank_w_xbar := _ )
-        }
-
-        if (disable_monitors) {
-          DisableMonitors(_ => connect_smem_banks())
-        } else {
-          connect_smem_banks()
         }
       }
     }
