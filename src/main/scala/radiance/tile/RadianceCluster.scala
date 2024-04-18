@@ -96,10 +96,14 @@ class RadianceCluster (
     guard_monitors { implicit p => t := from }
     t
   }
+  def connect_xbar_name(from: TLNode, name: Option[String] = None): TLNode = {
+    val t = LazyModule(new TLXbar(TLArbiter.roundRobin))
+    name.map(t.suggestName)
+    guard_monitors { implicit p => t.node := from }
+    t.node
+  }
   def connect_xbar(from: TLNode): TLNode = {
-    val t = TLXbar()
-    guard_monitors { implicit p => t := from }
-    t
+    connect_xbar_name(from, None)
   }
 
   val radiance_smem_fanout = radianceTiles.zipWithIndex.flatMap { case (tile, cid) =>
@@ -215,19 +219,21 @@ class RadianceCluster (
           }
         }
       }
-      val f_aligned = Seq.fill(2)(filter_nodes.map(_.map(_._1).map(connect_xbar)))
+      val f_aligned = Seq.fill(2)(filter_nodes.map(_.map(_._1).map(connect_xbar_name(_, Some("rad_aligned")))))
       // val f_unaligned = Seq.fill(2)(filter_nodes.map(_.map(_._2).map(connect_xbar)))
 
       val f_unaligned = Seq.fill(2) {
         val serialized_node = TLEphemeralNode()
-        val serialized_in_xbar = TLXbar()
-        val serialized_out_xbar = TLXbar()
+        val serialized_in_xbar = LazyModule(new TLXbar())
+        val serialized_out_xbar = LazyModule(new TLXbar())
+        serialized_in_xbar.suggestName("unaligned_serialized_in_xbar")
+        serialized_out_xbar.suggestName("unaligned_serialized_out_xbar")
         guard_monitors { implicit p =>
-          filter_nodes.foreach(_.map(_._2).foreach(serialized_in_xbar := _))
-          serialized_node := serialized_in_xbar
-          serialized_out_xbar := serialized_node
+          filter_nodes.foreach(_.map(_._2).foreach(serialized_in_xbar.node := _))
+          serialized_node := serialized_in_xbar.node
+          serialized_out_xbar.node := serialized_node
         }
-        Seq(serialized_out_xbar)
+        Seq(serialized_out_xbar.node)
       }
 
 
@@ -254,8 +260,8 @@ class RadianceCluster (
         (wb zip spad_sp_write_nodes).map { case (ww, sw) => Seq(ww, sw) }
       }
       // these nodes are random access
-      val nonuniform_r_nodes: Seq[TLNode] = splitter_nodes.map(connect_xbar)
-      val nonuniform_w_nodes: Seq[TLNode] = splitter_nodes.map(connect_xbar)
+      val nonuniform_r_nodes: Seq[TLNode] = splitter_nodes.map(connect_xbar_name(_, Some("rad_unaligned_r")))
+      val nonuniform_w_nodes: Seq[TLNode] = splitter_nodes.map(connect_xbar_name(_, Some("rad_unaligned_w")))
 
       (uniform_r_nodes, uniform_w_nodes, nonuniform_r_nodes, nonuniform_w_nodes)
     }
@@ -265,17 +271,19 @@ class RadianceCluster (
     smem_bank_mgrs.grouped(smem_subbanks).zipWithIndex.foreach { case (bank_mgrs, bid) =>
       bank_mgrs.zipWithIndex.foreach { case (Seq(r, w), wid) =>
         // TODO: this should be a coordinated round robin
-        val subbank_r_xbar = TLXbar(TLArbiter.lowestIndexFirst)
-        val subbank_w_xbar = TLXbar(TLArbiter.lowestIndexFirst)
+        val subbank_r_xbar = LazyModule(new TLXbar(TLArbiter.lowestIndexFirst))
+        val subbank_w_xbar = LazyModule(new TLXbar(TLArbiter.lowestIndexFirst))
+        subbank_r_xbar.suggestName(s"smem_b${bid}_w${wid}_r_xbar")
+        subbank_w_xbar.suggestName(s"smem_b${bid}_w${wid}_w_xbar")
 
         guard_monitors { implicit p =>
-          r := subbank_r_xbar
-          w := subbank_w_xbar
-          uniform_r_nodes(bid)(wid).foreach( subbank_r_xbar := _ )
-          uniform_w_nodes(bid)(wid).foreach( subbank_w_xbar := _ )
+          r := subbank_r_xbar.node
+          w := subbank_w_xbar.node
+          uniform_r_nodes(bid)(wid).foreach( subbank_r_xbar.node := _ )
+          uniform_w_nodes(bid)(wid).foreach( subbank_w_xbar.node := _ )
 
-          nonuniform_r_nodes.foreach( subbank_r_xbar := _ )
-          nonuniform_w_nodes.foreach( subbank_w_xbar := _ )
+          nonuniform_r_nodes.foreach( subbank_r_xbar.node := _ )
+          nonuniform_w_nodes.foreach( subbank_w_xbar.node := _ )
         }
       }
     }
