@@ -16,7 +16,7 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
 import org.chipsalliance.cde.config._
 import radiance.memory._
-import radiance.subsystem.{GPUMemParams, GPUMemory}
+import radiance.subsystem.{GPUMemParams, GPUMemory, RadianceSimArgs}
 
 case class RadianceTileParams(
     core: VortexCoreParams = VortexCoreParams(),
@@ -183,10 +183,14 @@ class RadianceTile private (
   // memory requests so that Chisel and Verilog are in agreement on bitwidths.
   // See VX_gpu_pkg.sv
   val NW_WIDTH = (if (numWarps == 1) 1 else log2Ceil(numWarps))
-  val UUID_WIDTH = 44
+  val UUID_WIDTH = p(RadianceSimArgs) match {
+    case Some(true) => 44
+    case Some(false) => 1
+    case None => 1
+  }
   val imemTagWidth = UUID_WIDTH + NW_WIDTH
 
-  val LSUQ_SIZE = 8 * (numCoreLanes / numLsuLanes)
+  val LSUQ_SIZE = 2 * numWarps * (numCoreLanes / numLsuLanes)
   val LSUQ_TAG_BITS = log2Ceil(LSUQ_SIZE) + 1 /*DCACHE_BATCH_SEL_BITS*/
   val dmemTagWidth = UUID_WIDTH + LSUQ_TAG_BITS
   // dmem and smem shares the same tag width, DCACHE_NOSM_TAG_WIDTH

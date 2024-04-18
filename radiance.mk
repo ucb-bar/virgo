@@ -13,7 +13,6 @@ RADPIE_BUILD_DIR = $(RADPIE_SRC_DIR)/target/release
 EXTRA_SIM_LDFLAGS += -L$(RADPIE_BUILD_DIR) -Wl,-rpath,$(RADPIE_BUILD_DIR) -lradpie
 EXTRA_SIM_PREPROC_DEFINES += \
 	+define+SIMULATION \
-	+define+SV_DPI \
 	+define+GPR_RESET \
 	+define+LSU_DUP_DISABLE \
 	+define+DBG_TRACE_CORE_PIPELINE_VCS \

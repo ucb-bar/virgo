@@ -263,3 +263,9 @@ class WithExtGPUMem(address: BigInt = BigInt("0x100000000", 16),
 })
 case class GPUMemParams(address: BigInt = BigInt("0x100000000", 16), size: BigInt = 0x80000000)
 case class GPUMemory() extends Field[Option[GPUMemParams]](None)
+
+object RadianceSimArgs extends Field[Option[Boolean]](None)
+
+class WithRadianceSimParams(enabled: Boolean) extends Config((_, _, _) => {
+  case RadianceSimArgs => Some(enabled)
+})
