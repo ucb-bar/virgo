@@ -1,7 +1,7 @@
 package radiance.memory
 
 import freechips.rocketchip.diplomacy.LazyModule
-import freechips.rocketchip.subsystem.BaseSubsystem
+import freechips.rocketchip.subsystem._
 import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.tilelink._
 
@@ -23,6 +23,7 @@ trait CanHaveMemtraceCore { this: BaseSubsystem =>
     val numLanes = simtParam.nMemLanes
     val filename = param.tracefilename
 
+    val sbus = locateTLBusWrapper(SBUS)
     // Need to explicitly generate clock domain; see rocket-chip 8881ccd
     val memtracerDomain = sbus.generateSynchronousDomain
     memtracerDomain {
