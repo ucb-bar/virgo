@@ -8,6 +8,7 @@ import chisel3.util._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.prci.ClockSinkParameters
 import freechips.rocketchip.subsystem._
+import freechips.rocketchip.tile.TraceBundle
 import freechips.rocketchip.tilelink._
 import gemmini._
 import org.chipsalliance.cde.config.Parameters
@@ -91,7 +92,7 @@ class RadianceCluster (
       callback(p)
     }
   }
-  def connect_one[T <: BaseNode with TLNode](from: TLNode, to: () => T): T = {
+  def connect_one[T <: TLNode](from: TLNode, to: () => T): T = {
     val t = to()
     guard_monitors { implicit p => t := from }
     t
@@ -183,13 +184,18 @@ class RadianceCluster (
 
     val spad_read_nodes = Seq.fill(smem_banks) {
       val r_dist = DistributorNode(from = smem_width, to = wordSize)
-      guard_monitors { implicit p => r_dist := gemmini.spad_read_nodes }
+      guard_monitors { implicit p => r_dist := TLBuffer(BufferParams(1, false, true), BufferParams(0)) := gemmini.spad_read_nodes }
       Seq.fill(smem_subbanks) { connect_one(r_dist, TLIdentityNode.apply) }
     }
     val spad_write_nodes = Seq.fill(smem_banks) {
       val w_dist = DistributorNode(from = smem_width, to = wordSize)
-      guard_monitors { implicit p => w_dist := gemmini.spad_write_nodes }
+      guard_monitors { implicit p => w_dist := TLBuffer(BufferParams(1, false, true), BufferParams(0)) := gemmini.spad_write_nodes }
       Seq.fill(smem_subbanks) { connect_one(w_dist, TLIdentityNode.apply) }
+      /* Seq.fill(smem_subbanks) {
+        val buf = TLBuffer(BufferParams(1, false, true), BufferParams(0))
+        buf := w_dist
+        buf
+      } */
     }
     val ws_dist = DistributorNode(from = smem_width, to = wordSize)
     guard_monitors { implicit p => ws_dist := gemmini.spad.spad_writer.node } // this is the dma write node

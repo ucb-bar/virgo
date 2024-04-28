@@ -10,18 +10,18 @@ import org.chipsalliance.cde.config.{Parameters, Field}
 case object VortexL1Key extends Field[Option[VortexL1Config]](None /*default*/ )
 
 case class VortexL1Config(
-    cacheSize: Int, // total cache size in bytes
-    numBanks: Int,
-    wordSize: Int, // This is the read/write granularity of the L1 cache
-    cacheLineSize: Int,
-    coreTagWidth: Int,
-    writeInfoReqQSize: Int,
-    mshrSize: Int,
-    memSideSourceIds: Int,
-    uncachedAddrSets: Seq[AddressSet]
+                           cacheSize: Int, // total cache size in bytes
+                           numBanks: Int,
+                           inputSize: Int, // This is the read/write granularity of the L1 cache
+                           cacheLineSize: Int,
+                           coreTagWidth: Int,
+                           writeInfoReqQSize: Int,
+                           mshrSize: Int,
+                           memSideSourceIds: Int,
+                           uncachedAddrSets: Seq[AddressSet]
 ) {
   def coreTagPlusSizeWidth: Int = {
-    log2Ceil(wordSize) + coreTagWidth
+    log2Ceil(inputSize) + coreTagWidth
   }
   // NOTE: This assertion depends on the fact that the Vortex cache is
   // configured to have 1 bank, and that it uses MSHR id as the tag of
@@ -37,7 +37,7 @@ object defaultVortexL1Config
     extends VortexL1Config(
       cacheSize = 16384,
       numBanks = 4,
-      wordSize = 16,
+      inputSize = 16,
       cacheLineSize = 16,
       coreTagWidth = 8,
       writeInfoReqQSize = 16,
@@ -80,15 +80,15 @@ class VortexBankPassThrough(config: VortexL1Config)(implicit p: Parameters)
   // Slave node to upstream
   val managerParam = Seq(
     TLSlavePortParameters.v1(
-      beatBytes = config.wordSize,
+      beatBytes = config.inputSize,
       managers = Seq(
         TLSlaveParameters.v1(
           address = config.uncachedAddrSets,
           regionType = RegionType.IDEMPOTENT,
           executable = false,
-          supportsGet = TransferSizes(1, config.wordSize),
-          supportsPutPartial = TransferSizes(1, config.wordSize),
-          supportsPutFull = TransferSizes(1, config.wordSize),
+          supportsGet = TransferSizes(1, config.inputSize),
+          supportsPutPartial = TransferSizes(1, config.inputSize),
+          supportsPutFull = TransferSizes(1, config.inputSize),
           fifoId = Some(0)
         )
       )
@@ -107,10 +107,10 @@ class VortexBankPassThrough(config: VortexL1Config)(implicit p: Parameters)
               config.memSideSourceIds
             ) + 5 /*FIXME: give more sourceId so that passthrough doesn't block; hacky*/ )
           ),
-          supportsProbe = TransferSizes(1, config.wordSize),
-          supportsGet = TransferSizes(1, config.wordSize),
-          supportsPutFull = TransferSizes(1, config.wordSize),
-          supportsPutPartial = TransferSizes(1, config.wordSize)
+          supportsProbe = TransferSizes(1, config.cacheLineSize),
+          supportsGet = TransferSizes(1, config.cacheLineSize),
+          supportsPutFull = TransferSizes(1, config.cacheLineSize),
+          supportsPutPartial = TransferSizes(1, config.cacheLineSize)
         )
       )
     )
@@ -141,8 +141,8 @@ class VortexBank(
     // suppose have 4 bank
     // base for bank 1: ...000000|01|0000
     // mask for bank 1;    111111|00|1111
-    val base = 0x00000000L | (bankId * config.wordSize)
-    val mask = 0xffffffffL ^ ((config.numBanks - 1) * config.wordSize)
+    val base = 0x00000000L | (bankId * config.inputSize)
+    val mask = 0xffffffffL ^ ((config.numBanks - 1) * config.inputSize)
 
     val excludeSets = config.uncachedAddrSets
     var remainingSets: Seq[AddressSet] = Seq(AddressSet(base, mask))
@@ -155,15 +155,15 @@ class VortexBank(
   // Slave node to upstream
   val managerParam = Seq(
     TLSlavePortParameters.v1(
-      beatBytes = config.wordSize,
+      beatBytes = config.inputSize,
       managers = Seq(
         TLSlaveParameters.v1(
           address = generateAddressSets(),
           regionType = RegionType.IDEMPOTENT, // idk what this does
           executable = false,
-          supportsGet = TransferSizes(1, config.wordSize),
-          supportsPutPartial = TransferSizes(1, config.wordSize),
-          supportsPutFull = TransferSizes(1, config.wordSize),
+          supportsGet = TransferSizes(1, config.inputSize),
+          supportsPutPartial = TransferSizes(1, config.inputSize),
+          supportsPutFull = TransferSizes(1, config.inputSize),
           fifoId = Some(0)
         )
       )
@@ -177,10 +177,10 @@ class VortexBank(
         TLMasterParameters.v1(
           name = s"VortexBank${bankId}",
           sourceId = IdRange(0, config.memSideSourceIds),
-          supportsProbe = TransferSizes(1, config.wordSize),
-          supportsGet = TransferSizes(1, config.wordSize),
-          supportsPutFull = TransferSizes(1, config.wordSize),
-          supportsPutPartial = TransferSizes(1, config.wordSize)
+          supportsProbe = TransferSizes(1, config.inputSize),
+          supportsGet = TransferSizes(1, config.inputSize),
+          supportsPutFull = TransferSizes(1, config.inputSize),
+          supportsPutPartial = TransferSizes(1, config.inputSize)
         )
       )
     )
@@ -204,7 +204,7 @@ class VortexBankImp(
 ) extends LazyModuleImp(outer) {
   val vxCache = Module(
     new VX_cache_top(
-      WORD_SIZE = config.wordSize,
+      WORD_SIZE = config.inputSize,
       // distribute total size across numBanks
       CACHE_SIZE = config.cacheSize / config.numBanks,
       CACHE_LINE_SIZE = config.cacheLineSize,
@@ -236,7 +236,7 @@ class VortexBankImp(
   }
 
   class ReadReqInfo(config: VortexL1Config) extends Bundle {
-    val size = UInt(log2Ceil(config.wordSize).W)
+    val size = UInt(log2Ceil(config.inputSize + 1).W)
     val id = UInt(config.coreTagWidth.W)
   }
 
@@ -264,7 +264,7 @@ class VortexBankImp(
     // 4 is also hardcoded, it should be log2WordSize
     vxCache.io.core_req_addr := tlInFromCoal.a.bits.address(
       31,
-      log2Ceil(config.wordSize)
+      log2Ceil(config.inputSize)
     )
     vxCache.io.core_req_byteen := tlInFromCoal.a.bits.mask
     vxCache.io.core_req_data := tlInFromCoal.a.bits.data
@@ -362,17 +362,17 @@ class VortexBankImp(
       TLMessages.Get
     )
 
-    tlOutToL2.a.bits.address := Cat(vxCache.io.mem_req_addr, 0.U(4.W))
+    tlOutToL2.a.bits.address := Cat(vxCache.io.mem_req_addr, 0.U(log2Ceil(config.cacheLineSize).W))
     tlOutToL2.a.bits.mask := Mux(
       vxCache.io.mem_req_rw,
       vxCache.io.mem_req_byteen,
-      0xffff.U
+      ~(0.U(config.cacheLineSize.W))
     )
     tlOutToL2.a.bits.data := vxCache.io.mem_req_data
     tlOutToL2.a.bits.source := sourceGen.io.id.bits
     // ignore param, size, corrupt fields
     tlOutToL2.a.bits.param := 0.U
-    tlOutToL2.a.bits.size := 4.U // FIXME: hardcoded
+    tlOutToL2.a.bits.size := log2Ceil(config.cacheLineSize).U
     tlOutToL2.a.bits.corrupt := false.B
     // downstream L2 -> vxCache response
     tlOutToL2.d.ready := vxCache.io.mem_rsp_ready

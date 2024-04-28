@@ -165,10 +165,14 @@ class RadianceTile private (
   // to a stall in the backend pipeline and resulting in a deadlock.
   val imemSourceWidth = 4 // 1 << imemSourceWidth == IBUF_SIZE
 
-  val dmemSourceWidth = p(SIMTCoreKey) match {
-    // TODO: respect coalescer newSrcIds
+  val smemSourceWidth = p(SIMTCoreKey) match {
     case Some(simtParam) => log2Ceil(simtParam.nSrcIds)
-    case None            => 4
+    case None => 4
+  }
+
+  val dmemSourceWidth = p(CoalescerKey) match {
+    case Some(coalParam) => log2Ceil(coalParam.numOldSrcIds)
+    case None => smemSourceWidth
   }
   // require(
   //   dmemSourceWidth >= 4,
@@ -176,8 +180,6 @@ class RadianceTile private (
   //     "Vortex core due to synchronization issues in vx_wspawn. " +
   //     "We recommend setting nSrcIds to at least 16."
   // )
-
-  val smemSourceWidth = 4 // FIXME: hardcoded
 
   // Replicates some of the logic of how Vortex determines the tag width of
   // memory requests so that Chisel and Verilog are in agreement on bitwidths.
@@ -190,7 +192,8 @@ class RadianceTile private (
   }
   val imemTagWidth = UUID_WIDTH + NW_WIDTH
 
-  val LSUQ_SIZE = 2 * numWarps * (numCoreLanes / numLsuLanes)
+  val LSUQ_SIZE = 8 * numWarps * (numCoreLanes / numLsuLanes)
+  assert(LSUQ_SIZE == p(SIMTCoreKey).get.nSrcIds)
   val LSUQ_TAG_BITS = log2Ceil(LSUQ_SIZE) + 1 /*DCACHE_BATCH_SEL_BITS*/
   val dmemTagWidth = UUID_WIDTH + LSUQ_TAG_BITS
   // dmem and smem shares the same tag width, DCACHE_NOSM_TAG_WIDTH

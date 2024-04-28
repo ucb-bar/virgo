@@ -126,7 +126,7 @@ class WithFuzzerCores(
 class WithRadianceCluster(
   clusterId: Int,
   location: HierarchicalLocation = InSubsystem,
-  crossing: RocketCrossingParams = RocketCrossingParams() // TODO make this not rocket
+  crossing: RocketCrossingParams = RocketCrossingParams()
 ) extends Config((site, here, up) => {
   case ClustersLocated(`location`) => up(ClustersLocated(location)) :+ RadianceClusterAttachParams(
     RadianceClusterParams(clusterId = clusterId),
@@ -174,7 +174,17 @@ class WithPriorityCoalXbar extends Config((site, _, up) => {
 
 class WithVortexL1Banks(nBanks: Int = 4) extends Config ((site, _, up) => {
   case VortexL1Key => {
-    Some(defaultVortexL1Config.copy(numBanks = nBanks))
+    Some(defaultVortexL1Config.copy(
+      numBanks = nBanks,
+      inputSize = up(SIMTCoreKey).get.nMemLanes * 4,
+      cacheLineSize = up(SIMTCoreKey).get.nMemLanes * 4,
+      memSideSourceIds = 64,
+      mshrSize = 64,
+      coreTagWidth = log2Ceil(up(SIMTCoreKey).get.nSrcIds.max(up(CoalescerKey) match {
+        case Some(key) => key.numNewSrcIds
+        case None => 0
+      })) + log2Ceil(up(SIMTCoreKey).get.nMemLanes) + 1
+    ))
   }
 })
 
@@ -197,8 +207,7 @@ class WithCoalescer(nNewSrcIds: Int = 8, enable : Boolean = true) extends Config
     // If instantiating L1 cache, the maximum coalescing size should match the
     // cache line size
     val maxCoalSizeInBytes = up(VortexL1Key, site) match {
-      case Some(param) =>
-        (param.wordSize) 
+      case Some(param) => param.inputSize
       case None => sbusWidthInBytes
     }
       
