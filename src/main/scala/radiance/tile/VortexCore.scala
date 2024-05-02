@@ -277,8 +277,11 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   addResource("/vsrc/vortex/hw/rtl/libs/VX_stream_switch.sv")
   addResource("/vsrc/vortex/hw/rtl/libs/VX_stream_xbar.sv")
 
-  // addResource("/vsrc/vortex/hw/dpi/float_dpi.cpp")
-  // addResource("/vsrc/vortex/hw/dpi/float_dpi.vh")
+  // start comment out for synthesis ------------------------
+  addResource("/vsrc/vortex/hw/dpi/float_dpi.cpp")
+  addResource("/vsrc/vortex/hw/dpi/float_dpi.vh")
+  addResource("/vsrc/vortex/hw/dpi/half.h")
+  // end comment out for synthesis --------------------------
   addResource("/vsrc/vortex/hw/dpi/util_dpi.cpp")
   addResource("/vsrc/vortex/hw/dpi/util_dpi.vh")
   // needed dpi cpp files
@@ -303,19 +306,21 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   addResource("/csrc/softfloat/RISCV/specialize.h")
 
   // fpu
-  // addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_class.sv")
-  // addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_cvt.sv")
-  addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_define.vh")
-  // addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_div.sv")
-  // addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_dpi.sv")
-  // addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_dsp.sv")
-  // addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_fma.sv")
-  addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_fpnew.sv")
-  // addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_ncomp.sv")
-  addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_pkg.sv")
-  // addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_rounding.sv")
-  // addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_sqrt.sv")
+  // start comment out for synthesis ------------------------
+  addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_class.sv")
+  addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_cvt.sv")
+  addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_div.sv")
+  addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_dpi.sv")
+  addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_dsp.sv")
+  addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_fma.sv")
+  addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_ncomp.sv")
+  addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_rounding.sv")
+  addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_sqrt.sv")
+  // end comment out for synthesis --------------------------
   addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_to_csr_if.sv")
+  addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_define.vh")
+  addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_pkg.sv")
+  addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_fpnew.sv")
   addResource("/vsrc/vortex/hw/rtl/core/VX_fpu_unit.sv")
 
   // fpnew
@@ -372,6 +377,13 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   addResource("/vsrc/vortex/hw/rtl/interfaces/VX_schedule_if.sv")
   addResource("/vsrc/vortex/hw/rtl/interfaces/VX_warp_ctl_if.sv")
   addResource("/vsrc/vortex/hw/rtl/interfaces/VX_writeback_if.sv")
+
+  // tensor core
+  addResource("/vsrc/vortex/hw/rtl/core/VX_tensor_core.sv")
+  addResource("/vsrc/vortex/hw/rtl/core/VX_tensor_ucode.vh")
+  addResource("/vsrc/vortex/hw/rtl/core/VX_uop_sequencer.sv")
+  addResource("/vsrc/vortex/hw/rtl/core/VX_reduce_unit.sv")
+  addResource("/vsrc/vortex/hw/rtl/fpu/VX_tensor_dpu.sv")
 
   if (tile.radianceParams.useVxCache) {
     addResource("/vsrc/vortex/hw/rtl/libs/VX_pending_size.sv")
