@@ -193,7 +193,6 @@ class RadianceTile private (
   }
   val imemTagWidth = UUID_WIDTH + NW_WIDTH
 
-  // val LSUQ_SIZE = p(SIMTCoreKey).get.nSrcIds
   require(numWarps >= numLsuLanes,
           s"Vortex core requires numWarps (${numWarps}) >= numLsuLanes (${numLsuLanes})")
   val LSUQ_SIZE = 8 * (numCoreLanes / numLsuLanes)
