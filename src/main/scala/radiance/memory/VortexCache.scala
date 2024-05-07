@@ -403,7 +403,7 @@ class VX_cache_top(
     // WORD_SIZE to something wider than 4
     WORD_SIZE: Int = 16,
     CRSQ_SIZE: Int = 2,
-    MSHR_SIZE: Int = 16,
+    MSHR_SIZE: Int = 8,
     MRSQ_SIZE: Int = 0,
     MREQ_SIZE: Int = 4,
     WRITE_ENABLE: Int = 1,
