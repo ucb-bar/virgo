@@ -101,12 +101,7 @@ class VortexBankPassThrough(config: VortexL1Config)(implicit p: Parameters)
       clients = Seq(
         TLMasterParameters.v1(
           name = "VortexBankPassthrough",
-          sourceId = IdRange(
-            0,
-            1 << (log2Ceil(
-              config.memSideSourceIds
-            ) + 5 /*FIXME: give more sourceId so that passthrough doesn't block; hacky*/ )
-          ),
+          sourceId = IdRange(0, 1 << config.coreTagWidth),
           supportsProbe = TransferSizes(1, config.cacheLineSize),
           supportsGet = TransferSizes(1, config.cacheLineSize),
           supportsPutFull = TransferSizes(1, config.cacheLineSize),
@@ -236,7 +231,7 @@ class VortexBankImp(
   }
 
   class ReadReqInfo(config: VortexL1Config) extends Bundle {
-    val size = UInt(log2Ceil(config.inputSize + 1).W)
+    val size = UInt(log2Ceil(4).W + 1)
     val id = UInt(config.coreTagWidth.W)
   }
 
@@ -273,6 +268,14 @@ class VortexBankImp(
     // vxCache.io.core_req_tag
     readReqInfo.id := tlInFromCoal.a.bits.source
     readReqInfo.size := tlInFromCoal.a.bits.size
+    assert(readReqInfo.id.getWidth == tlInFromCoal.a.bits.source.getWidth,
+      s"id width mismatch; coalescer ${tlInFromCoal.a.bits.source.getWidth}, cache ${readReqInfo.id.getWidth}")
+    assert(readReqInfo.size.getWidth == tlInFromCoal.a.bits.size.getWidth,
+      s"size width mismatch; coalescer ${tlInFromCoal.a.bits.size.getWidth}, cache ${readReqInfo.size.getWidth}")
+    assert(readReqInfo.id.getWidth == tlInFromCoal.a.bits.source.getWidth,
+      s"id width mismatch; coalescer ${tlInFromCoal.a.bits.source.getWidth}, cache ${readReqInfo.id.getWidth}")
+    assert(readReqInfo.size.getWidth == tlInFromCoal.a.bits.size.getWidth,
+      s"size width mismatch; coalescer ${tlInFromCoal.a.bits.size.getWidth}, cache ${readReqInfo.size.getWidth}")
     // ignore param, size, corrupt
     vxCache.io.core_req_tag := readReqInfo.asTypeOf(vxCache.io.core_req_tag)
 

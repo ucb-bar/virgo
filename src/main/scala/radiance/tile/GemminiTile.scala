@@ -4,7 +4,9 @@
 package radiance.tile
 
 import chisel3._
-import freechips.rocketchip.diplomacy.{ClockCrossingType, DisableMonitors, LazyModule, SimpleDevice}
+import chisel3.util._
+import chisel3.experimental.BundleLiterals._
+import freechips.rocketchip.diplomacy.{BigIntHexContext, ClockCrossingType, DisableMonitors, LazyModule, SimpleDevice}
 import freechips.rocketchip.prci.ClockSinkParameters
 import freechips.rocketchip.rocket._
 import freechips.rocketchip.subsystem.{CanAttachTile, HierarchicalElementCrossingParamsLike, RocketCrossingParams}
@@ -102,6 +104,8 @@ class GemminiTile private (
   val masterNode = visibilityNode
   // val statusNode = BundleBridgeSource(() => new GroundTestStatus)
 
+  val accSlaveNode = AccSlaveNode()
+
   tlOtherMastersNode := tlMasterXbar.node
   masterNode :=* tlOtherMastersNode
   DisableMonitors { implicit p => tlSlaveXbar.node :*= slaveNode }
@@ -129,8 +133,6 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
     val gemmini_io = outer.gemmini.module.io
     gemmini_io.ptw <> DontCare
     gemmini_io.mem <> DontCare
-    gemmini_io.cmd <> DontCare
-    gemmini_io.cmd.valid := false.B
     gemmini_io.resp <> DontCare
     gemmini_io.fpu_req.ready := false.B
     gemmini_io.fpu_resp.valid := false.B
@@ -139,6 +141,85 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
   }
 
   tieOffGemminiRocc
+
+  val accSlave = outer.accSlaveNode.in.head._1
+
+  val instCounter = Counter(4)
+  val ciscValid = RegInit(false.B)
+  val ciscId = RegInit(0.U(8.W))
+  val ciscInstT = new Bundle {
+    val inst = UInt(32.W)
+    val rs1 = UInt(64.W)
+    val rs2 = UInt(64.W)
+  }
+  val ciscInst = Wire(ciscInstT)
+
+  when (accSlave.cmd.valid) {
+    ciscValid := true.B
+    ciscId := accSlave.cmd.bits(7, 0)
+    instCounter.reset()
+  }
+
+  def microcodeEntry[T <: Data](insts: Seq[T]): T = {
+    when (instCounter.value === (insts.size - 1).U) {
+      ciscValid := false.B
+      instCounter.reset()
+    }.otherwise {
+      instCounter.inc()
+    }
+    VecInit(insts)(instCounter.value)
+  }
+
+  ciscInst := 0.U.asTypeOf(ciscInstT)
+  when (ciscValid) {
+    assert(!accSlave.cmd.valid, "cisc state machine already busy")
+    switch (ciscId) {
+      is (0.U) {
+        ciscInst := microcodeEntry(Seq(
+          ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"4_00040004".U), // set I, J, K
+          ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> 0.U, _.rs2 -> 0x180.U),           // set A, B address
+          ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0.U, _.rs2 -> x"0_000002b8".U) // set skip, acc
+        ))
+      }
+      is (2.U) {
+        ciscInst := microcodeEntry(Seq(
+          ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"4_00040004".U),
+          ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> 0x80.U, _.rs2 -> 0x200.U),
+          ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0x1.U, _.rs2 -> x"0_000002b8".U)
+        ))
+      }
+      is (1.U) {
+        ciscInst := microcodeEntry(Seq(
+          ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"4_00040004".U),
+          ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> 0.U, _.rs2 -> 0x180.U),
+          ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0x1.U, _.rs2 -> x"0_000002b8".U)
+        ))
+      }
+      is (9.U) {
+        ciscInst := microcodeEntry(Seq(
+          ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"4_00040004".U),
+          ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0.U, _.rs2 -> 0x278.U),
+        ))
+      }
+      is (16.U) {
+        ciscInst := microcodeEntry(Seq(
+          ciscInstT.Lit(_.inst -> 0x0020b07b.U, _.rs1 -> x"3f800000_00080101".U, _.rs2 -> 0.U),
+          ciscInstT.Lit(_.inst -> 0x0020b07b.U, _.rs1 -> x"3f800000_00010004".U, _.rs2 -> x"10000_00000000".U),
+          ciscInstT.Lit(_.inst -> 0x0020b07b.U, _.rs1 -> 0x2.U, _.rs2 -> x"3f800000_00000000".U)
+        ))
+      }
+    }
+  }
+
+  val gemminiIO = outer.gemmini.module.io.cmd
+  gemminiIO.bits.status := 0.U.asTypeOf(gemminiIO.bits.status)
+  gemminiIO.bits.inst := ciscInst.inst.asTypeOf(gemminiIO.bits.inst)
+  gemminiIO.bits.rs1 := ciscInst.rs1
+  gemminiIO.bits.rs2 := ciscInst.rs2
+  gemminiIO.valid := ciscValid
+  assert(gemminiIO.ready || !gemminiIO.valid)
+
+  accSlave.status := RegNext(outer.gemmini.module.io.busy).asUInt
 
   outer.traceSourceNode.bundle := DontCare
   outer.traceSourceNode.bundle.insns foreach (_.valid := false.B)

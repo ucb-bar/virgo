@@ -84,6 +84,7 @@ class RadianceCluster (
   val stride_by_word = true
   val filter_aligned = true
   val disable_monitors = true // otherwise it generate 1k+ different tl monitors
+  val serialize_unaligned = true
 
   def guard_monitors[T](callback: Parameters => T)(implicit p: Parameters): Unit = {
     if (disable_monitors) {
@@ -226,22 +227,24 @@ class RadianceCluster (
         }
       }
       val f_aligned = Seq.fill(2)(filter_nodes.map(_.map(_._1).map(connect_xbar_name(_, Some("rad_aligned")))))
-      // val f_unaligned = Seq.fill(2)(filter_nodes.map(_.map(_._2).map(connect_xbar)))
 
-      val f_unaligned = Seq.fill(2) {
-        val serialized_node = TLEphemeralNode()
-        val serialized_in_xbar = LazyModule(new TLXbar())
-        val serialized_out_xbar = LazyModule(new TLXbar())
-        serialized_in_xbar.suggestName("unaligned_serialized_in_xbar")
-        serialized_out_xbar.suggestName("unaligned_serialized_out_xbar")
-        guard_monitors { implicit p =>
-          filter_nodes.foreach(_.map(_._2).foreach(serialized_in_xbar.node := _))
-          serialized_node := serialized_in_xbar.node
-          serialized_out_xbar.node := serialized_node
+      val f_unaligned = if (serialize_unaligned) {
+        Seq.fill(2) {
+          val serialized_node = TLEphemeralNode()
+          val serialized_in_xbar = LazyModule(new TLXbar())
+          val serialized_out_xbar = LazyModule(new TLXbar())
+          serialized_in_xbar.suggestName("unaligned_serialized_in_xbar")
+          serialized_out_xbar.suggestName("unaligned_serialized_out_xbar")
+          guard_monitors { implicit p =>
+            filter_nodes.foreach(_.map(_._2).foreach(serialized_in_xbar.node := _))
+            serialized_node := serialized_in_xbar.node
+            serialized_out_xbar.node := serialized_node
+          }
+          Seq(serialized_out_xbar.node)
         }
-        Seq(serialized_out_xbar.node)
+      } else {
+        Seq.fill(2)(filter_nodes.flatMap(_.map(_._2).map(connect_xbar)))
       }
-
 
       val uniform_r_nodes: Seq[Seq[Seq[TLNode]]] = spad_read_nodes.map { rb =>
         (rb zip f_aligned.head).map { case (rw, fa) => Seq(rw) ++ fa }
@@ -253,7 +256,7 @@ class RadianceCluster (
       }
 
       // all to all xbar
-      val Seq(nonuniform_r_nodes, nonuniform_w_nodes) = f_unaligned // f_unaligned.map(_.flatten)
+      val Seq(nonuniform_r_nodes, nonuniform_w_nodes) = f_unaligned
 
       (uniform_r_nodes, uniform_w_nodes, nonuniform_r_nodes, nonuniform_w_nodes)
     } else {
@@ -321,6 +324,12 @@ class RadianceCluster (
 
   // connect tile smem nodes to xbar, and xbar to banks
   // val smem_xbar = TLXbar()
+
+  val radianceAccSlaveNodes = Seq.fill(numCores)(AccSlaveNode())
+  (radianceAccSlaveNodes zip radianceTiles).foreach { case (a, r) => a := r.accMasterNode }
+  val gemminiAccMasterNode = AccMasterNode()
+  gemminiTile.accSlaveNode := gemminiAccMasterNode
+
   gemminiTile.slaveNode :=* TLWidthWidget(4) :=* clbus.outwardNode
 
   assert(smem_size == 0x4000, "fix me")
@@ -378,6 +387,18 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
     req <> b.req
     b.resp <> synchronizer.io.resp // broadcast
   }
+
+  val coreAcc = outer.radianceAccSlaveNodes.head.in.head._1
+  val gemminiAcc = outer.gemminiAccMasterNode.out.head._1
+  dontTouch(gemminiAcc)
+  // val gemminiTileAcc = outer.gemminiTile.accSlaveNode.in.head._1
+
+  // gemminiTileAcc.cmd := gemminiAcc.cmd
+  // gemminiAcc.status := gemminiTileAcc.status
+
+  outer.radianceAccSlaveNodes.foreach(_.in.head._1.status := gemminiAcc.status)
+  gemminiAcc.cmd := coreAcc.cmd
+
 
   // TODO: remove Pipeline dependency of gemmini
   def makeSmemBanks(): Unit = {

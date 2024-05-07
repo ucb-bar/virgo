@@ -6,7 +6,7 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.{Field, Parameters}
 import freechips.rocketchip.diplomacy._
-import freechips.rocketchip.util.MultiPortQueue
+import freechips.rocketchip.util.{Code, MultiPortQueue, OnePortLanePositionedQueue}
 import freechips.rocketchip.unittest._
 import freechips.rocketchip.tilelink._
 
@@ -133,7 +133,7 @@ object DefaultCoalescerConfig extends CoalescerConfig(
   // when attaching to SoC, 16 source IDs are not enough due to longer latency
   numOldSrcIds = 8,
   numNewSrcIds = 8,
-  respQueueDepth = 2,
+  respQueueDepth = 4,
   sizeEnum = DefaultInFlightTableSizeEnum,
   numCoalReqs = 1,
   numArbiterOutputPorts = 4,
@@ -392,23 +392,11 @@ class CoalShiftQueue[T <: Data](gen: T, entries: Int, config: CoalescerConfig)
 //  eltPrototype.bits := DontCare
 //  eltPrototype.valid := false.B
 
-  val elts = Reg(Vec(config.numLanes, Vec(entries, Valid(gen))))
+  val elts = RegInit(0.U.asTypeOf(Vec(config.numLanes, Vec(entries, Valid(gen)))))
   val writePtr = RegInit(
     VecInit(Seq.fill(config.numLanes)(0.asUInt(log2Ceil(entries + 1).W)))
   )
   val deqDone = RegInit(VecInit(Seq.fill(config.numLanes)(false.B)))
-
-  private def resetElts = {
-    elts.foreach { laneQ =>
-      laneQ.foreach { entry =>
-        entry.valid := false.B
-        entry.bits := DontCare
-      }
-    }
-  }
-  when(reset.asBool) {
-    resetElts
-  }
 
   val controlSignals = Wire(Vec(config.numLanes, new Bundle {
     val shift = Bool()
@@ -1046,6 +1034,7 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
     log2Ceil(config.maxCoalLogSize),
     (1 << config.maxCoalLogSize) * 8
   )
+  require(config.respQueueDepth > 2, "MultiPortQueue requires depth of at least 4 in FPGAs")
   val respQueues = Seq.tabulate(config.numLanes) { _ =>
     Module(
       new MultiPortQueue(
@@ -1068,7 +1057,9 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
         // make queue block up in the middle of the simulation.  Ideally there
         // should be a more logical way to set this, or we should handle
         // response queue blocking.
-        config.respQueueDepth
+        config.respQueueDepth,
+        flow = false,
+        // storage = OnePortLanePositionedQueue(Code.fromString("identity"))
       )
     )
   }

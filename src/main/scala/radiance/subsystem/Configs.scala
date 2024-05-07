@@ -178,8 +178,8 @@ class WithVortexL1Banks(nBanks: Int = 4) extends Config ((site, _, up) => {
       numBanks = nBanks,
       inputSize = up(SIMTCoreKey).get.nMemLanes * 4,
       cacheLineSize = up(SIMTCoreKey).get.nMemLanes * 4,
-      memSideSourceIds = 64,
-      mshrSize = 64,
+      memSideSourceIds = 16,
+      mshrSize = 16,
       coreTagWidth = log2Ceil(up(SIMTCoreKey).get.nSrcIds.max(up(CoalescerKey) match {
         case Some(key) => key.numNewSrcIds
         case None => 0

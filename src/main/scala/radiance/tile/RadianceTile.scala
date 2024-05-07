@@ -6,6 +6,7 @@ package radiance.tile
 import chisel3._
 import chisel3.util._
 import freechips.rocketchip.devices.tilelink._
+import org.chipsalliance.diplomacy._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.prci.ClockSinkParameters
 import freechips.rocketchip.regmapper.RegField
@@ -192,8 +193,9 @@ class RadianceTile private (
   }
   val imemTagWidth = UUID_WIDTH + NW_WIDTH
 
-  val LSUQ_SIZE = 8 * numWarps * (numCoreLanes / numLsuLanes)
-  assert(LSUQ_SIZE == p(SIMTCoreKey).get.nSrcIds)
+  // val LSUQ_SIZE = 4 * numWarps * (numCoreLanes / numLsuLanes)
+  // assert(LSUQ_SIZE == p(SIMTCoreKey).get.nSrcIds)
+  val LSUQ_SIZE = p(SIMTCoreKey).get.nSrcIds
   val LSUQ_TAG_BITS = log2Ceil(LSUQ_SIZE) + 1 /*DCACHE_BATCH_SEL_BITS*/
   val dmemTagWidth = UUID_WIDTH + LSUQ_TAG_BITS
   // dmem and smem shares the same tag width, DCACHE_NOSM_TAG_WIDTH
@@ -314,7 +316,10 @@ class RadianceTile private (
       //   "Vortex L1 configuration currently only works when coalescer is also enabled."
       // )
 
-      val icache = LazyModule(new VortexL1Cache(vortexL1Config.copy(numBanks = 1)))
+      val icache = LazyModule(new VortexL1Cache(vortexL1Config.copy(
+        numBanks = 1,
+        coreTagWidth = imemSourceWidth
+      )))
       val dcache = LazyModule(new VortexL1Cache(vortexL1Config))
       // imemNodes.foreach { icache.coresideNode := TLWidthWidget(4) := _ }
       assert(imemNodes.length == 1) // FIXME
@@ -336,6 +341,8 @@ class RadianceTile private (
   val numBarriers = numWarps
   def barrierIdBits = log2Ceil(numBarriers)
   val barrierMasterNode = BarrierMasterNode(barrierIdBits)
+
+  val accMasterNode = AccMasterNode()
 
   val base = p(GPUMemory()) match {
     case Some(GPUMemParams(baseAddr, _)) => baseAddr
@@ -366,7 +373,7 @@ class RadianceTile private (
     _.node := tlMasterXbar.node
   } getOrElse { tlMasterXbar.node }
   masterNode :=* tlOtherMastersNode
-  DisableMonitors { implicit p => tlSlaveXbar.node :*= slaveNode }
+  org.chipsalliance.diplomacy.DisableMonitors { implicit p => tlSlaveXbar.node :*= slaveNode }
 
   val dtimProperty =
     Nil // Seq(dmemDevice.asProperty).flatMap(p => Map("sifive,dtim" -> p))
@@ -685,6 +692,12 @@ class RadianceTileModuleImp(outer: RadianceTile)
       outer.barrierMasterNode.out(0)._1.resp.ready := true.B
     }
 
+    def connectAccelerator: Unit = {
+      outer.accMasterNode.out.head._1.cmd.bits := core.io.acc_write_out
+      outer.accMasterNode.out.head._1.cmd.valid := core.io.acc_write_en
+      core.io.acc_read_in := outer.accMasterNode.out.head._1.status
+    }
+
     def performanceCounters(reqBundles: Seq[DecoupledIO[VortexBundleA]],
                             respBundles: Seq[DecoupledIO[VortexBundleD]],
                             desc: String) = {
@@ -721,6 +734,7 @@ class RadianceTileModuleImp(outer: RadianceTile)
     connectDmem
     connectSmem
     connectBarrier
+    connectAccelerator
   }
 
   // TODO: generalize for useVxCache
