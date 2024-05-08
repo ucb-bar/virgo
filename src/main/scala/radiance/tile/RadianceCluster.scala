@@ -11,6 +11,7 @@ import freechips.rocketchip.subsystem._
 import freechips.rocketchip.tile.TraceBundle
 import freechips.rocketchip.tilelink._
 import gemmini._
+import midas.targetutils.SynthesizePrintf
 import org.chipsalliance.cde.config.Parameters
 import radiance.memory._
 
@@ -329,12 +330,12 @@ class RadianceCluster (
   (radianceAccSlaveNodes zip radianceTiles).foreach { case (a, r) => a := r.accMasterNode }
   val gemminiAccMasterNode = AccMasterNode()
   gemminiTile.accSlaveNode := gemminiAccMasterNode
-
   gemminiTile.slaveNode :=* TLWidthWidget(4) :=* clbus.outwardNode
 
-  assert(smem_size == 0x4000, "fix me")
+  val traceTLNode = TLAdapterNode(clientFn = c => c, managerFn = m => m)
   // printf and perf counter buffer
-  TLRAM(AddressSet(x"ff000000" + smem_size, numCores * 0x200 - 1)) := TLFragmenter(4, 4) := clbus.outwardNode
+  TLRAM(AddressSet(x"ff000000" + smem_size, numCores * 0x200 - 1)) := traceTLNode := TLFragmenter(4, 4) := clbus.outwardNode
+
 
   // Diplomacy sink nodes for cluster-wide barrier sync signal
   val barrierSlaveNode = BarrierSlaveNode(numCores)
@@ -355,20 +356,6 @@ class RadianceCluster (
     barrierSlaveNode := tile.barrierMasterNode
   }
   // perSmemPortXbars.foreach { clbus.inwardNode := _.node }
-
-  // Memory-mapped register for barrier sync
-  val regDevice = new SimpleDevice("radiance-cluster-barrier-reg",
-                                   Seq(s"radiance-cluster-barrier-reg${clusterId}"))
-  val regNode = TLRegisterNode(
-    address = Seq(AddressSet(0xff004f00L, 0xff)),
-    device = regDevice,
-    beatBytes = wordSize,
-    concurrency = 1)
-  regNode := clbus.outwardNode
-
-  nodes.foreach({ node =>
-      println(s"======= RadianceCluster node.name: ${node.name}")
-  })
 
   override lazy val module = new RadianceClusterModuleImp(this)
 }
@@ -399,6 +386,16 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
   outer.radianceAccSlaveNodes.foreach(_.in.head._1.status := gemminiAcc.status)
   gemminiAcc.cmd := coreAcc.cmd
 
+  (outer.traceTLNode.in.map(_._1) zip outer.traceTLNode.out.map(_._1)).foreach { case (i, o) =>
+    o.a <> i.a
+    i.d <> o.d
+
+    when (i.a.fire) {
+      when (i.a.bits.opcode === TLMessages.PutFullData || i.a.bits.opcode === TLMessages.PutPartialData) {
+        SynthesizePrintf(printf(s"TRACEWR ${outer.traceTLNode.name}: %x %x %x\n", i.a.bits.address, i.a.bits.data, i.a.bits.mask))
+      }
+    }
+  }
 
   // TODO: remove Pipeline dependency of gemmini
   def makeSmemBanks(): Unit = {

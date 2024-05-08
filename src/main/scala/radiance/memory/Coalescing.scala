@@ -625,6 +625,7 @@ class MonoCoalescer(
   }
 
   // debug prints
+  /*
   when(leadersValid.reduce(_ || _)) {
     matchCounts.zipWithIndex.foreach { case (count, i) =>
       printf(s"lane[${i}] matchCount = %d\n", count);
@@ -639,6 +640,7 @@ class MonoCoalescer(
     hits.foreach { m => printf("%d ", m) }
     printf("]\n")
   }
+  */
 
   io.results.leaderIdx := chosenLeaderIdx
   io.results.baseAddr := chosenLeader.address & addrMask
@@ -711,7 +713,7 @@ class MultiCoalescer(
   when(normalizedMatches.map(_ > 1.U).reduce(_ || _)) {
     chosenSizeIdx := argMax(normalizedMatches)
     chosenValid := true.B
-    printf("coalescing success by matches policy\n")
+    // printf("coalescing success by matches policy\n")
   }.otherwise {
     chosenSizeIdx := DontCare
     chosenValid := false.B
@@ -1371,12 +1373,12 @@ class InFlightTable(
         (laneEntry.reqs zip laneInv.asBools).zipWithIndex
           .foreach { case ((reqEntry, inv), i) =>
             val req = io.windowElts(lane)(i)
-            when((io.invalidate.valid && inv)) {
+            /* when((io.invalidate.valid && inv)) {
               printf(
                 s"coalescer: reqQueue($lane)($i) got invalidated (source=%d)\n",
                 req.source
               )
-            }
+            } */
             reqEntry.valid := (io.invalidate.valid && inv)
             reqEntry.op := req.op
             reqEntry.source := req.source
