@@ -146,6 +146,7 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
 
   val instCounter = Counter(4)
   val ciscValid = RegInit(false.B)
+  val ciscArgs = RegInit(0.U(24.W))
   val ciscId = RegInit(0.U(8.W))
   val ciscInstT = new Bundle {
     val inst = UInt(32.W)
@@ -157,6 +158,7 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
   when (accSlave.cmd.valid) {
     ciscValid := true.B
     ciscId := accSlave.cmd.bits(7, 0)
+    ciscArgs := accSlave.cmd.bits(31, 8)
     instCounter.reset()
   }
 
@@ -171,34 +173,54 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
   }
 
   ciscInst := 0.U.asTypeOf(ciscInstT)
+  // val boundsInst = ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"4_00040004".U)
+  // val spadQuartile = 0x80
+  val boundsInst = ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"8_00080008".U)
+  val spadQuartile = 0x200
   when (ciscValid) {
     assert(!accSlave.cmd.valid, "cisc state machine already busy")
     switch (ciscId) {
       is (0.U) {
         ciscInst := microcodeEntry(Seq(
-          ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"4_00040004".U), // set I, J, K
-          ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> 0.U, _.rs2 -> 0x180.U),           // set A, B address
+          ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"8_00080008".U), // set I, J, K
+          ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> 0.U, _.rs2 -> 0x600.U),           // set A, B address
           ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0.U, _.rs2 -> x"0_000002b8".U) // set skip, acc
         ))
       }
       is (2.U) {
-        ciscInst := microcodeEntry(Seq(
-          ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"4_00040004".U),
-          ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> 0x80.U, _.rs2 -> 0x200.U),
+        ciscInst := microcodeEntry(Seq(boundsInst,
+          ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> (spadQuartile * 1).U, _.rs2 -> (spadQuartile * 4).U),
           ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0x1.U, _.rs2 -> x"0_000002b8".U)
         ))
       }
       is (1.U) {
-        ciscInst := microcodeEntry(Seq(
-          ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"4_00040004".U),
-          ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> 0.U, _.rs2 -> 0x180.U),
+        ciscInst := microcodeEntry(Seq(boundsInst,
+          ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> 0.U, _.rs2 -> (spadQuartile * 3).U),
           ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0x1.U, _.rs2 -> x"0_000002b8".U)
         ))
       }
+      is (8.U) {
+        val inst = Wire(ciscInstT)
+        inst.inst := 0x1820b07b.U
+        inst.rs1 := ciscArgs(7, 0)
+        inst.rs2 := ciscArgs(15, 8)
+        ciscInst := microcodeEntry(Seq(inst))
+      }
       is (9.U) {
-        ciscInst := microcodeEntry(Seq(
-          ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"4_00040004".U),
+        ciscInst := microcodeEntry(Seq(boundsInst,
           ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0.U, _.rs2 -> 0x278.U),
+        ))
+      }
+      is (10.U) {
+        ciscInst := microcodeEntry(Seq(boundsInst,
+          ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> 0.U, _.rs2 -> (spadQuartile * 3).U),
+          ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0x1.U, _.rs2 -> x"0_000002e0".U)
+        ))
+      }
+      is (11.U) {
+        ciscInst := microcodeEntry(Seq(boundsInst,
+          ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> (spadQuartile * 1).U, _.rs2 -> (spadQuartile * 4).U),
+          ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0x1.U, _.rs2 -> x"0_000002e0".U)
         ))
       }
       is (16.U) {
