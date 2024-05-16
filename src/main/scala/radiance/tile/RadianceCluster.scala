@@ -5,6 +5,7 @@ package radiance.tile
 
 import chisel3._
 import chisel3.util._
+import org.chipsalliance.diplomacy._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.prci.ClockSinkParameters
 import freechips.rocketchip.subsystem._
@@ -494,7 +495,7 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
           // [ smem_base | bank_id | line_id | word_id | byte_offset ]
           // line_id is used to index into the SRAMs
           mem.io.raddr := (r_node.a.bits.address & (mem_depth * mem_width - 1).U) >> log2Ceil(mem_width).U
-          mem.io.waddr := (w_node.a.bits.address & (mem_depth * mem_width - 1).U) >> log2Ceil(mem_width).U
+          mem.io.waddr := RegNext((w_node.a.bits.address & (mem_depth * mem_width - 1).U) >> log2Ceil(mem_width).U)
 
           assert((bid.U === ((r_node.a.bits.address & (mem_depth * mem_width * outer.smem_banks - 1).U) >>
             log2Ceil(mem_depth * mem_width).U).asUInt) || !r_node.a.valid, "bank id mismatch with request")
@@ -519,7 +520,7 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
         val (w_node, w_edge) = w.in.head
 
         mem.io.raddr := (r_node.a.bits.address ^ outer.smem_base.U) >> log2Ceil(mem_width).U
-        mem.io.waddr := (w_node.a.bits.address ^ outer.smem_base.U) >> log2Ceil(mem_width).U
+        mem.io.waddr := RegNext((w_node.a.bits.address ^ outer.smem_base.U) >> log2Ceil(mem_width).U)
 
         make_buffer(mem, r_node, r_edge, w_node, w_edge)
       }
