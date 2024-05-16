@@ -14,6 +14,7 @@ import gemmini._
 import midas.targetutils.SynthesizePrintf
 import org.chipsalliance.cde.config.Parameters
 import radiance.memory._
+import radiance.subsystem.RadianceSharedMemKey
 
 case class RadianceClusterParams(
   val clusterId: Int,
@@ -42,7 +43,6 @@ class RadianceCluster (
   //
   // Instantiate the same number of banks as there are lanes.
   // val numLsuLanes = 4 // FIXME: hardcoded
-  val wordSize = 4
 
  // must toSeq here, otherwise Iterable is lazy and will break diplomacy
   val gemminis = leafTiles.values.filter(_.isInstanceOf[GemminiTile]).toSeq.asInstanceOf[Seq[GemminiTile]]
@@ -72,15 +72,17 @@ class RadianceCluster (
   val unified_mem_read_node = TLIdentityNode()
   val unified_mem_write_node = TLIdentityNode()
 
-  val spad_data_len = gemminiConfig.sp_width / 8
-  val acc_data_len = gemminiConfig.sp_width / gemminiConfig.inputType.getWidth * gemminiConfig.accType.getWidth / 8
-
-  val smem_base = gemminiConfig.tl_ext_mem_base
-  val smem_width = spad_data_len
-  val smem_depth = gemminiConfig.sp_bank_entries * spad_data_len / smem_width
-  val smem_banks = gemminiConfig.sp_banks
+  val smem_key = p(RadianceSharedMemKey).get
+  val wordSize = smem_key.wordSize
+  val smem_base = smem_key.address
+  val smem_banks = smem_key.numBanks
+  val smem_width = smem_key.numWords * smem_key.wordSize
+  val smem_depth = smem_key.size / smem_width / smem_banks
   val smem_subbanks = smem_width / wordSize
   val smem_size = smem_width * smem_depth * smem_banks
+  assert(gemminiConfig.sp_banks == smem_banks)
+  assert(gemminiConfig.sp_width / 8 == smem_width)
+  assert(gemminiConfig.sp_bank_entries == smem_depth)
 
   val stride_by_word = true
   val filter_aligned = true
@@ -298,13 +300,13 @@ class RadianceCluster (
       }
     }
   } else {
-    unified_mem_read_node :=* TLWidthWidget(spad_data_len) :=* gemmini.spad_read_nodes
-    unified_mem_write_node :=* TLWidthWidget(spad_data_len) :=* gemmini.spad_write_nodes
+    unified_mem_read_node :=* TLWidthWidget(smem_width) :=* gemmini.spad_read_nodes
+    unified_mem_write_node :=* TLWidthWidget(smem_width) :=* gemmini.spad_write_nodes
     unified_mem_write_node := gemmini.spad.spad_writer.node // this is the dma write node
 
     val splitter_node = RWSplitterNode()
-    unified_mem_read_node := TLWidthWidget(spad_data_len) := splitter_node
-    unified_mem_write_node := TLWidthWidget(spad_data_len) := splitter_node
+    unified_mem_read_node := TLWidthWidget(smem_width) := splitter_node
+    unified_mem_write_node := TLWidthWidget(smem_width) := splitter_node
 
     radiance_smem_fanout.foreach(clbus.inwardNode := _)
     splitter_node :=* TLWidthWidget(4) :=* clbus.outwardNode
@@ -334,7 +336,8 @@ class RadianceCluster (
 
   val traceTLNode = TLAdapterNode(clientFn = c => c, managerFn = m => m)
   // printf and perf counter buffer
-  TLRAM(AddressSet(x"ff000000" + smem_size, numCores * 0x200 - 1)) := traceTLNode := TLFragmenter(4, 4) := clbus.outwardNode
+  TLRAM(AddressSet(x"ff000000" + smem_size, numCores * 0x200 - 1)) := traceTLNode :=
+    TLBuffer() := TLFragmenter(4, 4) := clbus.outwardNode
 
 
   // Diplomacy sink nodes for cluster-wide barrier sync signal
@@ -455,12 +458,15 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
       metadata_pipe.ready := r_node.d.ready
 
       // WRITE
-      mem.io.wen := w_node.a.fire
-      mem.io.wdata := w_node.a.bits.data
-      mem.io.mask := w_node.a.bits.mask.asBools
-      w_node.a.ready := w_node.d.ready// && (mem.io.waddr =/= mem.io.raddr)
-      w_node.d.valid := w_node.a.valid
-      w_node.d.bits := w_edge.AccessAck(w_node.a.bits)
+      mem.io.wen := RegNext(w_node.a.fire)
+      mem.io.wdata := RegNext(w_node.a.bits.data)
+      mem.io.mask := RegNext(VecInit(w_node.a.bits.mask.asBools))
+
+      val write_resp = Wire(Flipped(w_node.d.cloneType))
+      write_resp.bits := w_edge.AccessAck(w_node.a.bits)
+      write_resp.valid := w_node.a.valid
+      w_node.a.ready := write_resp.ready
+      w_node.d <> Queue(write_resp, 2)
     }
 
     if (outer.stride_by_word) {

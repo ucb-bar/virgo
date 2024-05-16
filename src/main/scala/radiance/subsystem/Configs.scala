@@ -13,6 +13,17 @@ import gemmini.{CapacityInKilobytes, GemminiFPConfigs}
 import radiance.tile._
 import radiance.memory._
 
+case class RadianceSharedMemKey(address: BigInt,
+                                size: Int,
+                                numBanks: Int,
+                                numWords: Int,
+                                wordSize: Int = 4,
+                                strideByWord: Boolean = true,
+                                filterAligned: Boolean = true,
+                                disableMonitors: Boolean = true,
+                                serializeUnaligned: Boolean = true)
+case object RadianceSharedMemKey extends Field[Option[RadianceSharedMemKey]](None)
+
 class WithRadianceCores(
   n: Int,
   location: HierarchicalLocation,
@@ -63,19 +74,18 @@ class WithRadianceCores(
 
 class WithRadianceGemmini(location: HierarchicalLocation,
                           crossing: RocketCrossingParams,
-                          dim: Int, extMemBase: BigInt,
-                          spSizeInKB: Int, accSizeInKB: Int) extends Config((site, _, up) => {
+                          dim: Int, accSizeInKB: Int) extends Config((site, _, up) => {
   case TilesLocated(`location`) => {
     val prev = up(TilesLocated(`location`), site)
     val idOffset = prev.size
     if (idOffset == 0) {
       println("******WARNING****** gemmini tile id is 0! radiance tiles in the same cluster needs to be before gemmini")
     }
+    val smKey = site(RadianceSharedMemKey).get
     val gemmini = GemminiTileParams(gemminiConfig = GemminiFPConfigs.FP32DefaultConfig.copy(
       has_training_convs = false,
       has_max_pool = false,
       use_tl_ext_mem = true,
-      tl_ext_mem_base = extMemBase,
       sp_singleported = false,
       spad_read_delay = 4,
       use_shared_ext_mem = true,
@@ -83,9 +93,12 @@ class WithRadianceGemmini(location: HierarchicalLocation,
       has_normalizations = false,
       meshRows = dim,
       meshColumns = dim,
-      dma_buswidth = dim * 32,
       tile_latency = 0,
-      sp_capacity = CapacityInKilobytes(spSizeInKB),
+      dma_maxbytes = site(CacheBlockBytes),
+      dma_buswidth = dim * 32,
+      tl_ext_mem_base = smKey.address,
+      sp_banks = smKey.numBanks,
+      sp_capacity = CapacityInKilobytes(smKey.size >> 10),
       acc_capacity = CapacityInKilobytes(accSizeInKB),
     ))
     List.tabulate(1)(i => GemminiTileAttachParams(
@@ -94,8 +107,7 @@ class WithRadianceGemmini(location: HierarchicalLocation,
     )) ++ prev
   }
 }) {
-  def this(location: HierarchicalLocation = InSubsystem,
-           dim: Int, extMemBase: BigInt, spSizeInKB: Int, accSizeInKB: Int) =
+  def this(location: HierarchicalLocation = InSubsystem, dim: Int, accSizeInKB: Int) =
     this(location, RocketCrossingParams(
       master = HierarchicalElementMasterPortParams.locationDefault(location),
       slave = HierarchicalElementSlavePortParams.locationDefault(location),
@@ -103,8 +115,26 @@ class WithRadianceGemmini(location: HierarchicalLocation,
         case InSubsystem => CBUS
         case InCluster(clusterId) => CCBUS(clusterId)
       }
-    ), dim, extMemBase, spSizeInKB, accSizeInKB)
+    ), dim, accSizeInKB)
 }
+
+class WithRadianceSharedMem(address: BigInt,
+                            size: Int,
+                            numBanks: Int,
+                            numWords: Int,
+                            strideByWord: Boolean = true,
+                            filterAligned: Boolean = true,
+                            disableMonitors: Boolean = true,
+                            serializeUnaligned: Boolean = true
+                           ) extends Config((site, _, _) => {
+  case RadianceSharedMemKey => {
+    require(isPow2(size) && size >= 1024)
+    Some(RadianceSharedMemKey(
+      address, size, numBanks, numWords, 4, strideByWord,
+      filterAligned, disableMonitors, serializeUnaligned
+    ))
+  }
+})
 
 class WithFuzzerCores(
   n: Int,
