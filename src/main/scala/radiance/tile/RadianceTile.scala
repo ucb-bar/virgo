@@ -4,6 +4,7 @@
 package radiance.tile
 
 import chisel3._
+import chisel3.experimental.AffectsChiselPrefix
 import chisel3.util._
 import freechips.rocketchip.devices.tilelink._
 import org.chipsalliance.diplomacy._
@@ -126,7 +127,7 @@ class RadianceTile private (
 
   // Memory-mapped region for HTIF communication
   // We use fixed addresses instead of tohost/fromhost
-  val regDevice =
+  /* val regDevice =
     new SimpleDevice("radiance-reg", Seq(s"radiance-reg${tileParams.tileId}"))
   val regNode = TLRegisterNode(
     address = Seq(AddressSet(0x7c000000 + 0x1000 * tileParams.tileId, 0xfff)),
@@ -135,7 +136,7 @@ class RadianceTile private (
     concurrency = 1
   )
 
-  regNode := TLFragmenter(4, 64) := tlSlaveXbar.node
+  regNode := TLFragmenter(4, 64) := tlSlaveXbar.node */
 
   require(
     p(SIMTCoreKey).isDefined,
@@ -453,9 +454,21 @@ class RadianceTileModuleImp(outer: RadianceTile)
   // reset vector is connected in the Frontend to s2_pc
   core.io.reset_vector := DontCare
 
-  outer.regNode.regmap(
-    0x00 -> Seq(RegField.r(32, core.io.finished))
-  )
+  class TwoWayCounter(width: Int) extends AffectsChiselPrefix {
+    val value = RegInit(0.U(width.W))
+    value := value
+    def inc(): Unit = { value := value + 1.U }
+    def dec(): Unit = { value := value - 1.U }
+  }
+
+  val dmemCounters = outer.dmemNodes.map { _ => new TwoWayCounter(outer.dmemSourceWidth) }
+  val smemCounters = outer.smemNodes.map { _ => new TwoWayCounter(outer.smemSourceWidth) }
+  core.io.downstream_mem_busy := VecInit(dmemCounters.map(_.value =/= 0.U)).reduceTree(_ || _) ||
+    VecInit(smemCounters.map(_.value =/= 0.U)).reduceTree(_ || _)
+
+  // outer.regNode.regmap(
+  //   0x00 -> Seq(RegField.r(32, core.io.finished))
+  // )
 
   // Report when the tile has ceased to retire instructions
   outer.reportCease(Some(core.io.finished))
@@ -615,6 +628,14 @@ class RadianceTileModuleImp(outer: RadianceTile)
       }
       core.io.dmem_d_valid := dmem_d_valid_vec.asUInt
 
+      (dmemTLAdapters zip dmemCounters).foreach { case (a, c) =>
+        when (a.io.inReq.fire && !a.io.inResp.fire) {
+          c.inc()
+        }.elsewhen (a.io.inResp.fire && !a.io.inReq.fire) {
+          c.dec()
+        }
+      }
+
       performanceCounters(dmemTLAdapters.map(_.io.inReq), dmemTLAdapters.map(_.io.inResp),
         desc = s"core${outer.tileId}-dmem")
 
@@ -666,6 +687,14 @@ class RadianceTileModuleImp(outer: RadianceTile)
       smemTLAdapters.zipWithIndex.foreach {
         case (tlAdapter, i) =>
           tlAdapter.io.inResp.ready := core.io.smem_d_ready(i)
+      }
+
+      (smemTLAdapters zip smemCounters).foreach { case (a, c) =>
+        when (a.io.inReq.fire && !a.io.inResp.fire) {
+          c.inc()
+        }.elsewhen (a.io.inResp.fire && !a.io.inReq.fire) {
+          c.dec()
+        }
       }
 
       performanceCounters(smemTLAdapters.map(_.io.inReq), smemTLAdapters.map(_.io.inResp),

@@ -100,6 +100,8 @@ class VortexBundle(tile: RadianceTile)(implicit p: Parameters) extends CoreBundl
   val gbar_rsp_valid = Input(Bool())
   val gbar_rsp_id = Input(UInt(barrierIdBits.W))
 
+  val downstream_mem_busy = Input(Bool())
+
   val acc_read_in = Input(UInt(32.W))
   val acc_write_out = Output(UInt(32.W))
   val acc_write_en = Output(Bool())
