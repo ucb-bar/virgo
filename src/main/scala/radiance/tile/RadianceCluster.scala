@@ -5,7 +5,7 @@ package radiance.tile
 
 import chisel3._
 import chisel3.util._
-import org.chipsalliance.diplomacy._
+import org.chipsalliance.diplomacy.{DisableMonitors, ValName}
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.prci.ClockSinkParameters
 import freechips.rocketchip.subsystem._
