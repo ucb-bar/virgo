@@ -5,7 +5,8 @@ package radiance.memory
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.{Field, Parameters}
-import freechips.rocketchip.diplomacy._
+import freechips.rocketchip.diplomacy.{IdRange, AddressSet, BufferParams}
+import org.chipsalliance.diplomacy.lazymodule.{LazyModule, LazyModuleImp}
 import freechips.rocketchip.util.{Code, MultiPortQueue, OnePortLanePositionedQueue}
 import freechips.rocketchip.unittest._
 import freechips.rocketchip.tilelink._
