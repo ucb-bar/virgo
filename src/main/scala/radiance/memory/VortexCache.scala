@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 import chisel3.experimental._
 import freechips.rocketchip.diplomacy._
+import org.chipsalliance.diplomacy.lazymodule.{LazyModule, LazyModuleImp}
 import freechips.rocketchip.tilelink._
 import org.chipsalliance.cde.config.{Parameters, Field}
 
@@ -14,15 +15,11 @@ case class VortexL1Config(
                            numBanks: Int,
                            inputSize: Int, // This is the read/write granularity of the L1 cache
                            cacheLineSize: Int,
-                           coreTagWidth: Int,
                            writeInfoReqQSize: Int,
                            mshrSize: Int,
                            memSideSourceIds: Int,
                            uncachedAddrSets: Seq[AddressSet]
 ) {
-  def coreTagPlusSizeWidth: Int = {
-    log2Ceil(inputSize) + coreTagWidth
-  }
   // NOTE: This assertion depends on the fact that the Vortex cache is
   // configured to have 1 bank, and that it uses MSHR id as the tag of
   // memory-side requests.  Otherwise, it will append bank id to the tag as
@@ -39,7 +36,6 @@ object defaultVortexL1Config
       numBanks = 4,
       inputSize = 16,
       cacheLineSize = 16,
-      coreTagWidth = 8,
       writeInfoReqQSize = 16,
       mshrSize = 8,
       memSideSourceIds = 8,
@@ -95,13 +91,18 @@ class VortexBankPassThrough(config: VortexL1Config)(implicit p: Parameters)
     )
   )
 
+  // HACK: Set arbitrarily since we cannot query the coresideNode's sourceId
+  // here. See comment on the require below.
+  // @perf: This is quite high
+  val sourceWidth = 9
+
   // Master node to downstream
   val clientParam = Seq(
     TLMasterPortParameters.v1(
       clients = Seq(
         TLMasterParameters.v1(
           name = "VortexBankPassthrough",
-          sourceId = IdRange(0, 1 << config.coreTagWidth),
+          sourceId = IdRange(0, 1 << sourceWidth),
           supportsProbe = TransferSizes(1, config.cacheLineSize),
           supportsGet = TransferSizes(1, config.cacheLineSize),
           supportsPutFull = TransferSizes(1, config.cacheLineSize),
@@ -120,6 +121,13 @@ class VortexBankPassThrough(config: VortexL1Config)(implicit p: Parameters)
   lazy val module = new LazyModuleImp(this) {
     val (upstream, _) = coresideNode.in(0)
     val (downstream, _) = vxCacheFetchNode.out(0)
+
+    // Make sure the outgoing edge of this passthrough has enough sourceIds
+    // that encompasses the core-side incoming edge's.  This is an unfortunate
+    // hack due to not doing proper param negotiations across disconnected
+    // Diplomacy graphs.
+    // println(s"${upstream.params.sourceBits} <= ${downstream.params.sourceBits}")
+    require(upstream.params.sourceBits <= downstream.params.sourceBits)
 
     downstream.a <> upstream.a
     upstream.d <> downstream.d
@@ -197,13 +205,17 @@ class VortexBankImp(
     outer: VortexBank,
     config: VortexL1Config
 ) extends LazyModuleImp(outer) {
+  val (tlInFromCoal, _) = outer.coresideNode.in.head
+  val coreTagWidth = tlInFromCoal.a.bits.source.getWidth
+  val coreTagWidthPlusSize = coreTagWidth + log2Ceil(config.inputSize)
+
   val vxCache = Module(
     new VX_cache_top(
       WORD_SIZE = config.inputSize,
       // distribute total size across numBanks
       CACHE_SIZE = config.cacheSize / config.numBanks,
       CACHE_LINE_SIZE = config.cacheLineSize,
-      CORE_TAG_WIDTH = config.coreTagPlusSizeWidth,
+      CORE_TAG_WIDTH = coreTagWidthPlusSize,
       MSHR_SIZE = config.mshrSize
     )
   );
@@ -232,7 +244,7 @@ class VortexBankImp(
 
   class ReadReqInfo(config: VortexL1Config) extends Bundle {
     val size = UInt(log2Ceil(4).W + 1)
-    val id = UInt(config.coreTagWidth.W)
+    val id = UInt(coreTagWidth.W)
   }
 
   val coreWriteReqQueue = Module(
@@ -247,8 +259,6 @@ class VortexBankImp(
 
   // Translate TL request from Coalescer to requests for VX_cache
   def TLReq2VXReq = {
-    val (tlInFromCoal, _) = outer.coresideNode.in.head
-
     // coal -> vxCache
     tlInFromCoal.a.ready :=
       vxCache.io.core_req_ready && coreWriteReqQueue.io.enq.ready // not optimal
@@ -269,13 +279,9 @@ class VortexBankImp(
     readReqInfo.id := tlInFromCoal.a.bits.source
     readReqInfo.size := tlInFromCoal.a.bits.size
     assert(readReqInfo.id.getWidth == tlInFromCoal.a.bits.source.getWidth,
-      s"id width mismatch; coalescer ${tlInFromCoal.a.bits.source.getWidth}, cache ${readReqInfo.id.getWidth}")
+      s"id width mismatch; core-side ${tlInFromCoal.a.bits.source.getWidth}, cache-side ${readReqInfo.id.getWidth}")
     assert(readReqInfo.size.getWidth == tlInFromCoal.a.bits.size.getWidth,
-      s"size width mismatch; coalescer ${tlInFromCoal.a.bits.size.getWidth}, cache ${readReqInfo.size.getWidth}")
-    assert(readReqInfo.id.getWidth == tlInFromCoal.a.bits.source.getWidth,
-      s"id width mismatch; coalescer ${tlInFromCoal.a.bits.source.getWidth}, cache ${readReqInfo.id.getWidth}")
-    assert(readReqInfo.size.getWidth == tlInFromCoal.a.bits.size.getWidth,
-      s"size width mismatch; coalescer ${tlInFromCoal.a.bits.size.getWidth}, cache ${readReqInfo.size.getWidth}")
+      s"size width mismatch; core-side ${tlInFromCoal.a.bits.size.getWidth}, cache-side ${readReqInfo.size.getWidth}")
     // ignore param, size, corrupt
     vxCache.io.core_req_tag := readReqInfo.asTypeOf(vxCache.io.core_req_tag)
 
