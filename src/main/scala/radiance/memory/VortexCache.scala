@@ -127,7 +127,9 @@ class VortexBankPassThrough(config: VortexL1Config)(implicit p: Parameters)
     // hack due to not doing proper param negotiations across disconnected
     // Diplomacy graphs.
     // println(s"${upstream.params.sourceBits} <= ${downstream.params.sourceBits}")
-    require(upstream.params.sourceBits <= downstream.params.sourceBits)
+    require(upstream.params.sourceBits <= downstream.params.sourceBits,
+            "mem-side source of L1 cache truncates core-side source! " +
+            "Try lowering core or coalescer srcIds")
 
     downstream.a <> upstream.a
     upstream.d <> downstream.d
