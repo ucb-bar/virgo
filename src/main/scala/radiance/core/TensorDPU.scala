@@ -5,7 +5,42 @@ package radiance.core
 
 import chisel3._
 import chisel3.util._
-import freechips.rocketchip.rocket._
+import freechips.rocketchip.tile
+
+class DPUPipe extends Module with tile.HasFPUParameters {
+  val fLen = 32
+  val minFLen = 32
+  def xLen = 32
+
+  val io = IO(new Bundle {
+    val in = Flipped(Valid(new Bundle {
+      val a = Bits((fLen).W)
+      val b = Bits((fLen).W)
+      val c = Bits((fLen).W)
+    }))
+    val out = Valid(new Bundle {
+      val data = Bits((fLen+1).W)
+    })
+  })
+
+  val t = tile.FType.S
+
+  val in1 = recode(io.in.bits.a, S)
+  val in2 = recode(io.in.bits.b, S)
+  val in3 = recode(io.in.bits.c, S)
+
+  val fma = Module(new MulAddRecFNPipe(2, t.exp, t.sig))
+  fma.io.validin := io.in.valid
+  fma.io.op := 0.U // FIXME
+  fma.io.roundingMode := 0.U // FIXME
+  fma.io.detectTininess := hardfloat.consts.tininess_afterRounding
+  fma.io.a := unbox(in1, S, Some(tile.FType.S))
+  fma.io.b := unbox(in2, S, Some(tile.FType.S))
+  fma.io.c := unbox(in3, S, Some(tile.FType.S))
+
+  io.out.valid := fma.io.validout
+  io.out.bits.data := ieee(box(fma.io.out, S))
+}
 
 class MulAddRecFNPipe(latency: Int, expWidth: Int, sigWidth: Int) extends Module {
   require(latency <= 2)
