@@ -38,19 +38,19 @@ radpie:
 EXTRA_SIM_REQS += vortex_vsrc
 # doesn't work if we use $(call lookup_srcs) from common.mk, the variable
 # doesn't expand somehow
-VORTEX_VLOG_SOURCES := $(shell fd -L -t f -e "sv" -e "vh" -e "v" . $(VORTEX_SRC_DIR))
+ifneq ($(shell which fd 2> /dev/null),)
+	VORTEX_VLOG_SOURCES := $(shell fd -L -t f -e "sv" -e "vh" -e "v" . $(VORTEX_SRC_DIR))
+endif
 # VORTEX_COLLATERAL := $(patsubst $(VORTEX_SRC_DIR)%,$(GEN_COLLATERAL_DIR)%,$(VORTEX_VLOG_SOURCES))
 # check if expanded
 # $(info VORTEX_VLOG_SOURCES: $(VORTEX_VLOG_SOURCES))
 
 # For every Vortex verilog source file, if there's a matching file in
 # gen-collateral/, copy them over.  This is a hacky way to ensure the changes
-# in the verilog sources are reflected before Verilator/VCS kicks in. The
-# matching with gen-collateral/ is there to prevent unnecessarily copying
-# unused source files e.g. third-party libraries.
-#
-# This assumes that the fix is applied to common.mk, where it does not trigger
-# chipyard jar rebuild when verilog sources are changed.
+# in the verilog sources are reflected before Verilator/VCS kicks in. This is
+# necessary when common.mk does not trigger chipyard jar rebuild upon verilog
+# source updates, in which case we need to manually ensure the up-to-date-ness
+# of gen-collateral/.
 vortex_vsrc: $(VORTEX_VLOG_SOURCES)
 	@for file in $(VORTEX_VLOG_SOURCES); do \
 		filename=$$(basename "$$file"); \
