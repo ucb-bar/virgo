@@ -22,9 +22,9 @@ EXTRA_SIM_PREPROC_DEFINES += \
 	+define+GBAR_ENABLE \
 	+define+GBAR_CLUSTER_ENABLE \
 	+define+NUM_FPU_BLOCKS=2 \
-	+define+NUM_BARRIERS=4 \
-	+define+NUM_LSU_LANES=4 \
-	+define+NUM_CORES=1 +define+NUM_THREADS=32 +define+NUM_WARPS=4
+	+define+NUM_BARRIERS=8 \
+	+define+NUM_LSU_LANES=8 \
+	+define+NUM_CORES=1 +define+NUM_THREADS=8 +define+NUM_WARPS=8
 	# +define+EXT_T_DISABLE \
 	# +define+FPU_FPNEW \
 	# +define+SMEM_LOG_SIZE=15 \
