@@ -1,7 +1,6 @@
 package radiance.core
 
 import chisel3._
-import chisel3.stage.PrintFullStackTraceAnnotation
 import chisel3.util._
 import chiseltest._
 import chiseltest.simulator.VerilatorFlags
@@ -49,25 +48,26 @@ class DPUPipeTest extends AnyFlatSpec with ChiselScalatestTester {
 
   it should "pass" in {
     test(new DPUPipe)
+      // .withAnnotations(Seq(VerilatorBackendAnnotation, WriteFstAnnotation))
       // .withAnnotations(Seq(WriteVcdAnnotation))
-      { fma =>
-        fma.io.in.valid.poke(true.B)
-        fma.io.in.bits.a.poke(0x40000000L.U(64.W))
-        fma.io.in.bits.b.poke(0x40400000L.U(64.W))
-        fma.io.in.bits.c.poke(0x3f800000L.U(64.W))
-        fma.clock.step()
-        fma.io.in.valid.poke(true.B)
-        fma.io.in.bits.a.poke(0x40000000L.U(64.W))
-        fma.io.in.bits.b.poke(0x3f800000L.U(64.W))
-        fma.io.in.bits.c.poke(0x3f800000L.U(64.W))
-        fma.clock.step()
-        fma.io.in.valid.poke(false.B)
-        fma.io.out.valid.expect(true.B)
-        fma.io.out.bits.data.expect(0x40e00000L.U)
-        fma.clock.step()
-        // pipelined back-to-back response
-        fma.io.out.valid.expect(true.B)
-        fma.io.out.bits.data.expect(0x40400000L.U)
+      { c =>
+        c.io.in.valid.poke(true.B)
+        c.io.in.bits.a(0).poke(0x40000000L.U(64.W))
+        c.io.in.bits.a(1).poke(0x40000000L.U(64.W))
+        c.io.in.bits.a(2).poke(0x40000000L.U(64.W))
+        c.io.in.bits.a(3).poke(0x40000000L.U(64.W))
+        c.io.in.bits.b(0).poke(0x40000000L.U(64.W))
+        c.io.in.bits.b(1).poke(0x40000000L.U(64.W))
+        c.io.in.bits.b(2).poke(0x40000000L.U(64.W))
+        c.io.in.bits.b(3).poke(0x40000000L.U(64.W))
+        c.clock.step()
+        c.io.in.valid.poke(false.B)
+        c.clock.step()
+        c.clock.step()
+        c.io.out.valid.expect(true.B)
+        c.io.out.bits.data.expect(0x40e00000L.U)
+        c.clock.step()
+        c.io.out.valid.expect(false.B)
       }
   }
 }
