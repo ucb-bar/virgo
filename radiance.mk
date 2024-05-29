@@ -35,7 +35,7 @@ EXTRA_SIM_PREPROC_DEFINES += \
 radpie:
 	cd $(RADPIE_SRC_DIR) && cargo build --release
 
-EXTRA_SIM_REQS += vortex_vsrc
+EXTRA_SIM_REQS += vortex_vsrc.$(CONFIG)
 # doesn't work if we use $(call lookup_srcs) from common.mk, the variable
 # doesn't expand somehow
 ifneq ($(shell which fd 2> /dev/null),)
@@ -51,7 +51,7 @@ endif
 # necessary when common.mk does not trigger chipyard jar rebuild upon verilog
 # source updates, in which case we need to manually ensure the up-to-date-ness
 # of gen-collateral/.
-vortex_vsrc: $(VORTEX_VLOG_SOURCES)
+vortex_vsrc.$(CONFIG): $(VORTEX_VLOG_SOURCES)
 	@for file in $(VORTEX_VLOG_SOURCES); do \
 		filename=$$(basename "$$file"); \
 		if [ -f $(GEN_COLLATERAL_DIR)/$$filename ]; then \
