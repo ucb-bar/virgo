@@ -329,6 +329,8 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_fpnew.sv")
   addResource("/vsrc/vortex/hw/rtl/core/VX_fpu_unit.sv")
 
+  addResource("/vsrc/TensorDotProductUnit.sv")
+
   // fpnew
   // compile order matters; package definitions (ex. fpnew_pkg) should be
   // compiled before all the other modules that reference them.  They are added
