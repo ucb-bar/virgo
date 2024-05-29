@@ -60,13 +60,20 @@ class DPUPipeTest extends AnyFlatSpec with ChiselScalatestTester {
         c.io.in.bits.b(1).poke(0x40000000L.U(64.W))
         c.io.in.bits.b(2).poke(0x40000000L.U(64.W))
         c.io.in.bits.b(3).poke(0x40000000L.U(64.W))
+        c.io.in.bits.c   .poke(0x40400000L.U(64.W))
+
         c.clock.step()
         c.io.in.valid.poke(false.B)
         c.clock.step()
         c.clock.step()
+        c.clock.step()
+        // 4-cycle latency
+
         c.io.out.valid.expect(true.B)
         c.io.out.bits.data.expect(0x40e00000L.U)
+
         c.clock.step()
+
         c.io.out.valid.expect(false.B)
       }
   }
