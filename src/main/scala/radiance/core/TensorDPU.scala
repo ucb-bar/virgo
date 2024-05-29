@@ -72,8 +72,8 @@ class DotProductPipe(dim: Int, expWidth: Int, sigWidth: Int) extends Module {
     m.io.b := io.in.bits.b(i)
   }
 
-  val mulStageOut = Pipe(io.in.valid, VecInit(mul.map(_.io.out)))
-  val mulStageC   = Pipe(io.in.valid, io.in.bits.c)
+  val mulStageOut = Pipe(!io.stall && io.in.valid, VecInit(mul.map(_.io.out)))
+  val mulStageC   = Pipe(!io.stall && io.in.valid, io.in.bits.c)
 
   // mul stage end -------------------------------------------------------------
 
@@ -86,8 +86,8 @@ class DotProductPipe(dim: Int, expWidth: Int, sigWidth: Int) extends Module {
     a.io.detectTininess := hardfloat.consts.tininess_afterRounding
   }
 
-  val add1StageOut = Pipe(mulStageOut.valid, VecInit(add1.map(_.io.out)))
-  val add1StageC   = Pipe(mulStageC)
+  val add1StageOut = Pipe(!io.stall && mulStageOut.valid, VecInit(add1.map(_.io.out)), latency = 0)
+  val add1StageC   = Pipe(!io.stall && mulStageOut.valid, mulStageC.bits, latency = 0)
 
   // add1 stage end ------------------------------------------------------------
 
@@ -99,8 +99,8 @@ class DotProductPipe(dim: Int, expWidth: Int, sigWidth: Int) extends Module {
   add2.io.roundingMode := hardfloat.consts.round_near_even
   add2.io.detectTininess := hardfloat.consts.tininess_afterRounding
 
-  val add2StageOut = Pipe(add1StageOut.valid, add2.io.out)
-  val add2StageC   = Pipe(add1StageC)
+  val add2StageOut = Pipe(!io.stall && add1StageOut.valid, add2.io.out, latency = 0)
+  val add2StageC   = Pipe(!io.stall && add1StageOut.valid, add1StageC.bits, latency = 0)
 
   // add2 stage end ------------------------------------------------------------
 
@@ -111,11 +111,13 @@ class DotProductPipe(dim: Int, expWidth: Int, sigWidth: Int) extends Module {
   acc.io.roundingMode := hardfloat.consts.round_near_even
   acc.io.detectTininess := hardfloat.consts.tininess_afterRounding
 
-  io.out.valid := Pipe(add2StageOut.valid, false.B).valid
-  io.out.bits.data := Pipe(add2StageOut.valid, acc.io.out).bits
+  val accStageOut = Pipe(!io.stall && add2StageOut.valid, acc.io.out)
   // FIXME: exception output ignored
 
   // acc stage end -------------------------------------------------------------
+
+  io.out.valid := accStageOut.valid
+  io.out.bits.data := accStageOut.bits
 }
 
 class MulAddRecFNPipe(latency: Int, expWidth: Int, sigWidth: Int) extends Module {

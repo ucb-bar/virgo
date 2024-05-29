@@ -49,33 +49,37 @@ class TensorDotProductUnitTest extends AnyFlatSpec with ChiselScalatestTester {
   it should "pass" in {
     test(new TensorDotProductUnit)
       .withAnnotations(Seq(VerilatorBackendAnnotation))
-      .withAnnotations(Seq(WriteVcdAnnotation))
+      // .withAnnotations(Seq(WriteVcdAnnotation))
       { c =>
         c.io.in.valid.poke(true.B)
         c.io.stall.poke(false.B)
-        // (2,2,2,2)*(2,2,2,2) + 3 = 19
-        c.io.in.bits.a(0).poke(0x40000000L.U(64.W))
-        c.io.in.bits.a(1).poke(0x40000000L.U(64.W))
-        c.io.in.bits.a(2).poke(0x40000000L.U(64.W))
-        c.io.in.bits.a(3).poke(0x40000000L.U(64.W))
+        // (1,3,5,7)*(2,4,6,8) + 9 = 109
+        c.io.in.bits.a(0).poke(0x3f800000L.U(64.W))
+        c.io.in.bits.a(1).poke(0x40400000L.U(64.W))
+        c.io.in.bits.a(2).poke(0x40a00000L.U(64.W))
+        c.io.in.bits.a(3).poke(0x40e00000L.U(64.W))
         c.io.in.bits.b(0).poke(0x40000000L.U(64.W))
-        c.io.in.bits.b(1).poke(0x40000000L.U(64.W))
-        c.io.in.bits.b(2).poke(0x40000000L.U(64.W))
-        c.io.in.bits.b(3).poke(0x40000000L.U(64.W))
-        c.io.in.bits.c   .poke(0x40400000L.U(64.W))
+        c.io.in.bits.b(1).poke(0x40800000L.U(64.W))
+        c.io.in.bits.b(2).poke(0x40c00000L.U(64.W))
+        c.io.in.bits.b(3).poke(0x41000000L.U(64.W))
+        c.io.in.bits.c   .poke(0x41100000L.U(64.W))
+
+        c.io.out.valid.expect(false.B)
 
         c.clock.step()
         c.io.in.valid.poke(false.B)
+        c.io.out.valid.expect(false.B)
         // stall the pipeline
         // c.io.stall.poke(true.B)
         c.clock.step()
-        c.io.stall.poke(false.B)
-        c.clock.step()
-        c.clock.step()
+        // c.io.stall.poke(false.B)
+        // c.io.out.valid.expect(false.B)
+        // c.clock.step()
+        // c.clock.step()
         // 4-cycle latency
 
         c.io.out.valid.expect(true.B)
-        c.io.out.bits.data.expect(0x41980000L.U)
+        c.io.out.bits.data.expect(0x42da0000L.U)
 
         c.clock.step()
 
