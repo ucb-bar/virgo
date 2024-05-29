@@ -41,17 +41,19 @@ class MulAddTest extends AnyFlatSpec with ChiselScalatestTester {
   }
 }
 
-class DPUPipeTest extends AnyFlatSpec with ChiselScalatestTester {
-  behavior of "DPUPipe"
+class TensorDotProductUnitTest extends AnyFlatSpec with ChiselScalatestTester {
+  behavior of "TensorDotProductUnit"
 
   implicit val p: Parameters = Parameters.empty
 
   it should "pass" in {
-    test(new DPUPipe)
-      // .withAnnotations(Seq(VerilatorBackendAnnotation, WriteFstAnnotation))
-      // .withAnnotations(Seq(WriteVcdAnnotation))
+    test(new TensorDotProductUnit)
+      .withAnnotations(Seq(VerilatorBackendAnnotation))
+      .withAnnotations(Seq(WriteVcdAnnotation))
       { c =>
         c.io.in.valid.poke(true.B)
+        c.io.stall.poke(false.B)
+        // (2,2,2,2)*(2,2,2,2) + 3 = 19
         c.io.in.bits.a(0).poke(0x40000000L.U(64.W))
         c.io.in.bits.a(1).poke(0x40000000L.U(64.W))
         c.io.in.bits.a(2).poke(0x40000000L.U(64.W))
@@ -64,13 +66,16 @@ class DPUPipeTest extends AnyFlatSpec with ChiselScalatestTester {
 
         c.clock.step()
         c.io.in.valid.poke(false.B)
+        // stall the pipeline
+        // c.io.stall.poke(true.B)
         c.clock.step()
+        c.io.stall.poke(false.B)
         c.clock.step()
         c.clock.step()
         // 4-cycle latency
 
         c.io.out.valid.expect(true.B)
-        c.io.out.bits.data.expect(0x40e00000L.U)
+        c.io.out.bits.data.expect(0x41980000L.U)
 
         c.clock.step()
 
