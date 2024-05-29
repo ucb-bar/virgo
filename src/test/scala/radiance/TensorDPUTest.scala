@@ -48,7 +48,7 @@ class TensorDotProductUnitTest extends AnyFlatSpec with ChiselScalatestTester {
 
   it should "pass" in {
     test(new TensorDotProductUnit)
-      .withAnnotations(Seq(VerilatorBackendAnnotation))
+      // .withAnnotations(Seq(VerilatorBackendAnnotation))
       // .withAnnotations(Seq(WriteVcdAnnotation))
       { c =>
         c.io.in.valid.poke(true.B)
@@ -69,14 +69,20 @@ class TensorDotProductUnitTest extends AnyFlatSpec with ChiselScalatestTester {
         c.clock.step()
         c.io.in.valid.poke(false.B)
         c.io.out.valid.expect(false.B)
+
         // stall the pipeline
-        // c.io.stall.poke(true.B)
+        c.io.stall.poke(true.B)
         c.clock.step()
-        // c.io.stall.poke(false.B)
-        // c.io.out.valid.expect(false.B)
-        // c.clock.step()
-        // c.clock.step()
-        // 4-cycle latency
+        c.io.stall.poke(true.B)
+        c.clock.step()
+        c.io.stall.poke(true.B)
+        c.clock.step()
+        c.io.stall.poke(false.B)
+
+        c.clock.step()
+        c.clock.step()
+        c.clock.step()
+        // 4-cycle latency + stalls
 
         c.io.out.valid.expect(true.B)
         c.io.out.bits.data.expect(0x42da0000L.U)
