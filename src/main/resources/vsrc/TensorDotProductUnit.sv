@@ -588,22 +588,22 @@ module AddRecFN( // @[generators/hardfloat/hardfloat/src/main/scala/AddRecFN.sca
   assign roundRawFNToRecFN_io_in_sExp = addRawFN__io_rawOut_sExp; // @[generators/hardfloat/hardfloat/src/main/scala/AddRecFN.scala 160:39]
   assign roundRawFNToRecFN_io_in_sig = addRawFN__io_rawOut_sig; // @[generators/hardfloat/hardfloat/src/main/scala/AddRecFN.scala 160:39]
 endmodule
-module DotProductPipe( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 48:7]
-  input         clock, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 48:7]
-  input         reset, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 48:7]
-  input         io_in_valid, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 52:14]
-  input  [32:0] io_in_bits_a_0, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 52:14]
-  input  [32:0] io_in_bits_a_1, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 52:14]
-  input  [32:0] io_in_bits_a_2, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 52:14]
-  input  [32:0] io_in_bits_a_3, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 52:14]
-  input  [32:0] io_in_bits_b_0, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 52:14]
-  input  [32:0] io_in_bits_b_1, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 52:14]
-  input  [32:0] io_in_bits_b_2, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 52:14]
-  input  [32:0] io_in_bits_b_3, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 52:14]
-  input  [32:0] io_in_bits_c, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 52:14]
-  input         io_stall, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 52:14]
-  output        io_out_valid, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 52:14]
-  output [32:0] io_out_bits_data // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 52:14]
+module DotProductPipe( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 91:7]
+  input         clock, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 91:7]
+  input         reset, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 91:7]
+  input         io_in_valid, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
+  input  [32:0] io_in_bits_a_0, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
+  input  [32:0] io_in_bits_a_1, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
+  input  [32:0] io_in_bits_a_2, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
+  input  [32:0] io_in_bits_a_3, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
+  input  [32:0] io_in_bits_b_0, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
+  input  [32:0] io_in_bits_b_1, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
+  input  [32:0] io_in_bits_b_2, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
+  input  [32:0] io_in_bits_b_3, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
+  input  [32:0] io_in_bits_c, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
+  input         io_stall, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
+  output        io_out_valid, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
+  output [32:0] io_out_bits_data // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
 );
 `ifdef RANDOMIZE_REG_INIT
   reg [31:0] _RAND_0;
@@ -614,134 +614,171 @@ module DotProductPipe( // @[generators/radiance/src/main/scala/radiance/core/Ten
   reg [63:0] _RAND_5;
   reg [31:0] _RAND_6;
   reg [63:0] _RAND_7;
+  reg [63:0] _RAND_8;
+  reg [63:0] _RAND_9;
+  reg [31:0] _RAND_10;
+  reg [63:0] _RAND_11;
+  reg [63:0] _RAND_12;
+  reg [31:0] _RAND_13;
+  reg [63:0] _RAND_14;
 `endif // RANDOMIZE_REG_INIT
-  wire [32:0] mul_0_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 66:33]
-  wire [32:0] mul_0_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 66:33]
-  wire [32:0] mul_0_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 66:33]
-  wire [32:0] mul_1_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 66:33]
-  wire [32:0] mul_1_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 66:33]
-  wire [32:0] mul_1_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 66:33]
-  wire [32:0] mul_2_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 66:33]
-  wire [32:0] mul_2_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 66:33]
-  wire [32:0] mul_2_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 66:33]
-  wire [32:0] mul_3_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 66:33]
-  wire [32:0] mul_3_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 66:33]
-  wire [32:0] mul_3_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 66:33]
-  wire [32:0] add1_0_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 80:38]
-  wire [32:0] add1_0_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 80:38]
-  wire [32:0] add1_0_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 80:38]
-  wire [32:0] add1_1_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 80:38]
-  wire [32:0] add1_1_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 80:38]
-  wire [32:0] add1_1_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 80:38]
-  wire [32:0] add2_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 94:20]
-  wire [32:0] add2_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 94:20]
-  wire [32:0] add2_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 94:20]
-  wire [32:0] acc_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 107:19]
-  wire [32:0] acc_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 107:19]
-  wire [32:0] acc_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 107:19]
-  wire  _mulStageOut_T = ~io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 75:26]
-  wire  _mulStageOut_T_1 = ~io_stall & io_in_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 75:36]
-  reg  mulStageOut_pipe_v; // @[src/main/scala/chisel3/util/Valid.scala 129:24]
-  reg [32:0] mulStageOut_pipe_b_0; // @[src/main/scala/chisel3/util/Valid.scala 130:26]
-  reg [32:0] mulStageOut_pipe_b_1; // @[src/main/scala/chisel3/util/Valid.scala 130:26]
-  reg [32:0] mulStageOut_pipe_b_2; // @[src/main/scala/chisel3/util/Valid.scala 130:26]
-  reg [32:0] mulStageOut_pipe_b_3; // @[src/main/scala/chisel3/util/Valid.scala 130:26]
-  wire [32:0] _mulStageOut_WIRE_0 = mul_0_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 75:{59,59}]
-  wire [32:0] _mulStageOut_WIRE_1 = mul_1_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 75:{59,59}]
-  wire [32:0] _mulStageOut_WIRE_2 = mul_2_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 75:{59,59}]
-  wire [32:0] _mulStageOut_WIRE_3 = mul_3_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 75:{59,59}]
-  reg [32:0] mulStageC_pipe_b; // @[src/main/scala/chisel3/util/Valid.scala 130:26]
-  wire  add1StageOut_valid = _mulStageOut_T & mulStageOut_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 89:37]
-  wire  add2StageOut_valid = _mulStageOut_T & add1StageOut_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 102:37]
-  wire  _accStageOut_T_1 = _mulStageOut_T & add2StageOut_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 114:36]
-  reg  accStageOut_pipe_v; // @[src/main/scala/chisel3/util/Valid.scala 129:24]
-  reg [32:0] accStageOut_pipe_b; // @[src/main/scala/chisel3/util/Valid.scala 130:26]
-  MulRecFN mul_0 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 66:33]
+  wire [32:0] mul_0_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
+  wire [32:0] mul_0_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
+  wire [32:0] mul_0_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
+  wire [32:0] mul_1_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
+  wire [32:0] mul_1_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
+  wire [32:0] mul_1_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
+  wire [32:0] mul_2_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
+  wire [32:0] mul_2_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
+  wire [32:0] mul_2_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
+  wire [32:0] mul_3_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
+  wire [32:0] mul_3_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
+  wire [32:0] mul_3_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
+  wire [32:0] add1_0_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 123:38]
+  wire [32:0] add1_0_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 123:38]
+  wire [32:0] add1_0_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 123:38]
+  wire [32:0] add1_1_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 123:38]
+  wire [32:0] add1_1_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 123:38]
+  wire [32:0] add1_1_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 123:38]
+  wire [32:0] add2_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 137:20]
+  wire [32:0] add2_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 137:20]
+  wire [32:0] add2_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 137:20]
+  wire [32:0] acc_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 150:19]
+  wire [32:0] acc_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 150:19]
+  wire [32:0] acc_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 150:19]
+  wire  _mulStageOut_stalling_pipe_v_T = ~io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:44]
+  reg  mulStageOut_stalling_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+  reg [32:0] mulStageOut_stalling_pipe_b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+  reg [32:0] mulStageOut_stalling_pipe_b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+  reg [32:0] mulStageOut_stalling_pipe_b_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+  reg [32:0] mulStageOut_stalling_pipe_b_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+  wire [32:0] _mulStageOut_WIRE_0 = mul_0_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 118:{64,64}]
+  wire [32:0] _mulStageOut_WIRE_1 = mul_1_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 118:{64,64}]
+  wire [32:0] _mulStageOut_WIRE_2 = mul_2_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 118:{64,64}]
+  wire [32:0] _mulStageOut_WIRE_3 = mul_3_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 118:{64,64}]
+  reg [32:0] mulStageC_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+  reg  add1StageOut_stalling_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+  reg [32:0] add1StageOut_stalling_pipe_b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+  reg [32:0] add1StageOut_stalling_pipe_b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+  wire [32:0] _add1StageOut_WIRE_0 = add1_0_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 132:{71,71}]
+  wire [32:0] _add1StageOut_WIRE_1 = add1_1_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 132:{71,71}]
+  reg [32:0] add1StageC_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+  reg  add2StageOut_stalling_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+  reg [32:0] add2StageOut_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+  reg [32:0] add2StageC_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+  reg  accStageOut_stalling_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+  reg [32:0] accStageOut_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+  MulRecFN mul_0 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
     .io_a(mul_0_io_a),
     .io_b(mul_0_io_b),
     .io_out(mul_0_io_out)
   );
-  MulRecFN mul_1 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 66:33]
+  MulRecFN mul_1 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
     .io_a(mul_1_io_a),
     .io_b(mul_1_io_b),
     .io_out(mul_1_io_out)
   );
-  MulRecFN mul_2 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 66:33]
+  MulRecFN mul_2 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
     .io_a(mul_2_io_a),
     .io_b(mul_2_io_b),
     .io_out(mul_2_io_out)
   );
-  MulRecFN mul_3 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 66:33]
+  MulRecFN mul_3 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
     .io_a(mul_3_io_a),
     .io_b(mul_3_io_b),
     .io_out(mul_3_io_out)
   );
-  AddRecFN add1_0 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 80:38]
+  AddRecFN add1_0 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 123:38]
     .io_a(add1_0_io_a),
     .io_b(add1_0_io_b),
     .io_out(add1_0_io_out)
   );
-  AddRecFN add1_1 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 80:38]
+  AddRecFN add1_1 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 123:38]
     .io_a(add1_1_io_a),
     .io_b(add1_1_io_b),
     .io_out(add1_1_io_out)
   );
-  AddRecFN add2 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 94:20]
+  AddRecFN add2 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 137:20]
     .io_a(add2_io_a),
     .io_b(add2_io_b),
     .io_out(add2_io_out)
   );
-  AddRecFN acc ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 107:19]
+  AddRecFN acc ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 150:19]
     .io_a(acc_io_a),
     .io_b(acc_io_b),
     .io_out(acc_io_out)
   );
-  assign io_out_valid = accStageOut_pipe_v; // @[src/main/scala/chisel3/util/Valid.scala 123:21 124:17]
-  assign io_out_bits_data = accStageOut_pipe_b; // @[src/main/scala/chisel3/util/Valid.scala 123:21 125:16]
-  assign mul_0_io_a = io_in_bits_a_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:12]
-  assign mul_0_io_b = io_in_bits_b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:12]
-  assign mul_1_io_a = io_in_bits_a_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:12]
-  assign mul_1_io_b = io_in_bits_b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:12]
-  assign mul_2_io_a = io_in_bits_a_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:12]
-  assign mul_2_io_b = io_in_bits_b_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:12]
-  assign mul_3_io_a = io_in_bits_a_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:12]
-  assign mul_3_io_b = io_in_bits_b_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:12]
-  assign add1_0_io_a = mulStageOut_pipe_b_0; // @[src/main/scala/chisel3/util/Valid.scala 123:21 125:16]
-  assign add1_0_io_b = mulStageOut_pipe_b_1; // @[src/main/scala/chisel3/util/Valid.scala 123:21 125:16]
-  assign add1_1_io_a = mulStageOut_pipe_b_2; // @[src/main/scala/chisel3/util/Valid.scala 123:21 125:16]
-  assign add1_1_io_b = mulStageOut_pipe_b_3; // @[src/main/scala/chisel3/util/Valid.scala 123:21 125:16]
-  assign add2_io_a = add1_0_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 89:{66,66}]
-  assign add2_io_b = add1_1_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 89:{66,66}]
-  assign acc_io_a = add2_io_out; // @[src/main/scala/chisel3/util/Valid.scala 123:21 125:16]
-  assign acc_io_b = mulStageC_pipe_b; // @[src/main/scala/chisel3/util/Valid.scala 123:21 125:16]
+  assign io_out_valid = accStageOut_stalling_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 74:17]
+  assign io_out_bits_data = accStageOut_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
+  assign mul_0_io_a = io_in_bits_a_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 114:12]
+  assign mul_0_io_b = io_in_bits_b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 115:12]
+  assign mul_1_io_a = io_in_bits_a_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 114:12]
+  assign mul_1_io_b = io_in_bits_b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 115:12]
+  assign mul_2_io_a = io_in_bits_a_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 114:12]
+  assign mul_2_io_b = io_in_bits_b_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 115:12]
+  assign mul_3_io_a = io_in_bits_a_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 114:12]
+  assign mul_3_io_b = io_in_bits_b_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 115:12]
+  assign add1_0_io_a = mulStageOut_stalling_pipe_b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
+  assign add1_0_io_b = mulStageOut_stalling_pipe_b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
+  assign add1_1_io_a = mulStageOut_stalling_pipe_b_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
+  assign add1_1_io_b = mulStageOut_stalling_pipe_b_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
+  assign add2_io_a = add1StageOut_stalling_pipe_b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
+  assign add2_io_b = add1StageOut_stalling_pipe_b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
+  assign acc_io_a = add2StageOut_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
+  assign acc_io_b = add2StageC_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
   always @(posedge clock) begin
-    if (reset) begin // @[src/main/scala/chisel3/util/Valid.scala 129:24]
-      mulStageOut_pipe_v <= 1'h0; // @[src/main/scala/chisel3/util/Valid.scala 129:24]
-    end else begin
-      mulStageOut_pipe_v <= _mulStageOut_T_1; // @[src/main/scala/chisel3/util/Valid.scala 129:24]
+    if (reset) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+      mulStageOut_stalling_pipe_v <= 1'h0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+    end else if (~io_stall) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+      mulStageOut_stalling_pipe_v <= io_in_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
     end
-    if (_mulStageOut_T_1) begin // @[src/main/scala/chisel3/util/Valid.scala 130:26]
-      mulStageOut_pipe_b_0 <= _mulStageOut_WIRE_0; // @[src/main/scala/chisel3/util/Valid.scala 130:26]
+    if (_mulStageOut_stalling_pipe_v_T & io_in_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+      mulStageOut_stalling_pipe_b_0 <= _mulStageOut_WIRE_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
     end
-    if (_mulStageOut_T_1) begin // @[src/main/scala/chisel3/util/Valid.scala 130:26]
-      mulStageOut_pipe_b_1 <= _mulStageOut_WIRE_1; // @[src/main/scala/chisel3/util/Valid.scala 130:26]
+    if (_mulStageOut_stalling_pipe_v_T & io_in_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+      mulStageOut_stalling_pipe_b_1 <= _mulStageOut_WIRE_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
     end
-    if (_mulStageOut_T_1) begin // @[src/main/scala/chisel3/util/Valid.scala 130:26]
-      mulStageOut_pipe_b_2 <= _mulStageOut_WIRE_2; // @[src/main/scala/chisel3/util/Valid.scala 130:26]
+    if (_mulStageOut_stalling_pipe_v_T & io_in_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+      mulStageOut_stalling_pipe_b_2 <= _mulStageOut_WIRE_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
     end
-    if (_mulStageOut_T_1) begin // @[src/main/scala/chisel3/util/Valid.scala 130:26]
-      mulStageOut_pipe_b_3 <= _mulStageOut_WIRE_3; // @[src/main/scala/chisel3/util/Valid.scala 130:26]
+    if (_mulStageOut_stalling_pipe_v_T & io_in_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+      mulStageOut_stalling_pipe_b_3 <= _mulStageOut_WIRE_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
     end
-    if (_mulStageOut_T_1) begin // @[src/main/scala/chisel3/util/Valid.scala 130:26]
-      mulStageC_pipe_b <= io_in_bits_c; // @[src/main/scala/chisel3/util/Valid.scala 130:26]
+    if (_mulStageOut_stalling_pipe_v_T & io_in_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+      mulStageC_stalling_pipe_b <= io_in_bits_c; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
     end
-    if (reset) begin // @[src/main/scala/chisel3/util/Valid.scala 129:24]
-      accStageOut_pipe_v <= 1'h0; // @[src/main/scala/chisel3/util/Valid.scala 129:24]
-    end else begin
-      accStageOut_pipe_v <= _accStageOut_T_1; // @[src/main/scala/chisel3/util/Valid.scala 129:24]
+    if (reset) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+      add1StageOut_stalling_pipe_v <= 1'h0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+    end else if (~io_stall) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+      add1StageOut_stalling_pipe_v <= mulStageOut_stalling_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
     end
-    if (_accStageOut_T_1) begin // @[src/main/scala/chisel3/util/Valid.scala 130:26]
-      accStageOut_pipe_b <= acc_io_out; // @[src/main/scala/chisel3/util/Valid.scala 130:26]
+    if (_mulStageOut_stalling_pipe_v_T & mulStageOut_stalling_pipe_v) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+      add1StageOut_stalling_pipe_b_0 <= _add1StageOut_WIRE_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+    end
+    if (_mulStageOut_stalling_pipe_v_T & mulStageOut_stalling_pipe_v) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+      add1StageOut_stalling_pipe_b_1 <= _add1StageOut_WIRE_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+    end
+    if (_mulStageOut_stalling_pipe_v_T & mulStageOut_stalling_pipe_v) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+      add1StageC_stalling_pipe_b <= mulStageC_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+    end
+    if (reset) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+      add2StageOut_stalling_pipe_v <= 1'h0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+    end else if (~io_stall) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+      add2StageOut_stalling_pipe_v <= add1StageOut_stalling_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+    end
+    if (_mulStageOut_stalling_pipe_v_T & add1StageOut_stalling_pipe_v) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+      add2StageOut_stalling_pipe_b <= add2_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+    end
+    if (_mulStageOut_stalling_pipe_v_T & add1StageOut_stalling_pipe_v) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+      add2StageC_stalling_pipe_b <= add1StageC_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+    end
+    if (reset) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+      accStageOut_stalling_pipe_v <= 1'h0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+    end else if (~io_stall) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+      accStageOut_stalling_pipe_v <= add2StageOut_stalling_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+    end
+    if (_mulStageOut_stalling_pipe_v_T & add2StageOut_stalling_pipe_v) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+      accStageOut_stalling_pipe_b <= acc_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
     end
   end
 // Register and memory initialization
@@ -781,21 +818,35 @@ initial begin
     `endif
 `ifdef RANDOMIZE_REG_INIT
   _RAND_0 = {1{`RANDOM}};
-  mulStageOut_pipe_v = _RAND_0[0:0];
+  mulStageOut_stalling_pipe_v = _RAND_0[0:0];
   _RAND_1 = {2{`RANDOM}};
-  mulStageOut_pipe_b_0 = _RAND_1[32:0];
+  mulStageOut_stalling_pipe_b_0 = _RAND_1[32:0];
   _RAND_2 = {2{`RANDOM}};
-  mulStageOut_pipe_b_1 = _RAND_2[32:0];
+  mulStageOut_stalling_pipe_b_1 = _RAND_2[32:0];
   _RAND_3 = {2{`RANDOM}};
-  mulStageOut_pipe_b_2 = _RAND_3[32:0];
+  mulStageOut_stalling_pipe_b_2 = _RAND_3[32:0];
   _RAND_4 = {2{`RANDOM}};
-  mulStageOut_pipe_b_3 = _RAND_4[32:0];
+  mulStageOut_stalling_pipe_b_3 = _RAND_4[32:0];
   _RAND_5 = {2{`RANDOM}};
-  mulStageC_pipe_b = _RAND_5[32:0];
+  mulStageC_stalling_pipe_b = _RAND_5[32:0];
   _RAND_6 = {1{`RANDOM}};
-  accStageOut_pipe_v = _RAND_6[0:0];
+  add1StageOut_stalling_pipe_v = _RAND_6[0:0];
   _RAND_7 = {2{`RANDOM}};
-  accStageOut_pipe_b = _RAND_7[32:0];
+  add1StageOut_stalling_pipe_b_0 = _RAND_7[32:0];
+  _RAND_8 = {2{`RANDOM}};
+  add1StageOut_stalling_pipe_b_1 = _RAND_8[32:0];
+  _RAND_9 = {2{`RANDOM}};
+  add1StageC_stalling_pipe_b = _RAND_9[32:0];
+  _RAND_10 = {1{`RANDOM}};
+  add2StageOut_stalling_pipe_v = _RAND_10[0:0];
+  _RAND_11 = {2{`RANDOM}};
+  add2StageOut_stalling_pipe_b = _RAND_11[32:0];
+  _RAND_12 = {2{`RANDOM}};
+  add2StageC_stalling_pipe_b = _RAND_12[32:0];
+  _RAND_13 = {1{`RANDOM}};
+  accStageOut_stalling_pipe_v = _RAND_13[0:0];
+  _RAND_14 = {2{`RANDOM}};
+  accStageOut_stalling_pipe_b = _RAND_14[32:0];
 `endif // RANDOMIZE_REG_INIT
   `endif // RANDOMIZE
 end // initial
