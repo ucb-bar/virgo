@@ -2,6 +2,7 @@
 # extra variables/targets ingested by the chipyard make system
 ##############################################################
 
+VORTEX_SRC_DIR = $(base_dir)/generators/radiance/src/main/resources/vsrc/vortex
 RADPIE_SRC_DIR = $(base_dir)/generators/radiance/radpie
 RADPIE_BUILD_DIR = $(RADPIE_SRC_DIR)/target/release
 
@@ -10,7 +11,7 @@ RADPIE_BUILD_DIR = $(RADPIE_SRC_DIR)/target/release
 ##################################################################
 
 # EXTRA_SIM_REQS += radpie
-EXTRA_SIM_LDFLAGS += -L$(RADPIE_BUILD_DIR) -Wl,-rpath,$(RADPIE_BUILD_DIR) -lradpie
+# EXTRA_SIM_LDFLAGS += -L$(RADPIE_BUILD_DIR) -Wl,-rpath,$(RADPIE_BUILD_DIR) -lradpie
 EXTRA_SIM_PREPROC_DEFINES += \
 	+define+SIMULATION \
 	+define+GPR_RESET \
@@ -33,3 +34,35 @@ EXTRA_SIM_PREPROC_DEFINES += \
 .PHONY: radpie
 radpie:
 	cd $(RADPIE_SRC_DIR) && cargo build --release
+
+EXTRA_SIM_REQS += vortex_vsrc
+# doesn't work if we use $(call lookup_srcs) from common.mk, the variable
+# doesn't expand somehow
+VORTEX_VLOG_SOURCES := $(shell fd -L -t f -e "sv" -e "vh" -e "v" . $(VORTEX_SRC_DIR))
+# VORTEX_COLLATERAL := $(patsubst $(VORTEX_SRC_DIR)%,$(GEN_COLLATERAL_DIR)%,$(VORTEX_VLOG_SOURCES))
+# check if expanded
+# $(info VORTEX_VLOG_SOURCES: $(VORTEX_VLOG_SOURCES))
+
+# For every Vortex verilog source file, if there's a matching file in
+# gen-collateral/, copy them over.  This is a hacky way to ensure the changes
+# in the verilog sources are reflected before Verilator/VCS kicks in. The
+# matching with gen-collateral/ is there to prevent unnecessarily copying
+# unused source files e.g. third-party libraries.
+#
+# This assumes that the fix is applied to common.mk, where it does not trigger
+# chipyard jar rebuild when verilog sources are changed.
+vortex_vsrc: $(VORTEX_VLOG_SOURCES)
+	@for file in $(VORTEX_VLOG_SOURCES); do \
+		filename=$$(basename "$$file"); \
+		if [ -f $(GEN_COLLATERAL_DIR)/$$filename ]; then \
+			cp -u -v "$$file" $(GEN_COLLATERAL_DIR); \
+		fi; \
+	done
+	touch $@
+
+sentinel: $(VORTEX_VLOG_SOURCES)
+	touch $@
+
+.PHONY: print
+print:
+	@echo $(VORTEX_COLLATERAL)
