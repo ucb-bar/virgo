@@ -55,7 +55,9 @@ vortex_vsrc: $(VORTEX_VLOG_SOURCES)
 	@for file in $(VORTEX_VLOG_SOURCES); do \
 		filename=$$(basename "$$file"); \
 		if [ -f $(GEN_COLLATERAL_DIR)/$$filename ]; then \
-			cp -u -v "$$file" $(GEN_COLLATERAL_DIR); \
+			if ! diff $$file $(GEN_COLLATERAL_DIR)/$$filename &>/dev/null ; then \
+				cp -v "$$file" $(GEN_COLLATERAL_DIR); \
+			fi; \
 		fi; \
 	done
 	touch $@
