@@ -61,10 +61,3 @@ vortex_vsrc.$(CONFIG): $(VORTEX_VLOG_SOURCES)
 		fi; \
 	done
 	touch $@
-
-sentinel: $(VORTEX_VLOG_SOURCES)
-	touch $@
-
-.PHONY: print
-print:
-	@echo $(VORTEX_COLLATERAL)
