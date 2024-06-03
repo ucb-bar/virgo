@@ -15,6 +15,7 @@ RADPIE_BUILD_DIR = $(RADPIE_SRC_DIR)/target/release
 EXTRA_SIM_PREPROC_DEFINES += \
 	+define+SIMULATION \
 	+define+GPR_RESET \
+	+define+GPR_DUPLICATED \
 	+define+LSU_DUP_DISABLE \
 	+define+DBG_TRACE_CORE_PIPELINE_VCS \
 	+define+PERF_ENABLE \
