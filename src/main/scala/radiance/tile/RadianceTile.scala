@@ -7,8 +7,8 @@ import chisel3._
 import chisel3.experimental.AffectsChiselPrefix
 import chisel3.util._
 import freechips.rocketchip.devices.tilelink._
-import org.chipsalliance.diplomacy._
 import freechips.rocketchip.diplomacy._
+import org.chipsalliance.diplomacy.lazymodule.LazyModule
 import freechips.rocketchip.prci.ClockSinkParameters
 import freechips.rocketchip.regmapper.RegField
 import freechips.rocketchip.rocket._
@@ -319,8 +319,7 @@ class RadianceTile private (
       // )
 
       val icache = LazyModule(new VortexL1Cache(vortexL1Config.copy(
-        numBanks = 1,
-        coreTagWidth = imemSourceWidth
+        numBanks = 1
       )))
       val dcache = LazyModule(new VortexL1Cache(vortexL1Config))
       // imemNodes.foreach { icache.coresideNode := TLWidthWidget(4) := _ }

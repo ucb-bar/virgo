@@ -89,7 +89,7 @@ class RadianceCluster (
   val stride_by_word = true
   val filter_aligned = true
   val disable_monitors = true // otherwise it generate 1k+ different tl monitors
-  val serialize_unaligned = true
+  val serialize_unaligned = false
 
   def guard_monitors[T](callback: Parameters => T)(implicit p: Parameters): Unit = {
     if (disable_monitors) {

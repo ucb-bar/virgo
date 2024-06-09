@@ -172,6 +172,7 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   addResource("/vsrc/vortex/hw/rtl/core/VX_decode.sv")
   addResource("/vsrc/vortex/hw/rtl/core/VX_dispatch.sv")
   addResource("/vsrc/vortex/hw/rtl/core/VX_dispatch_unit.sv")
+  addResource("/vsrc/vortex/hw/rtl/core/VX_dispatch_unit_sane.sv")
   addResource("/vsrc/vortex/hw/rtl/core/VX_execute.sv")
   addResource("/vsrc/vortex/hw/rtl/core/VX_fetch.sv")
   addResource("/vsrc/vortex/hw/rtl/core/VX_gather_unit.sv")
@@ -328,6 +329,8 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_pkg.sv")
   addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_fpnew.sv")
   addResource("/vsrc/vortex/hw/rtl/core/VX_fpu_unit.sv")
+
+  addResource("/vsrc/TensorDotProductUnit.sv")
 
   // fpnew
   // compile order matters; package definitions (ex. fpnew_pkg) should be

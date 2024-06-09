@@ -42,7 +42,7 @@ class WithRadianceCores(
   useVxCache: Boolean
 ) extends Config((site, _, up) => {
   case TilesLocated(`location`) => {
-    val prev = up(TilesLocated(`location`), site)
+    val prev = up(TilesLocated(`location`))
     val idOffset = prev.size
     val vortex = RadianceTileParams(
       core = VortexCoreParams(fpu = None),
@@ -87,7 +87,7 @@ class WithRadianceGemmini(location: HierarchicalLocation,
                           crossing: RocketCrossingParams,
                           dim: Int, accSizeInKB: Int, tileSize: Int) extends Config((site, _, up) => {
   case TilesLocated(`location`) => {
-    val prev = up(TilesLocated(`location`), site)
+    val prev = up(TilesLocated(`location`))
     val idOffset = prev.size
     if (idOffset == 0) {
       println("******WARNING****** gemmini tile id is 0! radiance tiles in the same cluster needs to be before gemmini")
@@ -171,7 +171,7 @@ class WithFuzzerCores(
   useVxCache: Boolean
 ) extends Config((site, _, up) => {
   case TilesLocated(InSubsystem) => {
-    val prev = up(TilesLocated(InSubsystem), site)
+    val prev = up(TilesLocated(InSubsystem))
     val idOffset = prev.size
     val fuzzer = FuzzerTileParams(
       core = VortexCoreParams(fpu = None),
@@ -202,11 +202,11 @@ class WithRadianceCluster(
   case PossibleTileLocations => up(PossibleTileLocations) :+ InCluster(clusterId)
 })
 
-// `nSrcIds`: number of source IDs for dmem requests on each SIMT lane
+// `nSrcIds`: number of source IDs for each mem lane.  This is for all warps
 class WithSimtConfig(nWarps: Int = 4, nCoreLanes: Int = 4, nMemLanes: Int = 4, nSrcIds: Int = 8)
 extends Config((site, _, up) => {
   case SIMTCoreKey => {
-    Some(up(SIMTCoreKey, site).getOrElse(SIMTCoreParams()).copy(
+    Some(up(SIMTCoreKey).getOrElse(SIMTCoreParams()).copy(
       nWarps = nWarps,
       nCoreLanes = nCoreLanes,
       nMemLanes = nMemLanes,
@@ -228,22 +228,18 @@ extends Config((site, _, _) => {
 
 class WithPriorityCoalXbar extends Config((site, _, up) => {
   case CoalXbarKey => {
-    Some(up(CoalXbarKey, site).getOrElse(CoalXbarParam))
+    Some(up(CoalXbarKey).getOrElse(CoalXbarParam))
   }
 })
 
-class WithVortexL1Banks(nBanks: Int = 4) extends Config ((site, _, up) => {
+class WithVortexL1Banks(nBanks: Int = 4) extends Config ((site, here, up) => {
   case VortexL1Key => {
     Some(defaultVortexL1Config.copy(
       numBanks = nBanks,
-      inputSize = up(SIMTCoreKey).get.nMemLanes * 4,
-      cacheLineSize = up(SIMTCoreKey).get.nMemLanes * 4,
+      inputSize = up(SIMTCoreKey).get.nMemLanes * 4/*32b word*/,
+      cacheLineSize = up(SIMTCoreKey).get.nMemLanes * 4/*32b word*/,
       memSideSourceIds = 16,
       mshrSize = 16,
-      coreTagWidth = log2Ceil(up(SIMTCoreKey).get.nSrcIds.max(up(CoalescerKey) match {
-        case Some(key) => key.numNewSrcIds
-        case None => 0
-      })) + log2Ceil(up(SIMTCoreKey).get.nMemLanes) + 1
     ))
   }
 })
@@ -254,7 +250,7 @@ class WithVortexL1Banks(nBanks: Int = 4) extends Config ((site, _, up) => {
 // to e.g. compare waveforms.
 class WithCoalescer(nNewSrcIds: Int = 8, enable : Boolean = true) extends Config((site, _, up) => {
   case CoalescerKey => {
-    val (nLanes, numOldSrcIds) = up(SIMTCoreKey, site) match {
+    val (nLanes, numOldSrcIds) = up(SIMTCoreKey) match {
       case Some(param) => (param.nMemLanes, param.nSrcIds)
       case None => (1,1)
     }
@@ -266,7 +262,7 @@ class WithCoalescer(nNewSrcIds: Int = 8, enable : Boolean = true) extends Config
 
     // If instantiating L1 cache, the maximum coalescing size should match the
     // cache line size
-    val maxCoalSizeInBytes = up(VortexL1Key, site) match {
+    val maxCoalSizeInBytes = up(VortexL1Key) match {
       case Some(param) => param.inputSize
       case None => sbusWidthInBytes
     }
@@ -291,7 +287,7 @@ class WithNCustomSmallRocketCores(
                              crossing: RocketCrossingParams = RocketCrossingParams()
                            ) extends Config((site, here, up) => {
   case TilesLocated(InSubsystem) => {
-    val prev = up(TilesLocated(InSubsystem), site)
+    val prev = up(TilesLocated(InSubsystem))
     val idOffset = overrideIdOffset.getOrElse(prev.size)
     val med = RocketTileParams(
       core = RocketCoreParams(fpu = None),
@@ -325,7 +321,7 @@ class WithNCustomSmallRocketCores(
 class WithExtGPUMem(address: BigInt = BigInt("0x100000000", 16),
                     size: BigInt = 0x80000000) extends Config((site, here, up) => {
   case GPUMemory() => Some(GPUMemParams(address, size))
-  case ExtMem => up(ExtMem, site).map(x => {
+  case ExtMem => up(ExtMem).map(x => {
     val gap = address - x.master.base - x.master.size
     x.copy(master = x.master.copy(size = x.master.size + gap + size))
   })
