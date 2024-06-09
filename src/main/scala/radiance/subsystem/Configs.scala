@@ -172,7 +172,7 @@ class WithRadianceCluster(
   case PossibleTileLocations => up(PossibleTileLocations) :+ InCluster(clusterId)
 })
 
-// `nSrcIds`: number of source IDs for dmem requests on each SIMT lane
+// `nSrcIds`: number of source IDs for each mem lane.  This is for all warps
 class WithSimtConfig(nWarps: Int = 4, nCoreLanes: Int = 4, nMemLanes: Int = 4, nSrcIds: Int = 8)
 extends Config((site, _, up) => {
   case SIMTCoreKey => {
@@ -206,8 +206,8 @@ class WithVortexL1Banks(nBanks: Int = 4) extends Config ((site, here, up) => {
   case VortexL1Key => {
     Some(defaultVortexL1Config.copy(
       numBanks = nBanks,
-      inputSize = up(SIMTCoreKey).get.nMemLanes * 4,
-      cacheLineSize = up(SIMTCoreKey).get.nMemLanes * 4,
+      inputSize = up(SIMTCoreKey).get.nMemLanes * 4/*32b word*/,
+      cacheLineSize = up(SIMTCoreKey).get.nMemLanes * 4/*32b word*/,
       memSideSourceIds = 16,
       mshrSize = 16,
     ))

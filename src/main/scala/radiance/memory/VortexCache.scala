@@ -129,7 +129,8 @@ class VortexBankPassThrough(config: VortexL1Config)(implicit p: Parameters)
     // println(s"${upstream.params.sourceBits} <= ${downstream.params.sourceBits}")
     require(upstream.params.sourceBits <= downstream.params.sourceBits,
             "mem-side source of L1 cache truncates core-side source! " +
-            "Try lowering core or coalescer srcIds")
+            "Try lowering core/coalescer srcIds, or increasing sourceWidth " +
+            "for VortexBankPassThrough")
 
     downstream.a <> upstream.a
     upstream.d <> downstream.d
