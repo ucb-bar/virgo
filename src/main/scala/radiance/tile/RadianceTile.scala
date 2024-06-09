@@ -16,6 +16,7 @@ import freechips.rocketchip.subsystem.HierarchicalElementCrossingParamsLike
 import freechips.rocketchip.tile._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
+import midas.targetutils.SynthesizePrintf
 import org.chipsalliance.cde.config._
 import radiance.memory._
 import radiance.subsystem.{GPUMemParams, GPUMemory, RadianceSimArgs}
@@ -476,6 +477,10 @@ class RadianceTileModuleImp(outer: RadianceTile)
   outer.reportWFI(Some(core.io.wfi))
 
   outer.decodeCoreInterrupts(core.io.interrupts) // Decode the interrupt vector
+
+  when (core.io.interrupts.msip && !RegNext(core.io.interrupts.msip)) {
+    SynthesizePrintf(printf("interrupt\n"))
+  }
 
   core.io.interrupts.nmi.foreach { nmi => nmi := outer.nmiSinkNode.get.bundle }
 

@@ -39,7 +39,7 @@ class VortexBundle(tile: RadianceTile)(implicit p: Parameters) extends CoreBundl
   // val hartid = Input(UInt(tileIdLen.W))
   val reset_vector = Input(UInt(resetVectorLen.W))
   val interrupts = Input(new freechips.rocketchip.rocket.CoreInterrupts(false/*hasBeu*/))
-  
+
   // conditionally instantiate ports depending on whether we want to use VX_cache or not
   // TODO: flatten this like dmem and smem
   val imem = if (!tile.radianceParams.useVxCache) Some(Vec(1, new Bundle {

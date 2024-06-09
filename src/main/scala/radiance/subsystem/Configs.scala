@@ -24,6 +24,17 @@ case class RadianceSharedMemKey(address: BigInt,
                                 serializeUnaligned: Boolean = true)
 case object RadianceSharedMemKey extends Field[Option[RadianceSharedMemKey]](None)
 
+case class RadianceGemminiKey(tileSize: Int,
+                              slaveAddress: BigInt)
+case object RadianceGemminiKey extends Field[Option[RadianceGemminiKey]](None)
+
+case class RadianceFrameBufferKey(baseAddress: BigInt,
+                                  width: Int,
+                                  size: Int,
+                                  validAddress: BigInt,
+                                  fbName: String = "fb")
+case object RadianceFrameBufferKey extends Field[Seq[RadianceFrameBufferKey]](Seq())
+
 class WithRadianceCores(
   n: Int,
   location: HierarchicalLocation,
@@ -74,7 +85,7 @@ class WithRadianceCores(
 
 class WithRadianceGemmini(location: HierarchicalLocation,
                           crossing: RocketCrossingParams,
-                          dim: Int, accSizeInKB: Int) extends Config((site, _, up) => {
+                          dim: Int, accSizeInKB: Int, tileSize: Int) extends Config((site, _, up) => {
   case TilesLocated(`location`) => {
     val prev = up(TilesLocated(`location`), site)
     val idOffset = prev.size
@@ -106,8 +117,15 @@ class WithRadianceGemmini(location: HierarchicalLocation,
       crossing
     )) ++ prev
   }
+  case RadianceGemminiKey => {
+    val smKey = site(RadianceSharedMemKey).get
+    Some(RadianceGemminiKey(
+      tileSize = tileSize,
+      slaveAddress = smKey.address + smKey.size + 0x3000
+    ))
+  }
 }) {
-  def this(location: HierarchicalLocation = InSubsystem, dim: Int, accSizeInKB: Int) =
+  def this(location: HierarchicalLocation = InSubsystem, dim: Int, accSizeInKB: Int, tileSize: Int) =
     this(location, RocketCrossingParams(
       master = HierarchicalElementMasterPortParams.locationDefault(location),
       slave = HierarchicalElementSlavePortParams.locationDefault(location),
@@ -115,7 +133,7 @@ class WithRadianceGemmini(location: HierarchicalLocation,
         case InSubsystem => CBUS
         case InCluster(clusterId) => CCBUS(clusterId)
       }
-    ), dim, accSizeInKB)
+    ), dim, accSizeInKB, tileSize)
 }
 
 class WithRadianceSharedMem(address: BigInt,
@@ -133,6 +151,18 @@ class WithRadianceSharedMem(address: BigInt,
       address, size, numBanks, numWords, 4, strideByWord,
       filterAligned, disableMonitors, serializeUnaligned
     ))
+  }
+})
+
+class WithRadianceFrameBuffer(baseAddress: BigInt,
+                              width: Int,
+                              size: Int,
+                              validAddress: BigInt,
+                              fbName: String = "fb") extends Config((_, _, up) => {
+  case RadianceFrameBufferKey => {
+    up(RadianceFrameBufferKey) ++ Seq(
+      RadianceFrameBufferKey(baseAddress, width, size, validAddress, fbName)
+    )
   }
 })
 

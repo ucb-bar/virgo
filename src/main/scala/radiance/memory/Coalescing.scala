@@ -1146,9 +1146,9 @@ class CoalescingUnitImp(outer: CoalescingUnit, config: CoalescerConfig)
         case (enqPort, uncoalResp) => {
           enqPort <> uncoalResp
 
-          when(!enqPort.ready) {
-            printf(s"respQueue: enq port for uncoalesced response is blocked on lane ${lane}\n")
-          }
+          // when(!enqPort.ready) {
+          //   printf(s"respQueue: enq port for uncoalesced response is blocked on lane ${lane}\n")
+          // }
         }
       }
   }

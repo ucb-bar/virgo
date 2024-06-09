@@ -5,17 +5,17 @@ package radiance.tile
 
 import chisel3._
 import chisel3.util._
-import org.chipsalliance.diplomacy._
-import freechips.rocketchip.diplomacy._
+import freechips.rocketchip.diplomacy.{AddressSet, BufferParams, ClockCrossingType, TransferSizes}
+import org.chipsalliance.diplomacy.lazymodule._
 import freechips.rocketchip.prci.ClockSinkParameters
 import freechips.rocketchip.subsystem._
-import freechips.rocketchip.tile.TraceBundle
 import freechips.rocketchip.tilelink._
 import gemmini._
 import midas.targetutils.SynthesizePrintf
 import org.chipsalliance.cde.config.Parameters
+import org.chipsalliance.diplomacy.{DisableMonitors, ValName}
 import radiance.memory._
-import radiance.subsystem.RadianceSharedMemKey
+import radiance.subsystem.{RadianceFrameBufferKey, RadianceSharedMemKey}
 
 case class RadianceClusterParams(
   val clusterId: Int,
@@ -85,6 +85,7 @@ class RadianceCluster (
   assert(gemminiConfig.sp_width / 8 == smem_width)
   assert(gemminiConfig.sp_bank_entries == smem_depth)
 
+  VecInit(Seq(0.U, 1.U)).reduceTree(_ +& _)
   val stride_by_word = true
   val filter_aligned = true
   val disable_monitors = true // otherwise it generate 1k+ different tl monitors
@@ -337,9 +338,13 @@ class RadianceCluster (
 
   val traceTLNode = TLAdapterNode(clientFn = c => c, managerFn = m => m)
   // printf and perf counter buffer
-  TLRAM(AddressSet(x"ff000000" + smem_size, numCores * 0x200 - 1)) := traceTLNode :=
+  TLRAM(AddressSet(smem_key.address + smem_size, numCores * 0x200 - 1)) := traceTLNode :=
     TLBuffer() := TLFragmenter(4, 4) := clbus.outwardNode
 
+  p(RadianceFrameBufferKey).foreach { key =>
+    val fb = LazyModule(new FrameBuffer(key.baseAddress, key.width, key.size, key.validAddress, key.fbName))
+    fb.node := TLBuffer() := TLFragmenter(4, 4) := clbus.outwardNode
+  }
 
   // Diplomacy sink nodes for cluster-wide barrier sync signal
   val barrierSlaveNode = BarrierSlaveNode(numCores)
@@ -371,7 +376,7 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
   // @cleanup: This assumes barrier params on all edges are the same, i.e. all
   // cores are configured to have the same barrier id range.  While true, might
   // be better to actually assert this
-  val barrierParam = outer.barrierSlaveNode.in(0)._2
+  val barrierParam = outer.barrierSlaveNode.in.head._2
   println(s"======= barrierParam: ${barrierParam}")
   val synchronizer = Module(new BarrierSynchronizer(barrierParam))
   (synchronizer.io.reqs zip outer.barrierSlaveNode.in).foreach { case (req, (b, _)) =>
@@ -400,6 +405,7 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
       }
     }
   }
+
 
   // TODO: remove Pipeline dependency of gemmini
   def makeSmemBanks(): Unit = {

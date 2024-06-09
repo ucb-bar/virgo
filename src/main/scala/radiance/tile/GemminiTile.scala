@@ -6,15 +6,18 @@ package radiance.tile
 import chisel3._
 import chisel3.util._
 import chisel3.experimental.BundleLiterals._
-import freechips.rocketchip.diplomacy.{BigIntHexContext, ClockCrossingType, DisableMonitors, LazyModule, SimpleDevice}
+import org.chipsalliance.diplomacy.DisableMonitors
+import org.chipsalliance.diplomacy.lazymodule._
+import freechips.rocketchip.diplomacy.{AddressSet, BigIntHexContext, ClockCrossingType, SimpleDevice}
 import freechips.rocketchip.prci.ClockSinkParameters
+import freechips.rocketchip.regmapper.RegField
 import freechips.rocketchip.rocket._
 import freechips.rocketchip.subsystem.{CanAttachTile, HierarchicalElementCrossingParamsLike, RocketCrossingParams}
 import freechips.rocketchip.tile._
 import freechips.rocketchip.tilelink._
 import gemmini._
 import org.chipsalliance.cde.config.Parameters
-import radiance.subsystem.{GPUMemParams, GPUMemory}
+import radiance.subsystem.{GPUMemParams, GPUMemory, RadianceGemminiKey}
 
 case class GemminiCoreParams(
   useVM: Boolean = false,
@@ -120,9 +123,19 @@ class GemminiTile private (
   // tlOtherMastersNode :=* AddressOrNode(base) :=* gemmini.tlNode
   tlMasterXbar.node :=* gemmini.atlNode
   tlOtherMastersNode :=* gemmini.tlNode
-  gemmini.stlNode := tlSlaveXbar.node
+  // gemmini.stlNode := tlSlaveXbar.node
 
   require(!gemmini.config.sp_singleported, "external scratchpad must be dual ported")
+
+  val configKey = p(RadianceGemminiKey).get
+
+  val regDevice = new SimpleDevice("gemmini-cmd-reg", Seq(s"gemmini-cmd-reg"))
+  val regNode = TLRegisterNode(
+    address = Seq(AddressSet(configKey.slaveAddress, 0xfff)),
+    device = regDevice,
+    beatBytes = 8,
+    concurrency = 1)
+  regNode := TLFragmenter(8, 64) := tlSlaveXbar.node
 
   override lazy val module = new GemminiTileModuleImp(this)
 }
@@ -173,17 +186,22 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
   }
 
   ciscInst := 0.U.asTypeOf(ciscInstT)
-  // val boundsInst = ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"4_00040004".U)
-  // val spadQuartile = 0x80
-  val boundsInst = ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"8_00080008".U)
-  val spadQuartile = 0x200
+
+  val tileSize = outer.configKey.tileSize
+  val (boundsInst, spadQuartile) = if (tileSize == 4) {
+    (ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"4_00040004".U), 0x80)
+  } else if (tileSize == 8) {
+    (ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"8_00080008".U), 0x200)
+  } else {
+    (ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> (tileSize | (tileSize << 16) | (tileSize << 32)).U),
+      tileSize * tileSize * outer.gemminiParams.gemminiConfig.DIM)
+  }
   when (ciscValid) {
     assert(!accSlave.cmd.valid, "cisc state machine already busy")
     switch (ciscId) {
       is (0.U) {
-        ciscInst := microcodeEntry(Seq(
-          ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"8_00080008".U), // set I, J, K
-          ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> 0.U, _.rs2 -> 0x600.U),           // set A, B address
+        ciscInst := microcodeEntry(Seq(boundsInst,
+          ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> 0.U, _.rs2 -> (spadQuartile * 3).U),        // set A, B address
           ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0.U, _.rs2 -> x"0_000002b8".U) // set skip, acc
         ))
       }
@@ -234,11 +252,39 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
   }
 
   val gemminiIO = outer.gemmini.module.io.cmd
+
+  val regValid = Wire(Bool())
+  val regCommand = Wire(gemminiIO.bits.inst.cloneType)
+  val gemminiRs1RegLSB = RegInit(0.U(32.W))
+  val gemminiRs1RegMSB = RegInit(0.U(32.W))
+  val gemminiRs2RegLSB = RegInit(0.U(32.W))
+  val gemminiRs2RegMSB = RegInit(0.U(32.W))
+
+  def gemminiCommandReg(valid: Bool, bits: UInt): Bool = {
+    regValid := valid
+    regCommand := bits.asTypeOf(regCommand)
+    gemminiIO.ready && !ciscValid
+  }
+
+  outer.regNode.regmap(
+    0x00 -> Seq(RegField.w(32, gemminiCommandReg(_, _))),
+    0x10 -> Seq(
+      RegField.w(32, gemminiRs1RegLSB),
+      RegField.w(32, gemminiRs1RegMSB)),
+    0x18 -> Seq(
+      RegField.w(32, gemminiRs2RegLSB),
+      RegField.w(32, gemminiRs2RegMSB)),
+    0x20 -> Seq(RegField.r(32, outer.gemmini.module.io.busy))
+  )
+
+  assert(!regValid || gemminiIO.ready)
+  assert(!ciscValid || gemminiIO.ready)
+
   gemminiIO.bits.status := 0.U.asTypeOf(gemminiIO.bits.status)
-  gemminiIO.bits.inst := ciscInst.inst.asTypeOf(gemminiIO.bits.inst)
-  gemminiIO.bits.rs1 := ciscInst.rs1
-  gemminiIO.bits.rs2 := ciscInst.rs2
-  gemminiIO.valid := ciscValid
+  gemminiIO.bits.inst := Mux(ciscValid, ciscInst.inst.asTypeOf(gemminiIO.bits.inst), regCommand)
+  gemminiIO.bits.rs1 := Mux(ciscValid, ciscInst.rs1, Cat(gemminiRs1RegMSB, gemminiRs1RegLSB))
+  gemminiIO.bits.rs2 := Mux(ciscValid, ciscInst.rs2, Cat(gemminiRs2RegMSB, gemminiRs2RegLSB))
+  gemminiIO.valid := ciscValid || regValid
   assert(gemminiIO.ready || !gemminiIO.valid)
 
   accSlave.status := RegNext(outer.gemmini.module.io.busy).asUInt
