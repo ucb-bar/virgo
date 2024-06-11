@@ -34,12 +34,6 @@ class RadianceCluster (
   crossing: ClockCrossingType,
   lookup: LookupByClusterIdImpl
 )(implicit p: Parameters) extends Cluster(thisClusterParams, crossing, lookup) {
-  // cluster-local bus, used for shared memory traffic that never leaves the
-  // confines of a cluster
-  val clbus = tlBusWrapperLocationMap(CLBUS(clusterId))
-
-  clbus.clockGroupNode := allClockGroupsNode
-
   // Instantiate cluster-local shared memory scratchpad
   //
   // Instantiate the same number of banks as there are lanes.
