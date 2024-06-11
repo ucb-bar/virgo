@@ -43,7 +43,7 @@ class WithRadianceCores(
 ) extends Config((site, _, up) => {
   case TilesLocated(`location`) => {
     val prev = up(TilesLocated(`location`))
-    val idOffset = prev.size
+    val idOffset = up(NumTiles)
     val vortex = RadianceTileParams(
       core = VortexCoreParams(fpu = None),
       btb = None,
@@ -72,6 +72,7 @@ class WithRadianceCores(
       crossing
     )) ++ prev
   }
+  case NumTiles => up(NumTiles) + n
 }) {
   def this(n: Int, location: HierarchicalLocation = InSubsystem, useVxCache: Boolean = false) = this(n, location, RocketCrossingParams(
     master = HierarchicalElementMasterPortParams.locationDefault(location),
@@ -88,8 +89,9 @@ class WithRadianceGemmini(location: HierarchicalLocation,
                           dim: Int, accSizeInKB: Int, tileSize: Int) extends Config((site, _, up) => {
   case TilesLocated(`location`) => {
     val prev = up(TilesLocated(`location`))
-    val idOffset = prev.size
+    val idOffset = up(NumTiles)
     if (idOffset == 0) {
+      // FIXME: this doesn't work for multiple clusters when idOffset may not be 0
       println("******WARNING****** gemmini tile id is 0! radiance tiles in the same cluster needs to be before gemmini")
     }
     val smKey = site(RadianceSharedMemKey).get
@@ -124,6 +126,7 @@ class WithRadianceGemmini(location: HierarchicalLocation,
       slaveAddress = smKey.address + smKey.size + 0x3000
     ))
   }
+  case NumTiles => up(NumTiles) + 1
 }) {
   def this(location: HierarchicalLocation = InSubsystem, dim: Int, accSizeInKB: Int, tileSize: Int) =
     this(location, RocketCrossingParams(
@@ -172,7 +175,7 @@ class WithFuzzerCores(
 ) extends Config((site, _, up) => {
   case TilesLocated(InSubsystem) => {
     val prev = up(TilesLocated(InSubsystem))
-    val idOffset = prev.size
+    val idOffset = up(NumTiles)
     val fuzzer = FuzzerTileParams(
       core = VortexCoreParams(fpu = None),
       useVxCache = useVxCache)
@@ -181,6 +184,7 @@ class WithFuzzerCores(
       RocketCrossingParams()
     )) ++ prev
   }
+  case NumTiles => up(NumTiles) + 1
 })
 
 class WithRadianceCluster(
@@ -288,7 +292,7 @@ class WithNCustomSmallRocketCores(
                            ) extends Config((site, here, up) => {
   case TilesLocated(InSubsystem) => {
     val prev = up(TilesLocated(InSubsystem))
-    val idOffset = overrideIdOffset.getOrElse(prev.size)
+    val idOffset = up(NumTiles)
     val med = RocketTileParams(
       core = RocketCoreParams(fpu = None),
       btb = None,
@@ -316,6 +320,7 @@ class WithNCustomSmallRocketCores(
       crossing
     )) ++ prev
   }
+  case NumTiles => up(NumTiles) + n
 })
 
 class WithExtGPUMem(address: BigInt = BigInt("0x100000000", 16),
