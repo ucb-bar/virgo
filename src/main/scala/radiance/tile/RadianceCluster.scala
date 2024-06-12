@@ -34,12 +34,6 @@ class RadianceCluster (
   crossing: ClockCrossingType,
   lookup: LookupByClusterIdImpl
 )(implicit p: Parameters) extends Cluster(thisClusterParams, crossing, lookup) {
-  // cluster-local bus, used for shared memory traffic that never leaves the
-  // confines of a cluster
-  val clbus = tlBusWrapperLocationMap(CLBUS(clusterId))
-
-  clbus.clockGroupNode := allClockGroupsNode
-
   // Instantiate cluster-local shared memory scratchpad
   //
   // Instantiate the same number of banks as there are lanes.
@@ -53,7 +47,7 @@ class RadianceCluster (
 
   val radianceTiles = leafTiles.values.filter(_.isInstanceOf[RadianceTile]).toSeq.asInstanceOf[Seq[RadianceTile]]
 
-  val numCores = leafTiles.size - gemminis.size
+  val numCoresInCluster = leafTiles.size - gemminis.size
 
   // **************************************
   //    ______  _________  ___
@@ -331,7 +325,7 @@ class RadianceCluster (
   //
   // *******************************************************
 
-  val radianceAccSlaveNodes = Seq.fill(numCores)(AccSlaveNode())
+  val radianceAccSlaveNodes = Seq.fill(numCoresInCluster)(AccSlaveNode())
   (radianceAccSlaveNodes zip radianceTiles).foreach { case (a, r) => a := r.accMasterNode }
   val gemminiAccMasterNodes = gemminiTiles.map { tile =>
     val masterNode = AccMasterNode()
@@ -342,8 +336,8 @@ class RadianceCluster (
 
   val traceTLNode = TLAdapterNode(clientFn = c => c, managerFn = m => m)
   // printf and perf counter buffer
-  TLRAM(AddressSet(smem_key.address + smem_size, numCores * 0x200 - 1)) := traceTLNode :=
-    TLBuffer() := TLFragmenter(4, 4) := clbus.outwardNode
+  TLRAM(AddressSet(smem_key.address + smem_size, numCoresInCluster * 0x200 - 1)) :=
+    traceTLNode := TLBuffer() := TLFragmenter(4, 4) := clbus.outwardNode
 
   p(RadianceFrameBufferKey).foreach { key =>
     val fb = LazyModule(new FrameBuffer(key.baseAddress, key.width, key.size, key.validAddress, key.fbName))
@@ -351,7 +345,7 @@ class RadianceCluster (
   }
 
   // Diplomacy sink nodes for cluster-wide barrier sync signal
-  val barrierSlaveNode = BarrierSlaveNode(numCores)
+  val barrierSlaveNode = BarrierSlaveNode(numCoresInCluster)
 
   // HACK: This is a workaround of the CanAttachTile bus connecting API that
   // works by downcasting tile and directly accessing the node inside that is
@@ -381,7 +375,6 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
   // cores are configured to have the same barrier id range.  While true, might
   // be better to actually assert this
   val barrierParam = outer.barrierSlaveNode.in.head._2
-  println(s"======= barrierParam: ${barrierParam}")
   val synchronizer = Module(new BarrierSynchronizer(barrierParam))
   (synchronizer.io.reqs zip outer.barrierSlaveNode.in).foreach { case (req, (b, _)) =>
     req <> b.req
@@ -542,6 +535,4 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
   }
 
   makeSmemBanks()
-
-  println(s"======== barrierSlaveNode: ${outer.barrierSlaveNode.in(0)._2.barrierIdBits}")
 }
