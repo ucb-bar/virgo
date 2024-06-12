@@ -73,7 +73,7 @@ class BarrierSynchronizer(
 ) extends Module {
   val numBarriers = 1 << param.barrierIdBits
   val numCores = 1 << param.numCoreBits
-  println(s"numBarriers: ${numBarriers}, numCores: ${numCores}")
+  println(s"======== numBarriers: ${numBarriers}, numCores: ${numCores}")
 
   val io = IO(new Bundle {
     val reqs = Vec(numCores, Flipped(Decoupled(new BarrierRequestBits(param))))

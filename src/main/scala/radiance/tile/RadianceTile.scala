@@ -21,6 +21,10 @@ import org.chipsalliance.cde.config._
 import radiance.memory._
 import radiance.subsystem.{GPUMemParams, GPUMemory, RadianceSimArgs}
 
+/** For determining radiance core id.  This may be different from
+ *  RadianceTileParams.coreId, when a cluster contains non-core tiles */
+case object NumRadianceCores extends Field[Int](0)
+
 case class RadianceTileParams(
     core: VortexCoreParams = VortexCoreParams(),
     useVxCache: Boolean = false,
@@ -30,6 +34,7 @@ case class RadianceTileParams(
     dataScratchpadBytes: Int = 0,
     name: Option[String] = Some("radiance_tile"),
     tileId: Int = 0,
+    coreId: Int = 0,
     beuAddr: Option[BigInt] = None,
     blockerCtrlAddr: Option[BigInt] = None,
     clockSinkParams: ClockSinkParameters = ClockSinkParameters(),
@@ -210,7 +215,7 @@ class RadianceTile private (
           clients = Seq(
             TLMasterParameters.v1(
               sourceId = IdRange(0, 1 << imemSourceWidth),
-              name = s"Vortex Core ${radianceParams.tileId} I-Mem $i",
+              name = s"Vortex Core ${radianceParams.coreId} I-Mem $i",
               requestFifo = true,
               supportsProbe =
                 TransferSizes(1, lazyCoreParamsView.coreDataBytes),
@@ -229,7 +234,7 @@ class RadianceTile private (
           clients = Seq(
             TLMasterParameters.v1(
               sourceId = IdRange(0, 1 << dmemSourceWidth),
-              name = s"Vortex Core ${radianceParams.tileId} D-Mem Lane $i",
+              name = s"Vortex Core ${radianceParams.coreId} D-Mem Lane $i",
               requestFifo = true,
               supportsProbe =
                 TransferSizes(1, lazyCoreParamsView.coreDataBytes),
@@ -252,7 +257,7 @@ class RadianceTile private (
           clients = Seq(
             TLMasterParameters.v1(
               sourceId = IdRange(0, 1 << smemSourceWidth),
-              name = s"Vortex Core ${radianceParams.tileId} SharedMem Lane $i",
+              name = s"Vortex Core ${radianceParams.coreId} SharedMem Lane $i",
               requestFifo = true,
               supportsProbe =
                 TransferSizes(1, lazyCoreParamsView.coreDataBytes),
@@ -285,7 +290,7 @@ class RadianceTile private (
           TLMasterParameters.v1(
             // FIXME: need to also respect imemSourceWidth
             sourceId = IdRange(0, 1 << dmemSourceWidth),
-            name = s"Vortex Core ${radianceParams.tileId} Mem Interface",
+            name = s"Vortex Core ${radianceParams.coreId} Mem Interface",
             requestFifo = true,
             supportsProbe = TransferSizes(16, 16), // FIXME: hardcoded
             supportsGet = TransferSizes(16, 16),
@@ -532,7 +537,7 @@ class RadianceTileModuleImp(outer: RadianceTile)
       core.io.imem.get(0).d <> imemTLAdapter.io.inResp
 
       performanceCounters(Seq(imemTLAdapter.io.inReq), Seq(imemTLAdapter.io.inResp),
-        desc = s"core${outer.tileId}-imem")
+        desc = s"core${outer.radianceParams.coreId}-imem")
 
       // now connect TL adapter downstream ports to the tile egress ports
       outer.imemNodes(0).out(0)._1.a <> imemTLAdapter.io.outReq
@@ -641,7 +646,7 @@ class RadianceTileModuleImp(outer: RadianceTile)
       }
 
       performanceCounters(dmemTLAdapters.map(_.io.inReq), dmemTLAdapters.map(_.io.inResp),
-        desc = s"core${outer.tileId}-dmem")
+        desc = s"core${outer.radianceParams.coreId}-dmem")
 
       // now connect TL adapter downstream ports to the tile egress ports
       (dmemTLAdapters zip dmemTLBundles) foreach { case (tlAdapter, tlOut) =>
@@ -702,7 +707,7 @@ class RadianceTileModuleImp(outer: RadianceTile)
       }
 
       performanceCounters(smemTLAdapters.map(_.io.inReq), smemTLAdapters.map(_.io.inResp),
-        desc = s"core${outer.tileId}-smem")
+        desc = s"core${outer.radianceParams.coreId}-smem")
 
       // now connect TL adapter downstream ports to the tile egress ports
       (smemTLAdapters zip smemTLBundles) foreach { case (tlAdapter, tlOut) =>

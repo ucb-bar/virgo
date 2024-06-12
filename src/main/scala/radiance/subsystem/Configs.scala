@@ -44,6 +44,7 @@ class WithRadianceCores(
   case TilesLocated(`location`) => {
     val prev = up(TilesLocated(`location`))
     val idOffset = up(NumTiles)
+    val coreIdOffset = up(NumRadianceCores)
     val vortex = RadianceTileParams(
       core = VortexCoreParams(fpu = None),
       btb = None,
@@ -68,11 +69,15 @@ class WithRadianceCores(
         nTLBSuperpages = 1,
         blockBytes = site(CacheBlockBytes))))
     List.tabulate(n)(i => RadianceTileAttachParams(
-      vortex.copy(tileId = i + idOffset),
+      vortex.copy(
+        tileId = i + idOffset,
+        coreId = i + coreIdOffset,
+      ),
       crossing
     )) ++ prev
   }
   case NumTiles => up(NumTiles) + n
+  case NumRadianceCores => up(NumRadianceCores) + n
 }) {
   def this(n: Int, location: HierarchicalLocation = InSubsystem, useVxCache: Boolean = false) = this(n, location, RocketCrossingParams(
     master = HierarchicalElementMasterPortParams.locationDefault(location),
@@ -127,6 +132,8 @@ class WithRadianceGemmini(location: HierarchicalLocation,
     ))
   }
   case NumTiles => up(NumTiles) + 1
+  // don't increment core id for Gemmini tiles
+  case NumRadianceCores => up(NumRadianceCores)
 }) {
   def this(location: HierarchicalLocation = InSubsystem, dim: Int, accSizeInKB: Int, tileSize: Int) =
     this(location, RocketCrossingParams(
@@ -185,6 +192,7 @@ class WithFuzzerCores(
     )) ++ prev
   }
   case NumTiles => up(NumTiles) + 1
+  case NumRadianceCores => up(NumRadianceCores) + 1
 })
 
 class WithRadianceCluster(

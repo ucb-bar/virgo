@@ -117,11 +117,10 @@ class VortexBundle(tile: RadianceTile)(implicit p: Parameters) extends CoreBundl
 
 class Vortex(tile: RadianceTile)(implicit p: Parameters)
     extends BlackBox(
-      // Each Vortex core gets tied-off tileId of 0, 1, 2, 3, ...
-      // The actual MHARTID read by the program is different by warp, not core;
-      // see VX_csr_data that implements the read logic for CSR_MHARTID/GWID.
+      // Each Vortex core gets tied-off core id of 0, 1, 2, 3, which is global
+      // across multiple clusters.
       Map(
-        "CORE_ID" -> tile.tileParams.tileId,
+        "CORE_ID" -> tile.radianceParams.coreId,
         // TODO: can we get this as a parameter?
         "BOOTROM_HANG100" -> 0x10100,
         "NUM_THREADS" -> tile.numLsuLanes
