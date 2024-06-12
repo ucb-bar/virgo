@@ -46,14 +46,10 @@ class RadianceCluster (
   // val numLsuLanes = 4 // FIXME: hardcoded
 
  // must toSeq here, otherwise Iterable is lazy and will break diplomacy
-  val gemminis = leafTiles.values.filter(_.isInstanceOf[GemminiTile]).toSeq.asInstanceOf[Seq[GemminiTile]]
-  require(gemminis.size == 1, "there should be one and only one gemmini per cluster")
-  val gemmini = gemminis.head.gemmini
-  val gemminiTile = gemminis.head
+  val gemminiTiles = leafTiles.values.filter(_.isInstanceOf[GemminiTile]).toSeq.asInstanceOf[Seq[GemminiTile]]
+  val gemminis = gemminiTiles.map(_.gemmini)
+  val gemminiConfigs = gemminis.map(_.config)
   // val gemminiConfig = thisClusterParams.gemminiConfig.get // TODO: handle None gracefully
-  val gemminiConfig = gemmini.config
-
-  val max_write_width_bytes = gemminiConfig.dma_buswidth / 8
 
   val radianceTiles = leafTiles.values.filter(_.isInstanceOf[RadianceTile]).toSeq.asInstanceOf[Seq[RadianceTile]]
 
@@ -67,9 +63,6 @@ class RadianceCluster (
   //
   // **************************************
 
-  // TODO: parametrize bank configuration
-  // TODO: move rw split node to separate file
-  // TODO: stride by word
   val unified_mem_read_node = TLIdentityNode()
   val unified_mem_write_node = TLIdentityNode()
 
@@ -81,15 +74,17 @@ class RadianceCluster (
   val smem_depth = smem_key.size / smem_width / smem_banks
   val smem_subbanks = smem_width / wordSize
   val smem_size = smem_width * smem_depth * smem_banks
-  assert(gemminiConfig.sp_banks == smem_banks)
-  assert(gemminiConfig.sp_width / 8 == smem_width)
-  assert(gemminiConfig.sp_bank_entries == smem_depth)
 
-  VecInit(Seq(0.U, 1.U)).reduceTree(_ +& _)
+  gemminiConfigs.foreach { config =>
+    assert(smem_banks == config.sp_banks && isPow2(smem_banks / config.sp_banks)) // TODO: should allow >=
+    assert(smem_width >= (config.sp_width / 8) && isPow2(smem_width / (config.sp_width / 8)))
+    assert(smem_size == config.sp_capacity.asInstanceOf[CapacityInKilobytes].kilobytes * 1024)
+  }
+
   val stride_by_word = true
   val filter_aligned = true
   val disable_monitors = true // otherwise it generate 1k+ different tl monitors
-  val serialize_unaligned = false
+  val serialize_unaligned = true
 
   def guard_monitors[T](callback: Parameters => T)(implicit p: Parameters): Unit = {
     if (disable_monitors) {
@@ -186,26 +181,27 @@ class RadianceCluster (
   }
 
   if (stride_by_word) {
-    // ask if you need to deal with this, it's not supposed to be readable
+    def dist_and_duplicate(nodes: Seq[TLNode], suffix: String): Seq[Seq[TLNode]] = {
+      val word_fanout_nodes = gemminis.zip(nodes).zipWithIndex.map { case ((gemmini, node), gemmini_idx) =>
+        val sp_width_bytes = gemmini.config.sp_width / 8
+        val sp_subbanks = sp_width_bytes / wordSize
+        val dist = DistributorNode(from = sp_width_bytes, to = wordSize)
+        guard_monitors { implicit p =>
+          dist := TLBuffer(BufferParams(1, false, true), BufferParams(0)) := node
+        }
+        val fanout = Seq.fill(sp_subbanks) {
+          connect_xbar_name(dist, Some(s"spad_g${gemmini_idx}_fanout_$suffix"))
+        }
+        Seq.fill(smem_width / sp_width_bytes)(fanout).flatten // smem wider than spad, duplicate masters
+      }
+      // (gemmini, word) => (word, gemmini)
+      word_fanout_nodes.transpose
+    }
 
-    val spad_read_nodes = Seq.fill(smem_banks) {
-      val r_dist = DistributorNode(from = smem_width, to = wordSize)
-      guard_monitors { implicit p => r_dist := TLBuffer(BufferParams(1, false, true), BufferParams(0)) := gemmini.spad_read_nodes }
-      Seq.fill(smem_subbanks) { connect_one(r_dist, TLIdentityNode.apply) }
-    }
-    val spad_write_nodes = Seq.fill(smem_banks) {
-      val w_dist = DistributorNode(from = smem_width, to = wordSize)
-      guard_monitors { implicit p => w_dist := TLBuffer(BufferParams(1, false, true), BufferParams(0)) := gemmini.spad_write_nodes }
-      Seq.fill(smem_subbanks) { connect_one(w_dist, TLIdentityNode.apply) }
-      /* Seq.fill(smem_subbanks) {
-        val buf = TLBuffer(BufferParams(1, false, true), BufferParams(0))
-        buf := w_dist
-        buf
-      } */
-    }
-    val ws_dist = DistributorNode(from = smem_width, to = wordSize)
-    guard_monitors { implicit p => ws_dist := gemmini.spad.spad_writer.node } // this is the dma write node
-    val spad_sp_write_nodes = Seq.fill(smem_subbanks) { connect_xbar(ws_dist) }
+    val spad_read_nodes = Seq.fill(smem_banks)(dist_and_duplicate(gemminis.map(_.spad_read_nodes), "r"))
+    val spad_write_nodes = Seq.fill(smem_banks)(dist_and_duplicate(gemminis.map(_.spad_write_nodes), "w"))
+    val spad_sp_write_nodes_single_bank = dist_and_duplicate(gemminis.map(_.spad.spad_writer.node), "ws")
+    val spad_sp_write_nodes = Seq.fill(smem_banks)(spad_sp_write_nodes_single_bank) // executed only once
 
     val (uniform_r_nodes, uniform_w_nodes, nonuniform_r_nodes, nonuniform_w_nodes):
       (Seq[Seq[Seq[TLNode]]], Seq[Seq[Seq[TLNode]]], Seq[TLNode], Seq[TLNode]) = if (filter_aligned) {
@@ -252,11 +248,11 @@ class RadianceCluster (
       }
 
       val uniform_r_nodes: Seq[Seq[Seq[TLNode]]] = spad_read_nodes.map { rb =>
-        (rb zip f_aligned.head).map { case (rw, fa) => Seq(rw) ++ fa }
+        (rb zip f_aligned.head).map { case (rw, fa) => rw ++ fa }
       }
-      val uniform_w_nodes: Seq[Seq[Seq[TLNode]]] = spad_write_nodes.map { wb =>
-        (wb lazyZip spad_sp_write_nodes lazyZip f_aligned.last).map {
-          case (ww, sw, fa) => Seq(ww, sw) ++ fa
+      val uniform_w_nodes: Seq[Seq[Seq[TLNode]]] = (spad_write_nodes zip spad_sp_write_nodes).map { case (wb, wsb) =>
+        (wb lazyZip wsb lazyZip f_aligned.last).map {
+          case (ww, wsw, fa) => ww ++ wsw ++ fa
         }
       }
 
@@ -267,11 +263,9 @@ class RadianceCluster (
     } else {
       val splitter_nodes = radiance_smem_fanout.map { connect_one(_, RWSplitterNode.apply) }
       // these nodes access an entire line simultaneously
-      val uniform_r_nodes: Seq[Seq[Seq[TLNode]]] = spad_read_nodes.map { rb =>
-        rb.map { rw => Seq(rw) }
-      }
-      val uniform_w_nodes: Seq[Seq[Seq[TLNode]]] = spad_write_nodes.map { wb =>
-        (wb zip spad_sp_write_nodes).map { case (ww, sw) => Seq(ww, sw) }
+      val uniform_r_nodes: Seq[Seq[Seq[TLNode]]] = spad_read_nodes
+      val uniform_w_nodes: Seq[Seq[Seq[TLNode]]] = (spad_write_nodes zip spad_sp_write_nodes).map { case (wb, wsb) =>
+        (wb zip wsb).map { case (ww, wsw) => ww ++ wsw }
       }
       // these nodes are random access
       val nonuniform_r_nodes: Seq[TLNode] = splitter_nodes.map(connect_xbar_name(_, Some("rad_unaligned_r")))
@@ -302,9 +296,11 @@ class RadianceCluster (
       }
     }
   } else {
-    unified_mem_read_node :=* TLWidthWidget(smem_width) :=* gemmini.spad_read_nodes
-    unified_mem_write_node :=* TLWidthWidget(smem_width) :=* gemmini.spad_write_nodes
-    unified_mem_write_node := gemmini.spad.spad_writer.node // this is the dma write node
+    gemminis.foreach { gemmini =>
+      unified_mem_read_node :=* TLWidthWidget(smem_width) :=* gemmini.spad_read_nodes
+      unified_mem_write_node :=* TLWidthWidget(smem_width) :=* gemmini.spad_write_nodes
+      unified_mem_write_node := gemmini.spad.spad_writer.node // this is the dma write node
+    }
 
     val splitter_node = RWSplitterNode()
     unified_mem_read_node := TLWidthWidget(smem_width) := splitter_node
@@ -327,14 +323,22 @@ class RadianceCluster (
     }
   }
 
-  // connect tile smem nodes to xbar, and xbar to banks
-  // val smem_xbar = TLXbar()
+  // *******************************************************
+  //    ___  _______  _______  __ _________  ___   __   ____
+  //   / _ \/ __/ _ \/  _/ _ \/ // / __/ _ \/ _ | / /  / __/
+  //  / ___/ _// , _// // ___/ _  / _// , _/ __ |/ /___\ \
+  // /_/  /___/_/|_/___/_/  /_//_/___/_/|_/_/ |_/____/___/
+  //
+  // *******************************************************
 
   val radianceAccSlaveNodes = Seq.fill(numCores)(AccSlaveNode())
   (radianceAccSlaveNodes zip radianceTiles).foreach { case (a, r) => a := r.accMasterNode }
-  val gemminiAccMasterNode = AccMasterNode()
-  gemminiTile.accSlaveNode := gemminiAccMasterNode
-  gemminiTile.slaveNode :=* TLWidthWidget(4) :=* clbus.outwardNode
+  val gemminiAccMasterNodes = gemminiTiles.map { tile =>
+    val masterNode = AccMasterNode()
+    tile.accSlaveNode := masterNode
+    masterNode
+  }
+  gemminiTiles.foreach { _.slaveNode :=* TLWidthWidget(4) :=* clbus.outwardNode }
 
   val traceTLNode = TLAdapterNode(clientFn = c => c, managerFn = m => m)
   // printf and perf counter buffer
@@ -385,15 +389,19 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
   }
 
   val coreAcc = outer.radianceAccSlaveNodes.head.in.head._1
-  val gemminiAcc = outer.gemminiAccMasterNode.out.head._1
-  dontTouch(gemminiAcc)
+  val gemminiAccs = outer.gemminiAccMasterNodes.map(_.out.head._1)
   // val gemminiTileAcc = outer.gemminiTile.accSlaveNode.in.head._1
 
   // gemminiTileAcc.cmd := gemminiAcc.cmd
   // gemminiAcc.status := gemminiTileAcc.status
 
-  outer.radianceAccSlaveNodes.foreach(_.in.head._1.status := gemminiAcc.status)
-  gemminiAcc.cmd := coreAcc.cmd
+  gemminiAccs.zipWithIndex.foreach { case (g, gi) =>
+    g.cmd.bits := coreAcc.masked
+    g.cmd.valid := coreAcc.cmd.valid && (coreAcc.dest === gi.U)
+  }
+
+  // this might need some more tweaking (e.g. bitmask instead of or)
+  outer.radianceAccSlaveNodes.foreach(_.in.head._1.status := VecInit(gemminiAccs.map(_.status)).reduceTree(_ | _))
 
   (outer.traceTLNode.in.map(_._1) zip outer.traceTLNode.out.map(_._1)).foreach { case (i, o) =>
     o.a <> i.a

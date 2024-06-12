@@ -49,7 +49,7 @@ class StallingPipe[T <: Data](val gen: T, val latency: Int = 1) extends Module {
    *  names. Includes the latency cycle count in the name as well as the
    *  parameterized generator's `typeName`, e.g. `Pipe4_UInt4`
     */
-  override def desiredName = s"${simpleClassName(this.getClass)}${latency}_${gen.typeName}"
+  // override def desiredName = s"${simpleClassName(this.getClass)}${latency}_${gen.typeName}"
 
   class StallingPipeIO extends Bundle {
     val stall = Input(Bool())

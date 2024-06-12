@@ -4,7 +4,6 @@
 package radiance.subsystem
 
 import chisel3.util._
-import freechips.rocketchip.diplomacy.BigIntHexContext
 import org.chipsalliance.cde.config._
 import freechips.rocketchip.rocket._
 import freechips.rocketchip.tile._
@@ -23,10 +22,6 @@ case class RadianceSharedMemKey(address: BigInt,
                                 disableMonitors: Boolean = true,
                                 serializeUnaligned: Boolean = true)
 case object RadianceSharedMemKey extends Field[Option[RadianceSharedMemKey]](None)
-
-case class RadianceGemminiKey(tileSize: Int,
-                              slaveAddress: BigInt)
-case object RadianceGemminiKey extends Field[Option[RadianceGemminiKey]](None)
 
 case class RadianceFrameBufferKey(baseAddress: BigInt,
                                   width: Int,
@@ -92,37 +87,39 @@ class WithRadianceGemmini(location: HierarchicalLocation,
     if (idOffset == 0) {
       println("******WARNING****** gemmini tile id is 0! radiance tiles in the same cluster needs to be before gemmini")
     }
+    val numPrevGemminis = prev.map(_.tileParams).map {
+      case _: GemminiTileParams => 1
+      case _ => 0
+    }.sum
     val smKey = site(RadianceSharedMemKey).get
-    val gemmini = GemminiTileParams(gemminiConfig = GemminiFPConfigs.FP32DefaultConfig.copy(
-      has_training_convs = false,
-      has_max_pool = false,
-      use_tl_ext_mem = true,
-      sp_singleported = false,
-      spad_read_delay = 4,
-      use_shared_ext_mem = true,
-      acc_sub_banks = 1,
-      has_normalizations = false,
-      meshRows = dim,
-      meshColumns = dim,
-      tile_latency = 0,
-      dma_maxbytes = site(CacheBlockBytes),
-      dma_buswidth = dim * 32,
-      tl_ext_mem_base = smKey.address,
-      sp_banks = smKey.numBanks,
-      sp_capacity = CapacityInKilobytes(smKey.size >> 10),
-      acc_capacity = CapacityInKilobytes(accSizeInKB),
-    ))
-    List.tabulate(1)(i => GemminiTileAttachParams(
-      gemmini.copy(tileId = i + idOffset),
+    val tileParams = GemminiTileParams(
+      gemminiConfig = GemminiFPConfigs.FP32DefaultConfig.copy(
+        has_training_convs = false,
+        has_max_pool = false,
+        use_tl_ext_mem = true,
+        sp_singleported = false,
+        spad_read_delay = 4,
+        use_shared_ext_mem = true,
+        acc_sub_banks = 1,
+        has_normalizations = false,
+        meshRows = dim,
+        meshColumns = dim,
+        tile_latency = 0,
+        dma_maxbytes = site(CacheBlockBytes),
+        dma_buswidth = dim * 32,
+        tl_ext_mem_base = smKey.address,
+        sp_banks = smKey.numBanks,
+        sp_capacity = CapacityInKilobytes(smKey.size >> 10),
+        acc_capacity = CapacityInKilobytes(accSizeInKB),
+      ),
+      tileId = idOffset,
+      tileSize = tileSize,
+      slaveAddress = smKey.address + smKey.size + 0x3000 + 0x100 * numPrevGemminis
+    )
+    Seq(GemminiTileAttachParams(
+      tileParams,
       crossing
     )) ++ prev
-  }
-  case RadianceGemminiKey => {
-    val smKey = site(RadianceSharedMemKey).get
-    Some(RadianceGemminiKey(
-      tileSize = tileSize,
-      slaveAddress = smKey.address + smKey.size + 0x3000
-    ))
   }
 }) {
   def this(location: HierarchicalLocation = InSubsystem, dim: Int, accSizeInKB: Int, tileSize: Int) =

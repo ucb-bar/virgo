@@ -17,7 +17,7 @@ import freechips.rocketchip.tile._
 import freechips.rocketchip.tilelink._
 import gemmini._
 import org.chipsalliance.cde.config.Parameters
-import radiance.subsystem.{GPUMemParams, GPUMemory, RadianceGemminiKey}
+import radiance.subsystem.{GPUMemParams, GPUMemory}
 
 case class GemminiCoreParams(
   useVM: Boolean = false,
@@ -61,7 +61,9 @@ case class GemminiCoreParams(
 
 case class GemminiTileParams(
     tileId: Int = 0,
-    gemminiConfig: GemminiArrayConfig[Float, Float, Float]
+    gemminiConfig: GemminiArrayConfig[Float, Float, Float],
+    tileSize: Int = 4,
+    slaveAddress: BigInt
 ) extends InstantiableTileParams[GemminiTile] {
   def instantiate(crossing: HierarchicalElementCrossingParamsLike, lookup: LookupByHartIdImpl)(
       implicit p: Parameters
@@ -100,7 +102,7 @@ class GemminiTile private (
       lookup: LookupByHartIdImpl)(implicit p: Parameters) =
     this(params, crossing.crossingType, lookup, p)
 
-  val cpuDevice: SimpleDevice = new SimpleDevice("gemmini", Nil)
+  val cpuDevice: SimpleDevice = new SimpleDevice(s"gemmini${tileId}", Nil)
 
   val intOutwardNode = None
   val slaveNode = TLIdentityNode()
@@ -127,11 +129,9 @@ class GemminiTile private (
 
   require(!gemmini.config.sp_singleported, "external scratchpad must be dual ported")
 
-  val configKey = p(RadianceGemminiKey).get
-
   val regDevice = new SimpleDevice("gemmini-cmd-reg", Seq(s"gemmini-cmd-reg"))
   val regNode = TLRegisterNode(
-    address = Seq(AddressSet(configKey.slaveAddress, 0xfff)),
+    address = Seq(AddressSet(gemminiParams.slaveAddress, 0xff)),
     device = regDevice,
     beatBytes = 8,
     concurrency = 1)
@@ -187,7 +187,7 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
 
   ciscInst := 0.U.asTypeOf(ciscInstT)
 
-  val tileSize = outer.configKey.tileSize
+  val tileSize = outer.gemminiParams.tileSize
   val (boundsInst, spadQuartile) = if (tileSize == 4) {
     (ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"4_00040004".U), 0x80)
   } else if (tileSize == 8) {

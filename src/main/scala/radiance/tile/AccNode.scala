@@ -2,13 +2,17 @@ package radiance.tile;
 import chisel3._
 import chisel3.experimental.SourceInfo
 import chisel3.util._
+import freechips.rocketchip.diplomacy.BigIntHexContext
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy._
 import org.chipsalliance.diplomacy.nodes._
 
-class AccBundle() extends Bundle {
+class AccBundle extends Bundle {
   val cmd = Output(Valid(UInt(32.W)))
   val status = Input(UInt(1.W))
+
+  def dest(): UInt = { cmd.bits(7, 5) }
+  def masked(): UInt = { cmd.bits & x"ffffff1f".U }
 }
 
 case class NullParams()
