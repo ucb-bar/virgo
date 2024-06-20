@@ -22,7 +22,7 @@ import radiance.memory._
 import radiance.subsystem.{GPUMemParams, GPUMemory, RadianceSimArgs}
 
 /** For determining radiance core id.  This may be different from
- *  RadianceTileParams.coreId, when a cluster contains non-core tiles */
+ *  RadianceTileParams.tileId, when a cluster contains non-core tiles */
 case object NumRadianceCores extends Field[Int](0)
 
 case class RadianceTileParams(

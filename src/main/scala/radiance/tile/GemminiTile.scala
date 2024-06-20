@@ -244,6 +244,18 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
           ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0x1.U, _.rs2 -> x"0_000002e0".U)
         ))
       }
+      is (12.U) { // test: DMA for tensor core
+        ciscInst := microcodeEntry(Seq(boundsInst,
+          ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> (spadQuartile * 0).U, _.rs2 -> (spadQuartile * 1).U),
+          ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0x1.U, _.rs2 -> x"0_000002e0".U)
+        ))
+      }
+      is (13.U) { // test: DMA for tensor core
+        ciscInst := microcodeEntry(Seq(boundsInst,
+          ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> (spadQuartile * 2).U, _.rs2 -> (spadQuartile * 3).U),
+          ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0x1.U, _.rs2 -> x"0_000002e0".U)
+        ))
+      }
       is (16.U) {
         ciscInst := microcodeEntry(Seq(
           ciscInstT.Lit(_.inst -> 0x0020b07b.U, _.rs1 -> x"3f800000_00080101".U, _.rs2 -> 0.U),
