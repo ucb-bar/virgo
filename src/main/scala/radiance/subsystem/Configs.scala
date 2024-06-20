@@ -113,7 +113,7 @@ class WithRadianceGemmini(location: HierarchicalLocation,
         meshColumns = dim,
         tile_latency = 0,
         dma_maxbytes = site(CacheBlockBytes),
-        dma_buswidth = dim * 32,
+        dma_buswidth = 256, // TODO: parameterize
         tl_ext_mem_base = smKey.address,
         sp_banks = smKey.numBanks,
         sp_capacity = CapacityInKilobytes(smKey.size >> 10),

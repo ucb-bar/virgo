@@ -188,14 +188,11 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
   ciscInst := 0.U.asTypeOf(ciscInstT)
 
   val tileSize = outer.gemminiParams.tileSize
-  val (boundsInst, spadQuartile) = if (tileSize == 4) {
-    (ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"4_00040004".U), 0x80)
-  } else if (tileSize == 8) {
-    (ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> x"8_00080008".U), 0x200)
-  } else {
-    (ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U, _.rs2 -> (tileSize | (tileSize << 16) | (tileSize << 32)).U),
+  val (boundsInst, spadQuartile) = (ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U,
+    _.rs2 -> (tileSize | (tileSize << 16) | (BigInt(tileSize) << 32)).U),
       tileSize * tileSize * outer.gemminiParams.gemminiConfig.DIM)
-  }
+  println(s"gemmini cisc initialized with DIM=${outer.gemminiParams.gemminiConfig.DIM}, tileSize=${tileSize}")
+  println(f"boundsInst=${boundsInst.litValue}%x, tileSize=${tileSize}, quartile=${spadQuartile}")
   when (ciscValid) {
     assert(!accSlave.cmd.valid, "cisc state machine already busy")
     switch (ciscId) {
@@ -215,6 +212,12 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
         ciscInst := microcodeEntry(Seq(boundsInst,
           ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> 0.U, _.rs2 -> (spadQuartile * 3).U),
           ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0x1.U, _.rs2 -> x"0_000002b8".U)
+        ))
+      }
+      is (3.U) {
+        ciscInst := microcodeEntry(Seq(boundsInst,
+          ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> (spadQuartile * 1).U, _.rs2 -> (spadQuartile * 4).U),
+          ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0x0.U, _.rs2 -> x"0_000002b8".U)
         ))
       }
       is (8.U) {

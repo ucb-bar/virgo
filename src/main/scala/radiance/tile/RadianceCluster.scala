@@ -5,7 +5,7 @@ package radiance.tile
 
 import chisel3._
 import chisel3.util._
-import freechips.rocketchip.diplomacy.{AddressSet, BufferParams, ClockCrossingType, TransferSizes}
+import freechips.rocketchip.diplomacy.{AddressSet, BigIntHexContext, BufferParams, ClockCrossingType, TransferSizes}
 import org.chipsalliance.diplomacy.lazymodule._
 import freechips.rocketchip.prci.ClockSinkParameters
 import freechips.rocketchip.subsystem._
@@ -183,8 +183,8 @@ class RadianceCluster (
         guard_monitors { implicit p =>
           dist := TLBuffer(BufferParams(1, false, true), BufferParams(0)) := node
         }
-        val fanout = Seq.fill(sp_subbanks) {
-          connect_xbar_name(dist, Some(s"spad_g${gemmini_idx}_fanout_$suffix"))
+        val fanout = Seq.tabulate(sp_subbanks) { w =>
+          connect_xbar_name(dist, Some(s"spad_g${gemmini_idx}w${w}_fanout_$suffix"))
         }
         Seq.fill(smem_width / sp_width_bytes)(fanout).flatten // smem wider than spad, duplicate masters
       }
@@ -336,8 +336,8 @@ class RadianceCluster (
 
   val traceTLNode = TLAdapterNode(clientFn = c => c, managerFn = m => m)
   // printf and perf counter buffer
-  TLRAM(AddressSet(smem_key.address + smem_size, numCoresInCluster * 0x200 - 1)) :=
-    traceTLNode := TLBuffer() := TLFragmenter(4, 4) := clbus.outwardNode
+  TLRAM(AddressSet(smem_key.address + smem_size, numCoresInCluster * 0x200 - 1)) := traceTLNode :=
+    TLBuffer() := TLFragmenter(4, 4) := clbus.outwardNode
 
   p(RadianceFrameBufferKey).foreach { key =>
     val fb = LazyModule(new FrameBuffer(key.baseAddress, key.width, key.size, key.validAddress, key.fbName))
@@ -381,7 +381,7 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
     b.resp <> synchronizer.io.resp // broadcast
   }
 
-  val coreAcc = outer.radianceAccSlaveNodes.head.in.head._1
+  val coreAccs = outer.radianceAccSlaveNodes.map(_.in.head._1)
   val gemminiAccs = outer.gemminiAccMasterNodes.map(_.out.head._1)
   // val gemminiTileAcc = outer.gemminiTile.accSlaveNode.in.head._1
 
@@ -389,12 +389,14 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
   // gemminiAcc.status := gemminiTileAcc.status
 
   gemminiAccs.zipWithIndex.foreach { case (g, gi) =>
-    g.cmd.bits := coreAcc.masked
-    g.cmd.valid := coreAcc.cmd.valid && (coreAcc.dest === gi.U)
+    val active = coreAccs.map(acc => acc.cmd.valid && (acc.dest() === gi.U))
+    val selected = PriorityEncoder(active)
+    g.cmd.bits := VecInit(coreAccs.map(_.cmd.bits))(selected) & g.mask
+    g.cmd.valid := VecInit(active).reduceTree(_ || _)
   }
 
   // this might need some more tweaking (e.g. bitmask instead of or)
-  outer.radianceAccSlaveNodes.foreach(_.in.head._1.status := VecInit(gemminiAccs.map(_.status)).reduceTree(_ | _))
+  coreAccs.foreach(_.status := VecInit(gemminiAccs.map(_.status)).reduceTree(_ | _))
 
   (outer.traceTLNode.in.map(_._1) zip outer.traceTLNode.out.map(_._1)).foreach { case (i, o) =>
     o.a <> i.a

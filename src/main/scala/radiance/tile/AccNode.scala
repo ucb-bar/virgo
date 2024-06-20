@@ -12,7 +12,7 @@ class AccBundle extends Bundle {
   val status = Input(UInt(1.W))
 
   def dest(): UInt = { cmd.bits(7, 5) }
-  def masked(): UInt = { cmd.bits & x"ffffff1f".U }
+  def mask: UInt = x"ffffff1f".U
 }
 
 case class NullParams()
