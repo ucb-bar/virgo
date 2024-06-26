@@ -192,6 +192,7 @@ class RadianceCluster (
       word_fanout_nodes.transpose
     }
 
+    // (banks, subbanks, gemminis)
     val spad_read_nodes = Seq.fill(smem_banks)(dist_and_duplicate(gemminis.map(_.spad_read_nodes), "r"))
     val spad_write_nodes = Seq.fill(smem_banks)(dist_and_duplicate(gemminis.map(_.spad_write_nodes), "w"))
     val spad_sp_write_nodes_single_bank = dist_and_duplicate(gemminis.map(_.spad.spad_writer.node), "ws")
@@ -409,7 +410,6 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
     }
   }
 
-
   // TODO: remove Pipeline dependency of gemmini
   def makeSmemBanks(): Unit = {
     def make_buffer[T <: Data](mem: TwoPortSyncMem[T], r_node: TLBundle, r_edge: TLEdgeIn,
@@ -479,9 +479,20 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
       w_node.d <> Queue(write_resp, 2)
     }
 
+    // read OR write access counter for smem banks
+    val smem_bank_mgrs_grouped = outer.smem_bank_mgrs.grouped(outer.smem_subbanks)
+    val numBanks = smem_bank_mgrs_grouped.length
+    val smemCounterPerBankPerCycle = Seq.fill(numBanks)(Seq.fill(outer.smem_subbanks)
+                                     (Wire(UInt(32.W))))
+    val smemCounterPerCycle = smemCounterPerBankPerCycle.map(_.reduce(_ + _)).reduce(_ + _)
+    val smemCounter = RegInit(UInt(32.W), 0.U)
+    smemCounter := smemCounter + smemCounterPerCycle
+    smemCounterPerBankPerCycle.foreach(_.foreach(dontTouch(_)))
+    dontTouch(smemCounter)
+
     if (outer.stride_by_word) {
       outer.smem_bank_mgrs.grouped(outer.smem_subbanks).zipWithIndex.foreach { case (bank_mgrs, bid) =>
-        assert(bank_mgrs.flatten.size == 2 * outer.smem_subbanks)
+        assert(bank_mgrs.flatten.size == 2/* read and write */ * outer.smem_subbanks)
         bank_mgrs.zipWithIndex.foreach { case (Seq(r, w), wid) =>
           assert(!r.portParams.map(_.anySupportPutFull).reduce(_ || _))
           assert(!w.portParams.map(_.anySupportGet).reduce(_ || _))
@@ -512,6 +523,9 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
             log2Ceil(word_width).U).asUInt) || !r_node.a.valid, "word id mismatch with request")
 
           make_buffer(mem, r_node, r_edge, w_node, w_edge)
+
+          // add access counters to banks
+          smemCounterPerBankPerCycle(bid)(wid) := (r_node.a.fire === true.B) +& (w_node.a.fire === true.B)
         }
       }
     } else {
