@@ -2,7 +2,7 @@ package radiance.tile;
 import chisel3._
 import chisel3.experimental.SourceInfo
 import chisel3.util._
-import freechips.rocketchip.diplomacy.BigIntHexContext
+import freechips.rocketchip.resources.BigIntHexContext
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy._
 import org.chipsalliance.diplomacy.nodes._

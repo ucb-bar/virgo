@@ -5,11 +5,12 @@ package radiance.tile
 
 import chisel3._
 import chisel3.util._
-import freechips.rocketchip.diplomacy.{AddressSet, BigIntHexContext, BufferParams, ClockCrossingType, TransferSizes}
-import org.chipsalliance.diplomacy.lazymodule._
-import freechips.rocketchip.prci.ClockSinkParameters
+import freechips.rocketchip.diplomacy.{AddressSet, BufferParams, TransferSizes}
+import freechips.rocketchip.prci.{ClockCrossingType, ClockSinkParameters}
+import freechips.rocketchip.resources.BigIntHexContext
 import freechips.rocketchip.subsystem._
 import freechips.rocketchip.tilelink._
+import org.chipsalliance.diplomacy.lazymodule._
 import gemmini._
 import midas.targetutils.SynthesizePrintf
 import org.chipsalliance.cde.config.Parameters

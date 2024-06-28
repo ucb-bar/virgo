@@ -8,8 +8,9 @@ import chisel3.util._
 import chisel3.experimental.BundleLiterals._
 import org.chipsalliance.diplomacy.DisableMonitors
 import org.chipsalliance.diplomacy.lazymodule._
-import freechips.rocketchip.diplomacy.{AddressSet, BigIntHexContext, ClockCrossingType, SimpleDevice}
-import freechips.rocketchip.prci.ClockSinkParameters
+import freechips.rocketchip.diplomacy.{AddressSet, SimpleDevice}
+import freechips.rocketchip.resources.BigIntHexContext
+import freechips.rocketchip.prci.{ClockCrossingType, ClockSinkParameters}
 import freechips.rocketchip.regmapper.RegField
 import freechips.rocketchip.rocket._
 import freechips.rocketchip.subsystem.{CanAttachTile, HierarchicalElementCrossingParamsLike, RocketCrossingParams}

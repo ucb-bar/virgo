@@ -9,7 +9,7 @@ import chisel3.util._
 import freechips.rocketchip.devices.tilelink._
 import freechips.rocketchip.diplomacy._
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
-import freechips.rocketchip.prci.ClockSinkParameters
+import freechips.rocketchip.prci.{ClockCrossingType, ClockSinkParameters, RationalCrossing}
 import freechips.rocketchip.regmapper.RegField
 import freechips.rocketchip.rocket._
 import freechips.rocketchip.subsystem.HierarchicalElementCrossingParamsLike
