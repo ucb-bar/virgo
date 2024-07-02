@@ -483,13 +483,20 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
     // read OR write access counter for smem banks
     val smem_bank_mgrs_grouped = outer.smem_bank_mgrs.grouped(outer.smem_subbanks)
     val numBanks = smem_bank_mgrs_grouped.length
-    val smemCounterPerBankPerCycle = Seq.fill(numBanks)(Seq.fill(outer.smem_subbanks)
-                                     (Wire(UInt(32.W))))
-    val smemCounterPerCycle = smemCounterPerBankPerCycle.map(_.reduce(_ + _)).reduce(_ + _)
-    val smemCounter = RegInit(UInt(32.W), 0.U)
-    smemCounter := smemCounter + smemCounterPerCycle
-    smemCounterPerBankPerCycle.foreach(_.foreach(dontTouch(_)))
-    dontTouch(smemCounter)
+    val counterWidth = 32
+    val smemReadsPerBankPerCycle  = Seq.fill(numBanks)(Seq.fill(outer.smem_subbanks)
+                                                               (Wire(UInt(counterWidth.W))))
+    val smemWritesPerBankPerCycle = Seq.fill(numBanks)(Seq.fill(outer.smem_subbanks)
+                                                               (Wire(UInt(counterWidth.W))))
+    val smemReadsPerCycle  = smemReadsPerBankPerCycle.map(_.reduce(_ + _)).reduce(_ + _)
+    val smemWritesPerCycle = smemWritesPerBankPerCycle.map(_.reduce(_ + _)).reduce(_ + _)
+    val smemReadCounter = RegInit(UInt(counterWidth.W), 0.U)
+    val smemWriteCounter = RegInit(UInt(counterWidth.W), 0.U)
+    smemReadCounter  := smemReadCounter + smemReadsPerCycle
+    smemWriteCounter := smemWriteCounter + smemWritesPerCycle
+    // smemReadsPerBankPerCycle.foreach(_.foreach(dontTouch(_)))
+    dontTouch(smemReadCounter)
+    dontTouch(smemWriteCounter)
 
     if (outer.stride_by_word) {
       outer.smem_bank_mgrs.grouped(outer.smem_subbanks).zipWithIndex.foreach { case (bank_mgrs, bid) =>
@@ -526,7 +533,8 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
           make_buffer(mem, r_node, r_edge, w_node, w_edge)
 
           // add access counters to banks
-          smemCounterPerBankPerCycle(bid)(wid) := (r_node.a.fire === true.B) +& (w_node.a.fire === true.B)
+          smemReadsPerBankPerCycle(bid)(wid)  := (r_node.a.fire === true.B)
+          smemWritesPerBankPerCycle(bid)(wid) := (w_node.a.fire === true.B)
         }
       }
     } else {
