@@ -314,7 +314,8 @@ class RadianceTile private (
     case None => dmemAggregateNode
   }
 
-  // Conditionally instantiate L1 cache
+  // these are the nodes that the tile egress node (tlMasterXbar) sees at the
+  // upstream core/cache side
   val (icacheNode, dcacheNode): (TLNode, TLNode) = p(VortexL1Key) match {
     case Some(vortexL1Config) => {
       println("VortexL1Cache instantiated")
@@ -327,8 +328,7 @@ class RadianceTile private (
         numBanks = 1
       )))
       val dcache = LazyModule(new VortexL1Cache(vortexL1Config))
-      // imemNodes.foreach { icache.coresideNode := TLWidthWidget(4) := _ }
-      assert(imemNodes.length == 1) // FIXME
+      assert(imemNodes.length == 1)
       icache.coresideNode := TLWidthWidget(4) := imemNodes(0)
       // dmemNodes go through coalescerNode
       dcache.coresideNode :=* coalescerNode
@@ -336,7 +336,7 @@ class RadianceTile private (
     }
     case None => {
       val imemWideNode = TLIdentityNode()
-      assert(imemNodes.length == 1) // FIXME
+      assert(imemNodes.length == 1)
       imemWideNode := TLWidthWidget(4) := imemNodes(0)
       (imemWideNode, coalescerNode)
     }
@@ -454,11 +454,6 @@ class RadianceTileModuleImp(outer: RadianceTile)
   core.io.clock := clock
   core.io.reset := reset
 
-  // begin @copypaste from RocketTile ------------------------------------------
-
-  // reset vector is connected in the Frontend to s2_pc
-  core.io.reset_vector := DontCare
-
   class TwoWayCounter(width: Int) extends AffectsChiselPrefix {
     val value = RegInit(0.U(width.W))
     value := value
@@ -470,6 +465,11 @@ class RadianceTileModuleImp(outer: RadianceTile)
   val smemCounters = outer.smemNodes.map { _ => new TwoWayCounter(outer.smemSourceWidth) }
   core.io.downstream_mem_busy := VecInit(dmemCounters.map(_.value =/= 0.U)).reduceTree(_ || _) ||
     VecInit(smemCounters.map(_.value =/= 0.U)).reduceTree(_ || _)
+
+  // begin @copypaste from RocketTile ------------------------------------------
+
+  // reset vector is connected in the Frontend to s2_pc
+  core.io.reset_vector := DontCare
 
   // outer.regNode.regmap(
   //   0x00 -> Seq(RegField.r(32, core.io.finished))
@@ -539,7 +539,8 @@ class RadianceTileModuleImp(outer: RadianceTile)
       performanceCounters(Seq(imemTLAdapter.io.inReq), Seq(imemTLAdapter.io.inResp),
         desc = s"core${outer.radianceParams.coreId}-imem")
 
-      // now connect TL adapter downstream ports to the tile egress ports
+      // now connect TL adapter output ports to outer.imemNode, which can
+      // either be L1 cache or tile egress
       outer.imemNodes(0).out(0)._1.a <> imemTLAdapter.io.outReq
       imemTLAdapter.io.outResp <> outer.imemNodes(0).out(0)._1.d
     }
@@ -648,7 +649,8 @@ class RadianceTileModuleImp(outer: RadianceTile)
       performanceCounters(dmemTLAdapters.map(_.io.inReq), dmemTLAdapters.map(_.io.inResp),
         desc = s"core${outer.radianceParams.coreId}-dmem")
 
-      // now connect TL adapter downstream ports to the tile egress ports
+      // now connect TL adapter output ports to outer.dmemNodes, which can
+      // either be L1 cache or tile egress
       (dmemTLAdapters zip dmemTLBundles) foreach { case (tlAdapter, tlOut) =>
         tlOut.a <> tlAdapter.io.outReq
         tlAdapter.io.outResp <> tlOut.d
@@ -709,7 +711,6 @@ class RadianceTileModuleImp(outer: RadianceTile)
       performanceCounters(smemTLAdapters.map(_.io.inReq), smemTLAdapters.map(_.io.inResp),
         desc = s"core${outer.radianceParams.coreId}-smem")
 
-      // now connect TL adapter downstream ports to the tile egress ports
       (smemTLAdapters zip smemTLBundles) foreach { case (tlAdapter, tlOut) =>
         tlOut.a <> tlAdapter.io.outReq
         tlAdapter.io.outResp <> tlOut.d
