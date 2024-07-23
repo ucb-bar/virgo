@@ -37,9 +37,11 @@ radpie:
 	cd $(RADPIE_SRC_DIR) && cargo build --release
 
 EXTRA_SIM_REQS += vortex_vsrc.$(CONFIG)
-# doesn't work if we use $(call lookup_srcs) from common.mk, the variable
-# doesn't expand somehow
-ifneq ($(shell which fd 2> /dev/null),)
+# below manipulation of VORTEX_VLOG_SOURCES doesn't work if we try to reuse
+# $(call lookup_srcs) from common.mk, the variable doesn't expand somehow
+ifeq ($(shell which fd 2> /dev/null),)
+	VORTEX_VLOG_SOURCES := $(shell find -L $(VORTEX_SRC_DIR) -type f -iname "*.sv" -o -iname "*.vh" -o -iname "*.v")
+else
 	VORTEX_VLOG_SOURCES := $(shell fd -L -t f -e "sv" -e "vh" -e "v" . $(VORTEX_SRC_DIR))
 endif
 # VORTEX_COLLATERAL := $(patsubst $(VORTEX_SRC_DIR)%,$(GEN_COLLATERAL_DIR)%,$(VORTEX_VLOG_SOURCES))
