@@ -124,8 +124,8 @@ class VortexBankPassThrough(config: VortexL1Config)(implicit p: Parameters)
 
     // Make sure the outgoing edge of this passthrough has enough sourceIds
     // that encompasses the core-side incoming edge's.  This is an unfortunate
-    // hack due to not doing proper param negotiations across disconnected
-    // Diplomacy graphs.
+    // hack due to incomplete param negotiations across disconnected Diplomacy
+    // graphs.
     // println(s"${upstream.params.sourceBits} <= ${downstream.params.sourceBits}")
     require(upstream.params.sourceBits <= downstream.params.sourceBits,
             "mem-side source of L1 cache truncates core-side source! " +
@@ -344,7 +344,7 @@ class VortexBankImp(
   // its MSHR and therefore doesn't allocate a new tag id for write requests.
   // We use a separate source ID allocator to solve this.
   val sourceGen = Module(
-    new NewSourceGenerator(
+    new SourceGenerator(
       log2Ceil(config.memSideSourceIds),
       metadata = Some(UInt(32.W)),
       ignoreInUse = false
@@ -556,7 +556,8 @@ class NewSourceGenerator[T <: Data](
   when(reset.asBool) {
     (0 until numSourceId).foreach { i =>
       occupancyTable(i).id.valid := false.B
-      occupancyTable(i).age := 0.U // Reset age during reset
+      occupancyTable(i).meta := 0.U
+      occupancyTable(i).age := 0.U
     }
   }
   val frees = (0 until numSourceId).map(!occupancyTable(_).id.valid)

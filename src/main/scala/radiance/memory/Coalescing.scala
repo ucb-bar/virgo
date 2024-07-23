@@ -332,24 +332,27 @@ class SourceGenerator[T <: Data](
     val meta = getMetadataType
     val valid = Bool()
   }
-  // valid: in use, invalid: available
-  // val occupancyTable = Mem(numSourceId, Valid(UInt(sourceWidth.W)))
-  val occupancyTable = Mem(numSourceId, row)
+  val occupancyTable = Mem(numSourceId, Bool()/* true: in use, false: free */)
+  // Due to a potential chisel/CIRCT bug, storing both meta and valid in a
+  // single table doesn't work; writing meta writes {1'b0, meta} to the whole
+  // row of the table, overwriting the valid bit.  Workaround by creating
+  // separate tables for meta and valid.
+  val metadataTable = Mem(numSourceId, getMetadataType)
   when(reset.asBool) {
-    (0 until numSourceId).foreach { occupancyTable(_).valid := false.B }
+    (0 until numSourceId).foreach { occupancyTable(_) := false.B }
   }
-  val frees = (0 until numSourceId).map(!occupancyTable(_).valid)
+  val frees = (0 until numSourceId).map(!occupancyTable(_))
   val lowestFree = PriorityEncoder(frees)
-  val lowestFreeRow = occupancyTable(lowestFree)
+  val lowestFreeValid = occupancyTable(lowestFree)
 
-  io.id.valid := (if (ignoreInUse) true.B else !lowestFreeRow.valid)
+  io.id.valid := (if (ignoreInUse) true.B else !lowestFreeValid)
   io.id.bits := lowestFree
   when(io.gen && io.id.valid /* fire */ ) {
     // handle reclaim at the same cycle, e.g. for 0-latency D channel response
     when (!io.reclaim.valid || io.reclaim.bits =/= io.id.bits) {
-      occupancyTable(io.id.bits).valid := true.B // mark in use
+      occupancyTable(io.id.bits) := true.B // mark in use
       if (metadata.isDefined) {
-        occupancyTable(io.id.bits).meta := io.meta
+        metadataTable(io.id.bits) := io.meta
       }
     }
   }
@@ -357,10 +360,10 @@ class SourceGenerator[T <: Data](
     // @perf: would this require multiple write ports?
     // NOTE: this does not seem sufficient to handle same-cycle gen-reclaim on
     // its own
-    occupancyTable(io.reclaim.bits).valid := false.B // mark freed
+    occupancyTable(io.reclaim.bits) := false.B // mark freed
   }
   io.peek := {
-    if (metadata.isDefined) occupancyTable(io.reclaim.bits).meta else 0.U
+    if (metadata.isDefined) metadataTable(io.reclaim.bits) else 0.U
   }
 
   when(io.gen && io.id.valid) {
