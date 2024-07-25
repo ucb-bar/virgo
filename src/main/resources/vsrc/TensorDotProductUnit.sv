@@ -113,17 +113,17 @@ module MulRawFN( // @[generators/hardfloat/hardfloat/src/main/scala/MulRecFN.sca
   assign mulFullRaw_io_b_sExp = io_b_sExp; // @[generators/hardfloat/hardfloat/src/main/scala/MulRecFN.scala 87:21]
   assign mulFullRaw_io_b_sig = io_b_sig; // @[generators/hardfloat/hardfloat/src/main/scala/MulRecFN.scala 87:21]
 endmodule
-module RoundAnyRawFNToRecFN( // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 48:5]
-  input         io_invalidExc, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 57:16]
-  input         io_in_isNaN, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 57:16]
-  input         io_in_isInf, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 57:16]
-  input         io_in_isZero, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 57:16]
-  input         io_in_sign, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 57:16]
-  input  [9:0]  io_in_sExp, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 57:16]
-  input  [26:0] io_in_sig, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 57:16]
-  output [32:0] io_out // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 57:16]
+module RoundAnyRawFNToRecFN_ie8_is26_oe8_os24( // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 48:5]
+  input         io_invalidExc, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 58:16]
+  input         io_in_isNaN, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 58:16]
+  input         io_in_isInf, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 58:16]
+  input         io_in_isZero, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 58:16]
+  input         io_in_sign, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 58:16]
+  input  [9:0]  io_in_sExp, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 58:16]
+  input  [26:0] io_in_sig, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 58:16]
+  output [32:0] io_out // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 58:16]
 );
-  wire  doShiftSigDown1 = io_in_sig[26]; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 119:57]
+  wire  doShiftSigDown1 = io_in_sig[26]; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 120:57]
   wire [8:0] _roundMask_T_1 = ~io_in_sExp[8:0]; // @[generators/hardfloat/hardfloat/src/main/scala/primitives.scala 52:21]
   wire  roundMask_msb = _roundMask_T_1[8]; // @[generators/hardfloat/hardfloat/src/main/scala/primitives.scala 58:25]
   wire [7:0] roundMask_lsbs = _roundMask_T_1[7:0]; // @[generators/hardfloat/hardfloat/src/main/scala/primitives.scala 59:26]
@@ -162,74 +162,74 @@ module RoundAnyRawFNToRecFN( // @[generators/hardfloat/hardfloat/src/main/scala/
   wire [2:0] _roundMask_T_71 = roundMask_msb_2 ? _roundMask_T_70 : 3'h0; // @[generators/hardfloat/hardfloat/src/main/scala/primitives.scala 62:24]
   wire [24:0] _roundMask_T_72 = roundMask_msb_1 ? _roundMask_T_63 : {{22'd0}, _roundMask_T_71}; // @[generators/hardfloat/hardfloat/src/main/scala/primitives.scala 67:24]
   wire [24:0] _roundMask_T_73 = roundMask_msb ? _roundMask_T_72 : 25'h0; // @[generators/hardfloat/hardfloat/src/main/scala/primitives.scala 62:24]
-  wire [24:0] _GEN_4 = {{24'd0}, doShiftSigDown1}; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 158:23]
-  wire [24:0] _roundMask_T_74 = _roundMask_T_73 | _GEN_4; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 158:23]
-  wire [26:0] roundMask = {_roundMask_T_74,2'h3}; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 158:42]
-  wire [27:0] _shiftedRoundMask_T = {1'h0,_roundMask_T_74,2'h3}; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 161:41]
-  wire [26:0] shiftedRoundMask = _shiftedRoundMask_T[27:1]; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 161:53]
-  wire [26:0] _roundPosMask_T = ~shiftedRoundMask; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 162:28]
-  wire [26:0] roundPosMask = _roundPosMask_T & roundMask; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 162:46]
-  wire [26:0] _roundPosBit_T = io_in_sig & roundPosMask; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 163:40]
-  wire  roundPosBit = |_roundPosBit_T; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 163:56]
-  wire [26:0] _anyRoundExtra_T = io_in_sig & shiftedRoundMask; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 164:42]
-  wire  anyRoundExtra = |_anyRoundExtra_T; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 164:62]
-  wire [26:0] _roundedSig_T = io_in_sig | roundMask; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 173:32]
-  wire [25:0] _roundedSig_T_2 = _roundedSig_T[26:2] + 25'h1; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 173:49]
-  wire  _roundedSig_T_4 = ~anyRoundExtra; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 175:30]
-  wire [25:0] _roundedSig_T_7 = roundPosBit & _roundedSig_T_4 ? roundMask[26:1] : 26'h0; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 174:25]
-  wire [25:0] _roundedSig_T_8 = ~_roundedSig_T_7; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 174:21]
-  wire [25:0] _roundedSig_T_9 = _roundedSig_T_2 & _roundedSig_T_8; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 173:57]
-  wire [26:0] _roundedSig_T_10 = ~roundMask; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 179:32]
-  wire [26:0] _roundedSig_T_11 = io_in_sig & _roundedSig_T_10; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 179:30]
-  wire [25:0] _roundedSig_T_16 = {{1'd0}, _roundedSig_T_11[26:2]}; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 179:47]
-  wire [25:0] roundedSig = roundPosBit ? _roundedSig_T_9 : _roundedSig_T_16; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 172:16]
-  wire [2:0] _sRoundedExp_T_1 = {1'b0,$signed(roundedSig[25:24])}; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 184:76]
-  wire [9:0] _GEN_5 = {{7{_sRoundedExp_T_1[2]}},_sRoundedExp_T_1}; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 184:40]
-  wire [10:0] sRoundedExp = $signed(io_in_sExp) + $signed(_GEN_5); // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 184:40]
-  wire [8:0] common_expOut = sRoundedExp[8:0]; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 186:37]
-  wire [22:0] common_fractOut = doShiftSigDown1 ? roundedSig[23:1] : roundedSig[22:0]; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 188:16]
-  wire [3:0] _common_overflow_T = sRoundedExp[10:7]; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 195:30]
-  wire  common_overflow = $signed(_common_overflow_T) >= 4'sh3; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 195:50]
-  wire  common_totalUnderflow = $signed(sRoundedExp) < 11'sh6b; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 199:31]
-  wire  isNaNOut = io_invalidExc | io_in_isNaN; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 234:34]
-  wire  commonCase = ~isNaNOut & ~io_in_isInf & ~io_in_isZero; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 236:61]
-  wire  overflow = commonCase & common_overflow; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 237:32]
-  wire  notNaN_isInfOut = io_in_isInf | overflow; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 247:32]
-  wire  signOut = isNaNOut ? 1'h0 : io_in_sign; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 249:22]
-  wire [8:0] _expOut_T_1 = io_in_isZero | common_totalUnderflow ? 9'h1c0 : 9'h0; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 252:18]
-  wire [8:0] _expOut_T_2 = ~_expOut_T_1; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 252:14]
-  wire [8:0] _expOut_T_3 = common_expOut & _expOut_T_2; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 251:24]
-  wire [8:0] _expOut_T_11 = notNaN_isInfOut ? 9'h40 : 9'h0; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 264:18]
-  wire [8:0] _expOut_T_12 = ~_expOut_T_11; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 264:14]
-  wire [8:0] _expOut_T_13 = _expOut_T_3 & _expOut_T_12; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 263:17]
-  wire [8:0] _expOut_T_18 = notNaN_isInfOut ? 9'h180 : 9'h0; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 276:16]
-  wire [8:0] _expOut_T_19 = _expOut_T_13 | _expOut_T_18; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 275:15]
-  wire [8:0] _expOut_T_20 = isNaNOut ? 9'h1c0 : 9'h0; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 277:16]
-  wire [8:0] expOut = _expOut_T_19 | _expOut_T_20; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 276:73]
-  wire [22:0] _fractOut_T_2 = isNaNOut ? 23'h400000 : 23'h0; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 280:16]
-  wire [22:0] fractOut = isNaNOut | io_in_isZero | common_totalUnderflow ? _fractOut_T_2 : common_fractOut; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 279:12]
-  wire [9:0] _io_out_T = {signOut,expOut}; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 285:23]
-  assign io_out = {_io_out_T,fractOut}; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 285:33]
+  wire [24:0] _GEN_4 = {{24'd0}, doShiftSigDown1}; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 159:23]
+  wire [24:0] _roundMask_T_74 = _roundMask_T_73 | _GEN_4; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 159:23]
+  wire [26:0] roundMask = {_roundMask_T_74,2'h3}; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 159:42]
+  wire [27:0] _shiftedRoundMask_T = {1'h0,_roundMask_T_74,2'h3}; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 162:41]
+  wire [26:0] shiftedRoundMask = _shiftedRoundMask_T[27:1]; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 162:53]
+  wire [26:0] _roundPosMask_T = ~shiftedRoundMask; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 163:28]
+  wire [26:0] roundPosMask = _roundPosMask_T & roundMask; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 163:46]
+  wire [26:0] _roundPosBit_T = io_in_sig & roundPosMask; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 164:40]
+  wire  roundPosBit = |_roundPosBit_T; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 164:56]
+  wire [26:0] _anyRoundExtra_T = io_in_sig & shiftedRoundMask; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 165:42]
+  wire  anyRoundExtra = |_anyRoundExtra_T; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 165:62]
+  wire [26:0] _roundedSig_T = io_in_sig | roundMask; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 174:32]
+  wire [25:0] _roundedSig_T_2 = _roundedSig_T[26:2] + 25'h1; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 174:49]
+  wire  _roundedSig_T_4 = ~anyRoundExtra; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 176:30]
+  wire [25:0] _roundedSig_T_7 = roundPosBit & _roundedSig_T_4 ? roundMask[26:1] : 26'h0; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 175:25]
+  wire [25:0] _roundedSig_T_8 = ~_roundedSig_T_7; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 175:21]
+  wire [25:0] _roundedSig_T_9 = _roundedSig_T_2 & _roundedSig_T_8; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 174:57]
+  wire [26:0] _roundedSig_T_10 = ~roundMask; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 180:32]
+  wire [26:0] _roundedSig_T_11 = io_in_sig & _roundedSig_T_10; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 180:30]
+  wire [25:0] _roundedSig_T_16 = {{1'd0}, _roundedSig_T_11[26:2]}; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 180:47]
+  wire [25:0] roundedSig = roundPosBit ? _roundedSig_T_9 : _roundedSig_T_16; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 173:16]
+  wire [2:0] _sRoundedExp_T_1 = {1'b0,$signed(roundedSig[25:24])}; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 185:76]
+  wire [9:0] _GEN_5 = {{7{_sRoundedExp_T_1[2]}},_sRoundedExp_T_1}; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 185:40]
+  wire [10:0] sRoundedExp = $signed(io_in_sExp) + $signed(_GEN_5); // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 185:40]
+  wire [8:0] common_expOut = sRoundedExp[8:0]; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 187:37]
+  wire [22:0] common_fractOut = doShiftSigDown1 ? roundedSig[23:1] : roundedSig[22:0]; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 189:16]
+  wire [3:0] _common_overflow_T = sRoundedExp[10:7]; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 196:30]
+  wire  common_overflow = $signed(_common_overflow_T) >= 4'sh3; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 196:50]
+  wire  common_totalUnderflow = $signed(sRoundedExp) < 11'sh6b; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 200:31]
+  wire  isNaNOut = io_invalidExc | io_in_isNaN; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 235:34]
+  wire  commonCase = ~isNaNOut & ~io_in_isInf & ~io_in_isZero; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 237:61]
+  wire  overflow = commonCase & common_overflow; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 238:32]
+  wire  notNaN_isInfOut = io_in_isInf | overflow; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 248:32]
+  wire  signOut = isNaNOut ? 1'h0 : io_in_sign; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 250:22]
+  wire [8:0] _expOut_T_1 = io_in_isZero | common_totalUnderflow ? 9'h1c0 : 9'h0; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 253:18]
+  wire [8:0] _expOut_T_2 = ~_expOut_T_1; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 253:14]
+  wire [8:0] _expOut_T_3 = common_expOut & _expOut_T_2; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 252:24]
+  wire [8:0] _expOut_T_11 = notNaN_isInfOut ? 9'h40 : 9'h0; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 265:18]
+  wire [8:0] _expOut_T_12 = ~_expOut_T_11; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 265:14]
+  wire [8:0] _expOut_T_13 = _expOut_T_3 & _expOut_T_12; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 264:17]
+  wire [8:0] _expOut_T_18 = notNaN_isInfOut ? 9'h180 : 9'h0; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 277:16]
+  wire [8:0] _expOut_T_19 = _expOut_T_13 | _expOut_T_18; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 276:15]
+  wire [8:0] _expOut_T_20 = isNaNOut ? 9'h1c0 : 9'h0; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 278:16]
+  wire [8:0] expOut = _expOut_T_19 | _expOut_T_20; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 277:73]
+  wire [22:0] _fractOut_T_2 = isNaNOut ? 23'h400000 : 23'h0; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 281:16]
+  wire [22:0] fractOut = isNaNOut | io_in_isZero | common_totalUnderflow ? _fractOut_T_2 : common_fractOut; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 280:12]
+  wire [9:0] _io_out_T = {signOut,expOut}; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 286:23]
+  assign io_out = {_io_out_T,fractOut}; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 286:33]
 endmodule
-module RoundRawFNToRecFN( // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 294:5]
-  input         io_invalidExc, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 297:16]
-  input         io_in_isNaN, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 297:16]
-  input         io_in_isInf, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 297:16]
-  input         io_in_isZero, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 297:16]
-  input         io_in_sign, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 297:16]
-  input  [9:0]  io_in_sExp, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 297:16]
-  input  [26:0] io_in_sig, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 297:16]
-  output [32:0] io_out // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 297:16]
+module RoundRawFNToRecFN_e8_s24( // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 295:5]
+  input         io_invalidExc, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 299:16]
+  input         io_in_isNaN, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 299:16]
+  input         io_in_isInf, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 299:16]
+  input         io_in_isZero, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 299:16]
+  input         io_in_sign, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 299:16]
+  input  [9:0]  io_in_sExp, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 299:16]
+  input  [26:0] io_in_sig, // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 299:16]
+  output [32:0] io_out // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 299:16]
 );
-  wire  roundAnyRawFNToRecFN_io_invalidExc; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 308:15]
-  wire  roundAnyRawFNToRecFN_io_in_isNaN; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 308:15]
-  wire  roundAnyRawFNToRecFN_io_in_isInf; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 308:15]
-  wire  roundAnyRawFNToRecFN_io_in_isZero; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 308:15]
-  wire  roundAnyRawFNToRecFN_io_in_sign; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 308:15]
-  wire [9:0] roundAnyRawFNToRecFN_io_in_sExp; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 308:15]
-  wire [26:0] roundAnyRawFNToRecFN_io_in_sig; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 308:15]
-  wire [32:0] roundAnyRawFNToRecFN_io_out; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 308:15]
-  RoundAnyRawFNToRecFN roundAnyRawFNToRecFN ( // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 308:15]
+  wire  roundAnyRawFNToRecFN_io_invalidExc; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 310:15]
+  wire  roundAnyRawFNToRecFN_io_in_isNaN; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 310:15]
+  wire  roundAnyRawFNToRecFN_io_in_isInf; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 310:15]
+  wire  roundAnyRawFNToRecFN_io_in_isZero; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 310:15]
+  wire  roundAnyRawFNToRecFN_io_in_sign; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 310:15]
+  wire [9:0] roundAnyRawFNToRecFN_io_in_sExp; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 310:15]
+  wire [26:0] roundAnyRawFNToRecFN_io_in_sig; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 310:15]
+  wire [32:0] roundAnyRawFNToRecFN_io_out; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 310:15]
+  RoundAnyRawFNToRecFN_ie8_is26_oe8_os24 roundAnyRawFNToRecFN ( // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 310:15]
     .io_invalidExc(roundAnyRawFNToRecFN_io_invalidExc),
     .io_in_isNaN(roundAnyRawFNToRecFN_io_in_isNaN),
     .io_in_isInf(roundAnyRawFNToRecFN_io_in_isInf),
@@ -239,14 +239,14 @@ module RoundRawFNToRecFN( // @[generators/hardfloat/hardfloat/src/main/scala/Rou
     .io_in_sig(roundAnyRawFNToRecFN_io_in_sig),
     .io_out(roundAnyRawFNToRecFN_io_out)
   );
-  assign io_out = roundAnyRawFNToRecFN_io_out; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 316:23]
-  assign roundAnyRawFNToRecFN_io_invalidExc = io_invalidExc; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 311:44]
-  assign roundAnyRawFNToRecFN_io_in_isNaN = io_in_isNaN; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 313:44]
-  assign roundAnyRawFNToRecFN_io_in_isInf = io_in_isInf; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 313:44]
-  assign roundAnyRawFNToRecFN_io_in_isZero = io_in_isZero; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 313:44]
-  assign roundAnyRawFNToRecFN_io_in_sign = io_in_sign; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 313:44]
-  assign roundAnyRawFNToRecFN_io_in_sExp = io_in_sExp; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 313:44]
-  assign roundAnyRawFNToRecFN_io_in_sig = io_in_sig; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 313:44]
+  assign io_out = roundAnyRawFNToRecFN_io_out; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 318:23]
+  assign roundAnyRawFNToRecFN_io_invalidExc = io_invalidExc; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 313:44]
+  assign roundAnyRawFNToRecFN_io_in_isNaN = io_in_isNaN; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 315:44]
+  assign roundAnyRawFNToRecFN_io_in_isInf = io_in_isInf; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 315:44]
+  assign roundAnyRawFNToRecFN_io_in_isZero = io_in_isZero; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 315:44]
+  assign roundAnyRawFNToRecFN_io_in_sign = io_in_sign; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 315:44]
+  assign roundAnyRawFNToRecFN_io_in_sExp = io_in_sExp; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 315:44]
+  assign roundAnyRawFNToRecFN_io_in_sig = io_in_sig; // @[generators/hardfloat/hardfloat/src/main/scala/RoundAnyRawFNToRecFN.scala 315:44]
 endmodule
 module MulRecFN( // @[generators/hardfloat/hardfloat/src/main/scala/MulRecFN.scala 100:7]
   input  [32:0] io_a, // @[generators/hardfloat/hardfloat/src/main/scala/MulRecFN.scala 102:16]
@@ -311,7 +311,7 @@ module MulRecFN( // @[generators/hardfloat/hardfloat/src/main/scala/MulRecFN.sca
     .io_rawOut_sExp(mulRawFN__io_rawOut_sExp),
     .io_rawOut_sig(mulRawFN__io_rawOut_sig)
   );
-  RoundRawFNToRecFN roundRawFNToRecFN ( // @[generators/hardfloat/hardfloat/src/main/scala/MulRecFN.scala 121:15]
+  RoundRawFNToRecFN_e8_s24 roundRawFNToRecFN ( // @[generators/hardfloat/hardfloat/src/main/scala/MulRecFN.scala 121:15]
     .io_invalidExc(roundRawFNToRecFN_io_invalidExc),
     .io_in_isNaN(roundRawFNToRecFN_io_in_isNaN),
     .io_in_isInf(roundRawFNToRecFN_io_in_isInf),
@@ -341,6 +341,188 @@ module MulRecFN( // @[generators/hardfloat/hardfloat/src/main/scala/MulRecFN.sca
   assign roundRawFNToRecFN_io_in_sign = mulRawFN__io_rawOut_sign; // @[generators/hardfloat/hardfloat/src/main/scala/MulRecFN.scala 124:39]
   assign roundRawFNToRecFN_io_in_sExp = mulRawFN__io_rawOut_sExp; // @[generators/hardfloat/hardfloat/src/main/scala/MulRecFN.scala 124:39]
   assign roundRawFNToRecFN_io_in_sig = mulRawFN__io_rawOut_sig; // @[generators/hardfloat/hardfloat/src/main/scala/MulRecFN.scala 124:39]
+endmodule
+module StallingPipe( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 48:7]
+  input         clock, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 48:7]
+  input         reset, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 48:7]
+  input         io_stall, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  input         io_enq_valid, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  input  [32:0] io_enq_bits_0, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  input  [32:0] io_enq_bits_1, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  input  [32:0] io_enq_bits_2, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  input  [32:0] io_enq_bits_3, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  output        io_deq_valid, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  output [32:0] io_deq_bits_0, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  output [32:0] io_deq_bits_1, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  output [32:0] io_deq_bits_2, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  output [32:0] io_deq_bits_3 // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+);
+`ifdef RANDOMIZE_REG_INIT
+  reg [31:0] _RAND_0;
+  reg [63:0] _RAND_1;
+  reg [63:0] _RAND_2;
+  reg [63:0] _RAND_3;
+  reg [63:0] _RAND_4;
+`endif // RANDOMIZE_REG_INIT
+  wire  _v_T = ~io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:44]
+  reg  v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:20]
+  reg [32:0] b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+  reg [32:0] b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+  reg [32:0] b_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+  reg [32:0] b_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+  assign io_deq_valid = v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 69:16]
+  assign io_deq_bits_0 = b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 70:15]
+  assign io_deq_bits_1 = b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 70:15]
+  assign io_deq_bits_2 = b_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 70:15]
+  assign io_deq_bits_3 = b_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 70:15]
+  always @(posedge clock) begin
+    if (reset) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:20]
+      v <= 1'h0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:20]
+    end else if (~io_stall) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:20]
+      v <= io_enq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:20]
+    end
+    if (_v_T & io_enq_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+      b_0 <= io_enq_bits_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+    end
+    if (_v_T & io_enq_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+      b_1 <= io_enq_bits_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+    end
+    if (_v_T & io_enq_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+      b_2 <= io_enq_bits_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+    end
+    if (_v_T & io_enq_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+      b_3 <= io_enq_bits_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+    end
+  end
+// Register and memory initialization
+`ifdef RANDOMIZE_GARBAGE_ASSIGN
+`define RANDOMIZE
+`endif
+`ifdef RANDOMIZE_INVALID_ASSIGN
+`define RANDOMIZE
+`endif
+`ifdef RANDOMIZE_REG_INIT
+`define RANDOMIZE
+`endif
+`ifdef RANDOMIZE_MEM_INIT
+`define RANDOMIZE
+`endif
+`ifndef RANDOM
+`define RANDOM $random
+`endif
+`ifdef RANDOMIZE_MEM_INIT
+  integer initvar;
+`endif
+`ifndef SYNTHESIS
+`ifdef FIRRTL_BEFORE_INITIAL
+`FIRRTL_BEFORE_INITIAL
+`endif
+initial begin
+  `ifdef RANDOMIZE
+    `ifdef INIT_RANDOM
+      `INIT_RANDOM
+    `endif
+    `ifndef VERILATOR
+      `ifdef RANDOMIZE_DELAY
+        #`RANDOMIZE_DELAY begin end
+      `else
+        #0.002 begin end
+      `endif
+    `endif
+`ifdef RANDOMIZE_REG_INIT
+  _RAND_0 = {1{`RANDOM}};
+  v = _RAND_0[0:0];
+  _RAND_1 = {2{`RANDOM}};
+  b_0 = _RAND_1[32:0];
+  _RAND_2 = {2{`RANDOM}};
+  b_1 = _RAND_2[32:0];
+  _RAND_3 = {2{`RANDOM}};
+  b_2 = _RAND_3[32:0];
+  _RAND_4 = {2{`RANDOM}};
+  b_3 = _RAND_4[32:0];
+`endif // RANDOMIZE_REG_INIT
+  `endif // RANDOMIZE
+end // initial
+`ifdef FIRRTL_AFTER_INITIAL
+`FIRRTL_AFTER_INITIAL
+`endif
+`endif // SYNTHESIS
+endmodule
+module StallingPipe_1( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 48:7]
+  input         clock, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 48:7]
+  input         reset, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 48:7]
+  input         io_stall, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  input         io_enq_valid, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  input  [32:0] io_enq_bits, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  output        io_deq_valid, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  output [32:0] io_deq_bits // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+);
+`ifdef RANDOMIZE_REG_INIT
+  reg [31:0] _RAND_0;
+  reg [63:0] _RAND_1;
+`endif // RANDOMIZE_REG_INIT
+  wire  _v_T = ~io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:44]
+  reg  v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:20]
+  reg [32:0] b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+  assign io_deq_valid = v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 69:16]
+  assign io_deq_bits = b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 70:15]
+  always @(posedge clock) begin
+    if (reset) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:20]
+      v <= 1'h0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:20]
+    end else if (~io_stall) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:20]
+      v <= io_enq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:20]
+    end
+    if (_v_T & io_enq_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+      b <= io_enq_bits; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+    end
+  end
+// Register and memory initialization
+`ifdef RANDOMIZE_GARBAGE_ASSIGN
+`define RANDOMIZE
+`endif
+`ifdef RANDOMIZE_INVALID_ASSIGN
+`define RANDOMIZE
+`endif
+`ifdef RANDOMIZE_REG_INIT
+`define RANDOMIZE
+`endif
+`ifdef RANDOMIZE_MEM_INIT
+`define RANDOMIZE
+`endif
+`ifndef RANDOM
+`define RANDOM $random
+`endif
+`ifdef RANDOMIZE_MEM_INIT
+  integer initvar;
+`endif
+`ifndef SYNTHESIS
+`ifdef FIRRTL_BEFORE_INITIAL
+`FIRRTL_BEFORE_INITIAL
+`endif
+initial begin
+  `ifdef RANDOMIZE
+    `ifdef INIT_RANDOM
+      `INIT_RANDOM
+    `endif
+    `ifndef VERILATOR
+      `ifdef RANDOMIZE_DELAY
+        #`RANDOMIZE_DELAY begin end
+      `else
+        #0.002 begin end
+      `endif
+    `endif
+`ifdef RANDOMIZE_REG_INIT
+  _RAND_0 = {1{`RANDOM}};
+  v = _RAND_0[0:0];
+  _RAND_1 = {2{`RANDOM}};
+  b = _RAND_1[32:0];
+`endif // RANDOMIZE_REG_INIT
+  `endif // RANDOMIZE
+end // initial
+`ifdef FIRRTL_AFTER_INITIAL
+`FIRRTL_AFTER_INITIAL
+`endif
+`endif // SYNTHESIS
 endmodule
 module AddRawFN( // @[generators/hardfloat/hardfloat/src/main/scala/AddRecFN.scala 47:7]
   input         io_a_isNaN, // @[generators/hardfloat/hardfloat/src/main/scala/AddRecFN.scala 49:16]
@@ -557,7 +739,7 @@ module AddRecFN( // @[generators/hardfloat/hardfloat/src/main/scala/AddRecFN.sca
     .io_rawOut_sExp(addRawFN__io_rawOut_sExp),
     .io_rawOut_sig(addRawFN__io_rawOut_sig)
   );
-  RoundRawFNToRecFN roundRawFNToRecFN ( // @[generators/hardfloat/hardfloat/src/main/scala/AddRecFN.scala 157:15]
+  RoundRawFNToRecFN_e8_s24 roundRawFNToRecFN ( // @[generators/hardfloat/hardfloat/src/main/scala/AddRecFN.scala 157:15]
     .io_invalidExc(roundRawFNToRecFN_io_invalidExc),
     .io_in_isNaN(roundRawFNToRecFN_io_in_isNaN),
     .io_in_isInf(roundRawFNToRecFN_io_in_isInf),
@@ -588,197 +770,40 @@ module AddRecFN( // @[generators/hardfloat/hardfloat/src/main/scala/AddRecFN.sca
   assign roundRawFNToRecFN_io_in_sExp = addRawFN__io_rawOut_sExp; // @[generators/hardfloat/hardfloat/src/main/scala/AddRecFN.scala 160:39]
   assign roundRawFNToRecFN_io_in_sig = addRawFN__io_rawOut_sig; // @[generators/hardfloat/hardfloat/src/main/scala/AddRecFN.scala 160:39]
 endmodule
-module DotProductPipe( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 91:7]
-  input         clock, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 91:7]
-  input         reset, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 91:7]
-  input         io_in_valid, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
-  input  [32:0] io_in_bits_a_0, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
-  input  [32:0] io_in_bits_a_1, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
-  input  [32:0] io_in_bits_a_2, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
-  input  [32:0] io_in_bits_a_3, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
-  input  [32:0] io_in_bits_b_0, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
-  input  [32:0] io_in_bits_b_1, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
-  input  [32:0] io_in_bits_b_2, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
-  input  [32:0] io_in_bits_b_3, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
-  input  [32:0] io_in_bits_c, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
-  input         io_stall, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
-  output        io_out_valid, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
-  output [32:0] io_out_bits_data // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 95:14]
+module StallingPipe_2( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 48:7]
+  input         clock, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 48:7]
+  input         reset, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 48:7]
+  input         io_stall, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  input         io_enq_valid, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  input  [32:0] io_enq_bits_0, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  input  [32:0] io_enq_bits_1, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  output        io_deq_valid, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  output [32:0] io_deq_bits_0, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
+  output [32:0] io_deq_bits_1 // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 63:14]
 );
 `ifdef RANDOMIZE_REG_INIT
   reg [31:0] _RAND_0;
   reg [63:0] _RAND_1;
   reg [63:0] _RAND_2;
-  reg [63:0] _RAND_3;
-  reg [63:0] _RAND_4;
-  reg [63:0] _RAND_5;
-  reg [31:0] _RAND_6;
-  reg [63:0] _RAND_7;
-  reg [63:0] _RAND_8;
-  reg [63:0] _RAND_9;
-  reg [31:0] _RAND_10;
-  reg [63:0] _RAND_11;
-  reg [63:0] _RAND_12;
-  reg [31:0] _RAND_13;
-  reg [63:0] _RAND_14;
 `endif // RANDOMIZE_REG_INIT
-  wire [32:0] mul_0_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
-  wire [32:0] mul_0_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
-  wire [32:0] mul_0_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
-  wire [32:0] mul_1_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
-  wire [32:0] mul_1_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
-  wire [32:0] mul_1_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
-  wire [32:0] mul_2_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
-  wire [32:0] mul_2_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
-  wire [32:0] mul_2_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
-  wire [32:0] mul_3_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
-  wire [32:0] mul_3_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
-  wire [32:0] mul_3_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
-  wire [32:0] add1_0_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 123:38]
-  wire [32:0] add1_0_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 123:38]
-  wire [32:0] add1_0_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 123:38]
-  wire [32:0] add1_1_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 123:38]
-  wire [32:0] add1_1_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 123:38]
-  wire [32:0] add1_1_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 123:38]
-  wire [32:0] add2_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 137:20]
-  wire [32:0] add2_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 137:20]
-  wire [32:0] add2_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 137:20]
-  wire [32:0] acc_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 150:19]
-  wire [32:0] acc_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 150:19]
-  wire [32:0] acc_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 150:19]
-  wire  _mulStageOut_stalling_pipe_v_T = ~io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:44]
-  reg  mulStageOut_stalling_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-  reg [32:0] mulStageOut_stalling_pipe_b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-  reg [32:0] mulStageOut_stalling_pipe_b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-  reg [32:0] mulStageOut_stalling_pipe_b_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-  reg [32:0] mulStageOut_stalling_pipe_b_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-  wire [32:0] _mulStageOut_WIRE_0 = mul_0_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 118:{64,64}]
-  wire [32:0] _mulStageOut_WIRE_1 = mul_1_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 118:{64,64}]
-  wire [32:0] _mulStageOut_WIRE_2 = mul_2_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 118:{64,64}]
-  wire [32:0] _mulStageOut_WIRE_3 = mul_3_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 118:{64,64}]
-  reg [32:0] mulStageC_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-  reg  add1StageOut_stalling_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-  reg [32:0] add1StageOut_stalling_pipe_b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-  reg [32:0] add1StageOut_stalling_pipe_b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-  wire [32:0] _add1StageOut_WIRE_0 = add1_0_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 132:{71,71}]
-  wire [32:0] _add1StageOut_WIRE_1 = add1_1_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 132:{71,71}]
-  reg [32:0] add1StageC_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-  reg  add2StageOut_stalling_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-  reg [32:0] add2StageOut_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-  reg [32:0] add2StageC_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-  reg  accStageOut_stalling_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-  reg [32:0] accStageOut_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-  MulRecFN mul_0 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
-    .io_a(mul_0_io_a),
-    .io_b(mul_0_io_b),
-    .io_out(mul_0_io_out)
-  );
-  MulRecFN mul_1 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
-    .io_a(mul_1_io_a),
-    .io_b(mul_1_io_b),
-    .io_out(mul_1_io_out)
-  );
-  MulRecFN mul_2 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
-    .io_a(mul_2_io_a),
-    .io_b(mul_2_io_b),
-    .io_out(mul_2_io_out)
-  );
-  MulRecFN mul_3 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 109:33]
-    .io_a(mul_3_io_a),
-    .io_b(mul_3_io_b),
-    .io_out(mul_3_io_out)
-  );
-  AddRecFN add1_0 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 123:38]
-    .io_a(add1_0_io_a),
-    .io_b(add1_0_io_b),
-    .io_out(add1_0_io_out)
-  );
-  AddRecFN add1_1 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 123:38]
-    .io_a(add1_1_io_a),
-    .io_b(add1_1_io_b),
-    .io_out(add1_1_io_out)
-  );
-  AddRecFN add2 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 137:20]
-    .io_a(add2_io_a),
-    .io_b(add2_io_b),
-    .io_out(add2_io_out)
-  );
-  AddRecFN acc ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 150:19]
-    .io_a(acc_io_a),
-    .io_b(acc_io_b),
-    .io_out(acc_io_out)
-  );
-  assign io_out_valid = accStageOut_stalling_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 74:17]
-  assign io_out_bits_data = accStageOut_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
-  assign mul_0_io_a = io_in_bits_a_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 114:12]
-  assign mul_0_io_b = io_in_bits_b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 115:12]
-  assign mul_1_io_a = io_in_bits_a_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 114:12]
-  assign mul_1_io_b = io_in_bits_b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 115:12]
-  assign mul_2_io_a = io_in_bits_a_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 114:12]
-  assign mul_2_io_b = io_in_bits_b_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 115:12]
-  assign mul_3_io_a = io_in_bits_a_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 114:12]
-  assign mul_3_io_b = io_in_bits_b_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 115:12]
-  assign add1_0_io_a = mulStageOut_stalling_pipe_b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
-  assign add1_0_io_b = mulStageOut_stalling_pipe_b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
-  assign add1_1_io_a = mulStageOut_stalling_pipe_b_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
-  assign add1_1_io_b = mulStageOut_stalling_pipe_b_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
-  assign add2_io_a = add1StageOut_stalling_pipe_b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
-  assign add2_io_b = add1StageOut_stalling_pipe_b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
-  assign acc_io_a = add2StageOut_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
-  assign acc_io_b = add2StageC_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 71:21 75:16]
+  wire  _v_T = ~io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:44]
+  reg  v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:20]
+  reg [32:0] b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+  reg [32:0] b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+  assign io_deq_valid = v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 69:16]
+  assign io_deq_bits_0 = b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 70:15]
+  assign io_deq_bits_1 = b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 70:15]
   always @(posedge clock) begin
-    if (reset) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-      mulStageOut_stalling_pipe_v <= 1'h0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-    end else if (~io_stall) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-      mulStageOut_stalling_pipe_v <= io_in_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
+    if (reset) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:20]
+      v <= 1'h0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:20]
+    end else if (~io_stall) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:20]
+      v <= io_enq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 67:20]
     end
-    if (_mulStageOut_stalling_pipe_v_T & io_in_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-      mulStageOut_stalling_pipe_b_0 <= _mulStageOut_WIRE_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+    if (_v_T & io_enq_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+      b_0 <= io_enq_bits_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
     end
-    if (_mulStageOut_stalling_pipe_v_T & io_in_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-      mulStageOut_stalling_pipe_b_1 <= _mulStageOut_WIRE_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-    end
-    if (_mulStageOut_stalling_pipe_v_T & io_in_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-      mulStageOut_stalling_pipe_b_2 <= _mulStageOut_WIRE_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-    end
-    if (_mulStageOut_stalling_pipe_v_T & io_in_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-      mulStageOut_stalling_pipe_b_3 <= _mulStageOut_WIRE_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-    end
-    if (_mulStageOut_stalling_pipe_v_T & io_in_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-      mulStageC_stalling_pipe_b <= io_in_bits_c; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-    end
-    if (reset) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-      add1StageOut_stalling_pipe_v <= 1'h0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-    end else if (~io_stall) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-      add1StageOut_stalling_pipe_v <= mulStageOut_stalling_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-    end
-    if (_mulStageOut_stalling_pipe_v_T & mulStageOut_stalling_pipe_v) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-      add1StageOut_stalling_pipe_b_0 <= _add1StageOut_WIRE_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-    end
-    if (_mulStageOut_stalling_pipe_v_T & mulStageOut_stalling_pipe_v) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-      add1StageOut_stalling_pipe_b_1 <= _add1StageOut_WIRE_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-    end
-    if (_mulStageOut_stalling_pipe_v_T & mulStageOut_stalling_pipe_v) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-      add1StageC_stalling_pipe_b <= mulStageC_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-    end
-    if (reset) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-      add2StageOut_stalling_pipe_v <= 1'h0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-    end else if (~io_stall) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-      add2StageOut_stalling_pipe_v <= add1StageOut_stalling_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-    end
-    if (_mulStageOut_stalling_pipe_v_T & add1StageOut_stalling_pipe_v) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-      add2StageOut_stalling_pipe_b <= add2_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-    end
-    if (_mulStageOut_stalling_pipe_v_T & add1StageOut_stalling_pipe_v) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-      add2StageC_stalling_pipe_b <= add1StageC_stalling_pipe_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-    end
-    if (reset) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-      accStageOut_stalling_pipe_v <= 1'h0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-    end else if (~io_stall) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-      accStageOut_stalling_pipe_v <= add2StageOut_stalling_pipe_v; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 72:24]
-    end
-    if (_mulStageOut_stalling_pipe_v_T & add2StageOut_stalling_pipe_v) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
-      accStageOut_stalling_pipe_b <= acc_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 73:24]
+    if (_v_T & io_enq_valid) begin // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
+      b_1 <= io_enq_bits_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 68:20]
     end
   end
 // Register and memory initialization
@@ -818,35 +843,11 @@ initial begin
     `endif
 `ifdef RANDOMIZE_REG_INIT
   _RAND_0 = {1{`RANDOM}};
-  mulStageOut_stalling_pipe_v = _RAND_0[0:0];
+  v = _RAND_0[0:0];
   _RAND_1 = {2{`RANDOM}};
-  mulStageOut_stalling_pipe_b_0 = _RAND_1[32:0];
+  b_0 = _RAND_1[32:0];
   _RAND_2 = {2{`RANDOM}};
-  mulStageOut_stalling_pipe_b_1 = _RAND_2[32:0];
-  _RAND_3 = {2{`RANDOM}};
-  mulStageOut_stalling_pipe_b_2 = _RAND_3[32:0];
-  _RAND_4 = {2{`RANDOM}};
-  mulStageOut_stalling_pipe_b_3 = _RAND_4[32:0];
-  _RAND_5 = {2{`RANDOM}};
-  mulStageC_stalling_pipe_b = _RAND_5[32:0];
-  _RAND_6 = {1{`RANDOM}};
-  add1StageOut_stalling_pipe_v = _RAND_6[0:0];
-  _RAND_7 = {2{`RANDOM}};
-  add1StageOut_stalling_pipe_b_0 = _RAND_7[32:0];
-  _RAND_8 = {2{`RANDOM}};
-  add1StageOut_stalling_pipe_b_1 = _RAND_8[32:0];
-  _RAND_9 = {2{`RANDOM}};
-  add1StageC_stalling_pipe_b = _RAND_9[32:0];
-  _RAND_10 = {1{`RANDOM}};
-  add2StageOut_stalling_pipe_v = _RAND_10[0:0];
-  _RAND_11 = {2{`RANDOM}};
-  add2StageOut_stalling_pipe_b = _RAND_11[32:0];
-  _RAND_12 = {2{`RANDOM}};
-  add2StageC_stalling_pipe_b = _RAND_12[32:0];
-  _RAND_13 = {1{`RANDOM}};
-  accStageOut_stalling_pipe_v = _RAND_13[0:0];
-  _RAND_14 = {2{`RANDOM}};
-  accStageOut_stalling_pipe_b = _RAND_14[32:0];
+  b_1 = _RAND_2[32:0];
 `endif // RANDOMIZE_REG_INIT
   `endif // RANDOMIZE
 end // initial
@@ -854,6 +855,273 @@ end // initial
 `FIRRTL_AFTER_INITIAL
 `endif
 `endif // SYNTHESIS
+endmodule
+module DotProductPipe( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 106:7]
+  input         clock, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 106:7]
+  input         reset, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 106:7]
+  input         io_in_valid, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 110:14]
+  input  [32:0] io_in_bits_a_0, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 110:14]
+  input  [32:0] io_in_bits_a_1, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 110:14]
+  input  [32:0] io_in_bits_a_2, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 110:14]
+  input  [32:0] io_in_bits_a_3, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 110:14]
+  input  [32:0] io_in_bits_b_0, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 110:14]
+  input  [32:0] io_in_bits_b_1, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 110:14]
+  input  [32:0] io_in_bits_b_2, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 110:14]
+  input  [32:0] io_in_bits_b_3, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 110:14]
+  input  [32:0] io_in_bits_c, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 110:14]
+  input         io_stall, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 110:14]
+  output        io_out_valid, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 110:14]
+  output [32:0] io_out_bits_data // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 110:14]
+);
+  wire [32:0] mul_0_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 124:33]
+  wire [32:0] mul_0_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 124:33]
+  wire [32:0] mul_0_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 124:33]
+  wire [32:0] mul_1_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 124:33]
+  wire [32:0] mul_1_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 124:33]
+  wire [32:0] mul_1_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 124:33]
+  wire [32:0] mul_2_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 124:33]
+  wire [32:0] mul_2_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 124:33]
+  wire [32:0] mul_2_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 124:33]
+  wire [32:0] mul_3_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 124:33]
+  wire [32:0] mul_3_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 124:33]
+  wire [32:0] mul_3_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 124:33]
+  wire  mulStageOut_p_clock; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  mulStageOut_p_reset; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  mulStageOut_p_io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  mulStageOut_p_io_enq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] mulStageOut_p_io_enq_bits_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] mulStageOut_p_io_enq_bits_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] mulStageOut_p_io_enq_bits_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] mulStageOut_p_io_enq_bits_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  mulStageOut_p_io_deq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] mulStageOut_p_io_deq_bits_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] mulStageOut_p_io_deq_bits_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] mulStageOut_p_io_deq_bits_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] mulStageOut_p_io_deq_bits_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  mulStageC_p_clock; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  mulStageC_p_reset; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  mulStageC_p_io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  mulStageC_p_io_enq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] mulStageC_p_io_enq_bits; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  mulStageC_p_io_deq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] mulStageC_p_io_deq_bits; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] add1_0_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 138:38]
+  wire [32:0] add1_0_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 138:38]
+  wire [32:0] add1_0_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 138:38]
+  wire [32:0] add1_1_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 138:38]
+  wire [32:0] add1_1_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 138:38]
+  wire [32:0] add1_1_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 138:38]
+  wire  add1StageOut_p_clock; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add1StageOut_p_reset; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add1StageOut_p_io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add1StageOut_p_io_enq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] add1StageOut_p_io_enq_bits_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] add1StageOut_p_io_enq_bits_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add1StageOut_p_io_deq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] add1StageOut_p_io_deq_bits_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] add1StageOut_p_io_deq_bits_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add1StageC_p_clock; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add1StageC_p_reset; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add1StageC_p_io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add1StageC_p_io_enq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] add1StageC_p_io_enq_bits; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add1StageC_p_io_deq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] add1StageC_p_io_deq_bits; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] add2_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 152:20]
+  wire [32:0] add2_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 152:20]
+  wire [32:0] add2_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 152:20]
+  wire  add2StageOut_p_clock; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add2StageOut_p_reset; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add2StageOut_p_io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add2StageOut_p_io_enq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] add2StageOut_p_io_enq_bits; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add2StageOut_p_io_deq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] add2StageOut_p_io_deq_bits; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add2StageC_p_clock; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add2StageC_p_reset; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add2StageC_p_io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add2StageC_p_io_enq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] add2StageC_p_io_enq_bits; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  add2StageC_p_io_deq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] add2StageC_p_io_deq_bits; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] acc_io_a; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 165:19]
+  wire [32:0] acc_io_b; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 165:19]
+  wire [32:0] acc_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 165:19]
+  wire  accStageOut_p_clock; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  accStageOut_p_reset; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  accStageOut_p_io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  accStageOut_p_io_enq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] accStageOut_p_io_enq_bits; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire  accStageOut_p_io_deq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  wire [32:0] accStageOut_p_io_deq_bits; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+  MulRecFN mul_0 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 124:33]
+    .io_a(mul_0_io_a),
+    .io_b(mul_0_io_b),
+    .io_out(mul_0_io_out)
+  );
+  MulRecFN mul_1 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 124:33]
+    .io_a(mul_1_io_a),
+    .io_b(mul_1_io_b),
+    .io_out(mul_1_io_out)
+  );
+  MulRecFN mul_2 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 124:33]
+    .io_a(mul_2_io_a),
+    .io_b(mul_2_io_b),
+    .io_out(mul_2_io_out)
+  );
+  MulRecFN mul_3 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 124:33]
+    .io_a(mul_3_io_a),
+    .io_b(mul_3_io_b),
+    .io_out(mul_3_io_out)
+  );
+  StallingPipe mulStageOut_p ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+    .clock(mulStageOut_p_clock),
+    .reset(mulStageOut_p_reset),
+    .io_stall(mulStageOut_p_io_stall),
+    .io_enq_valid(mulStageOut_p_io_enq_valid),
+    .io_enq_bits_0(mulStageOut_p_io_enq_bits_0),
+    .io_enq_bits_1(mulStageOut_p_io_enq_bits_1),
+    .io_enq_bits_2(mulStageOut_p_io_enq_bits_2),
+    .io_enq_bits_3(mulStageOut_p_io_enq_bits_3),
+    .io_deq_valid(mulStageOut_p_io_deq_valid),
+    .io_deq_bits_0(mulStageOut_p_io_deq_bits_0),
+    .io_deq_bits_1(mulStageOut_p_io_deq_bits_1),
+    .io_deq_bits_2(mulStageOut_p_io_deq_bits_2),
+    .io_deq_bits_3(mulStageOut_p_io_deq_bits_3)
+  );
+  StallingPipe_1 mulStageC_p ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+    .clock(mulStageC_p_clock),
+    .reset(mulStageC_p_reset),
+    .io_stall(mulStageC_p_io_stall),
+    .io_enq_valid(mulStageC_p_io_enq_valid),
+    .io_enq_bits(mulStageC_p_io_enq_bits),
+    .io_deq_valid(mulStageC_p_io_deq_valid),
+    .io_deq_bits(mulStageC_p_io_deq_bits)
+  );
+  AddRecFN add1_0 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 138:38]
+    .io_a(add1_0_io_a),
+    .io_b(add1_0_io_b),
+    .io_out(add1_0_io_out)
+  );
+  AddRecFN add1_1 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 138:38]
+    .io_a(add1_1_io_a),
+    .io_b(add1_1_io_b),
+    .io_out(add1_1_io_out)
+  );
+  StallingPipe_2 add1StageOut_p ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+    .clock(add1StageOut_p_clock),
+    .reset(add1StageOut_p_reset),
+    .io_stall(add1StageOut_p_io_stall),
+    .io_enq_valid(add1StageOut_p_io_enq_valid),
+    .io_enq_bits_0(add1StageOut_p_io_enq_bits_0),
+    .io_enq_bits_1(add1StageOut_p_io_enq_bits_1),
+    .io_deq_valid(add1StageOut_p_io_deq_valid),
+    .io_deq_bits_0(add1StageOut_p_io_deq_bits_0),
+    .io_deq_bits_1(add1StageOut_p_io_deq_bits_1)
+  );
+  StallingPipe_1 add1StageC_p ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+    .clock(add1StageC_p_clock),
+    .reset(add1StageC_p_reset),
+    .io_stall(add1StageC_p_io_stall),
+    .io_enq_valid(add1StageC_p_io_enq_valid),
+    .io_enq_bits(add1StageC_p_io_enq_bits),
+    .io_deq_valid(add1StageC_p_io_deq_valid),
+    .io_deq_bits(add1StageC_p_io_deq_bits)
+  );
+  AddRecFN add2 ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 152:20]
+    .io_a(add2_io_a),
+    .io_b(add2_io_b),
+    .io_out(add2_io_out)
+  );
+  StallingPipe_1 add2StageOut_p ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+    .clock(add2StageOut_p_clock),
+    .reset(add2StageOut_p_reset),
+    .io_stall(add2StageOut_p_io_stall),
+    .io_enq_valid(add2StageOut_p_io_enq_valid),
+    .io_enq_bits(add2StageOut_p_io_enq_bits),
+    .io_deq_valid(add2StageOut_p_io_deq_valid),
+    .io_deq_bits(add2StageOut_p_io_deq_bits)
+  );
+  StallingPipe_1 add2StageC_p ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+    .clock(add2StageC_p_clock),
+    .reset(add2StageC_p_reset),
+    .io_stall(add2StageC_p_io_stall),
+    .io_enq_valid(add2StageC_p_io_enq_valid),
+    .io_enq_bits(add2StageC_p_io_enq_bits),
+    .io_deq_valid(add2StageC_p_io_deq_valid),
+    .io_deq_bits(add2StageC_p_io_deq_bits)
+  );
+  AddRecFN acc ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 165:19]
+    .io_a(acc_io_a),
+    .io_b(acc_io_b),
+    .io_out(acc_io_out)
+  );
+  StallingPipe_1 accStageOut_p ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 88:19]
+    .clock(accStageOut_p_clock),
+    .reset(accStageOut_p_reset),
+    .io_stall(accStageOut_p_io_stall),
+    .io_enq_valid(accStageOut_p_io_enq_valid),
+    .io_enq_bits(accStageOut_p_io_enq_bits),
+    .io_deq_valid(accStageOut_p_io_deq_valid),
+    .io_deq_bits(accStageOut_p_io_deq_bits)
+  );
+  assign io_out_valid = accStageOut_p_io_deq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 177:16]
+  assign io_out_bits_data = accStageOut_p_io_deq_bits; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 178:20]
+  assign mul_0_io_a = io_in_bits_a_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 129:12]
+  assign mul_0_io_b = io_in_bits_b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 130:12]
+  assign mul_1_io_a = io_in_bits_a_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 129:12]
+  assign mul_1_io_b = io_in_bits_b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 130:12]
+  assign mul_2_io_a = io_in_bits_a_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 129:12]
+  assign mul_2_io_b = io_in_bits_b_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 130:12]
+  assign mul_3_io_a = io_in_bits_a_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 129:12]
+  assign mul_3_io_b = io_in_bits_b_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 130:12]
+  assign mulStageOut_p_clock = clock;
+  assign mulStageOut_p_reset = reset;
+  assign mulStageOut_p_io_stall = io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 89:16]
+  assign mulStageOut_p_io_enq_valid = io_in_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 90:20]
+  assign mulStageOut_p_io_enq_bits_0 = mul_0_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 133:{64,64}]
+  assign mulStageOut_p_io_enq_bits_1 = mul_1_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 133:{64,64}]
+  assign mulStageOut_p_io_enq_bits_2 = mul_2_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 133:{64,64}]
+  assign mulStageOut_p_io_enq_bits_3 = mul_3_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 133:{64,64}]
+  assign mulStageC_p_clock = clock;
+  assign mulStageC_p_reset = reset;
+  assign mulStageC_p_io_stall = io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 89:16]
+  assign mulStageC_p_io_enq_valid = io_in_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 90:20]
+  assign mulStageC_p_io_enq_bits = io_in_bits_c; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 91:19]
+  assign add1_0_io_a = mulStageOut_p_io_deq_bits_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 141:12]
+  assign add1_0_io_b = mulStageOut_p_io_deq_bits_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 142:12]
+  assign add1_1_io_a = mulStageOut_p_io_deq_bits_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 141:12]
+  assign add1_1_io_b = mulStageOut_p_io_deq_bits_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 142:12]
+  assign add1StageOut_p_clock = clock;
+  assign add1StageOut_p_reset = reset;
+  assign add1StageOut_p_io_stall = io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 89:16]
+  assign add1StageOut_p_io_enq_valid = mulStageOut_p_io_deq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 90:20]
+  assign add1StageOut_p_io_enq_bits_0 = add1_0_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 147:{71,71}]
+  assign add1StageOut_p_io_enq_bits_1 = add1_1_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 147:{71,71}]
+  assign add1StageC_p_clock = clock;
+  assign add1StageC_p_reset = reset;
+  assign add1StageC_p_io_stall = io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 89:16]
+  assign add1StageC_p_io_enq_valid = mulStageOut_p_io_deq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 90:20]
+  assign add1StageC_p_io_enq_bits = mulStageC_p_io_deq_bits; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 91:19]
+  assign add2_io_a = add1StageOut_p_io_deq_bits_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 155:13]
+  assign add2_io_b = add1StageOut_p_io_deq_bits_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 156:13]
+  assign add2StageOut_p_clock = clock;
+  assign add2StageOut_p_reset = reset;
+  assign add2StageOut_p_io_stall = io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 89:16]
+  assign add2StageOut_p_io_enq_valid = add1StageOut_p_io_deq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 90:20]
+  assign add2StageOut_p_io_enq_bits = add2_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 91:19]
+  assign add2StageC_p_clock = clock;
+  assign add2StageC_p_reset = reset;
+  assign add2StageC_p_io_stall = io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 89:16]
+  assign add2StageC_p_io_enq_valid = add1StageOut_p_io_deq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 90:20]
+  assign add2StageC_p_io_enq_bits = add1StageC_p_io_deq_bits; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 91:19]
+  assign acc_io_a = add2StageOut_p_io_deq_bits; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 167:12]
+  assign acc_io_b = add2StageC_p_io_deq_bits; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 168:12]
+  assign accStageOut_p_clock = clock;
+  assign accStageOut_p_reset = reset;
+  assign accStageOut_p_io_stall = io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 89:16]
+  assign accStageOut_p_io_enq_valid = add2StageOut_p_io_deq_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 90:20]
+  assign accStageOut_p_io_enq_bits = acc_io_out; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 91:19]
 endmodule
 module TensorDotProductUnit( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 11:7]
   input         clock, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 11:7]
@@ -872,21 +1140,21 @@ module TensorDotProductUnit( // @[generators/radiance/src/main/scala/radiance/co
   output        io_out_valid, // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 17:14]
   output [31:0] io_out_bits_data // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 17:14]
 );
-  wire  dpu_clock; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 35:19]
-  wire  dpu_reset; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 35:19]
-  wire  dpu_io_in_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 35:19]
-  wire [32:0] dpu_io_in_bits_a_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 35:19]
-  wire [32:0] dpu_io_in_bits_a_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 35:19]
-  wire [32:0] dpu_io_in_bits_a_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 35:19]
-  wire [32:0] dpu_io_in_bits_a_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 35:19]
-  wire [32:0] dpu_io_in_bits_b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 35:19]
-  wire [32:0] dpu_io_in_bits_b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 35:19]
-  wire [32:0] dpu_io_in_bits_b_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 35:19]
-  wire [32:0] dpu_io_in_bits_b_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 35:19]
-  wire [32:0] dpu_io_in_bits_c; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 35:19]
-  wire  dpu_io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 35:19]
-  wire  dpu_io_out_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 35:19]
-  wire [32:0] dpu_io_out_bits_data; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 35:19]
+  wire  dpu_clock; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
+  wire  dpu_reset; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
+  wire  dpu_io_in_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
+  wire [32:0] dpu_io_in_bits_a_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
+  wire [32:0] dpu_io_in_bits_a_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
+  wire [32:0] dpu_io_in_bits_a_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
+  wire [32:0] dpu_io_in_bits_a_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
+  wire [32:0] dpu_io_in_bits_b_0; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
+  wire [32:0] dpu_io_in_bits_b_1; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
+  wire [32:0] dpu_io_in_bits_b_2; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
+  wire [32:0] dpu_io_in_bits_b_3; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
+  wire [32:0] dpu_io_in_bits_c; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
+  wire  dpu_io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
+  wire  dpu_io_out_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
+  wire [32:0] dpu_io_out_bits_data; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
   wire  in1_rawIn_sign = io_in_bits_a_0[31]; // @[generators/hardfloat/hardfloat/src/main/scala/rawFloatFromFN.scala 44:18]
   wire [7:0] in1_rawIn_expIn = io_in_bits_a_0[30:23]; // @[generators/hardfloat/hardfloat/src/main/scala/rawFloatFromFN.scala 45:19]
   wire [22:0] in1_rawIn_fractIn = io_in_bits_a_0[22:0]; // @[generators/hardfloat/hardfloat/src/main/scala/rawFloatFromFN.scala 46:21]
@@ -1357,7 +1625,7 @@ module TensorDotProductUnit( // @[generators/radiance/src/main/scala/radiance/co
   wire [22:0] io_out_bits_data_fractOut = io_out_bits_data_isSubnormal ? io_out_bits_data_denormFract :
     _io_out_bits_data_fractOut_T_1; // @[generators/hardfloat/hardfloat/src/main/scala/fNFromRecFN.scala 62:16]
   wire [8:0] io_out_bits_data_hi = {io_out_bits_data_rawIn__sign,io_out_bits_data_expOut}; // @[generators/hardfloat/hardfloat/src/main/scala/fNFromRecFN.scala 66:12]
-  DotProductPipe dpu ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 35:19]
+  DotProductPipe dpu ( // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
     .clock(dpu_clock),
     .reset(dpu_reset),
     .io_in_valid(dpu_io_in_valid),
@@ -1374,11 +1642,11 @@ module TensorDotProductUnit( // @[generators/radiance/src/main/scala/radiance/co
     .io_out_valid(dpu_io_out_valid),
     .io_out_bits_data(dpu_io_out_bits_data)
   );
-  assign io_out_valid = dpu_io_out_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 42:16]
+  assign io_out_valid = dpu_io_out_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 43:16]
   assign io_out_bits_data = {io_out_bits_data_hi,io_out_bits_data_fractOut}; // @[generators/hardfloat/hardfloat/src/main/scala/fNFromRecFN.scala 66:12]
   assign dpu_clock = clock;
   assign dpu_reset = reset;
-  assign dpu_io_in_valid = io_in_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 36:19]
+  assign dpu_io_in_valid = io_in_valid; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 37:19]
   assign dpu_io_in_bits_a_0 = {_in1_T_7,in1_rawIn__sig[22:0]}; // @[generators/hardfloat/hardfloat/src/main/scala/recFNFromFN.scala 50:41]
   assign dpu_io_in_bits_a_1 = {_in1_T_17,in1_rawIn_1_sig[22:0]}; // @[generators/hardfloat/hardfloat/src/main/scala/recFNFromFN.scala 50:41]
   assign dpu_io_in_bits_a_2 = {_in1_T_27,in1_rawIn_2_sig[22:0]}; // @[generators/hardfloat/hardfloat/src/main/scala/recFNFromFN.scala 50:41]
@@ -1388,5 +1656,5 @@ module TensorDotProductUnit( // @[generators/radiance/src/main/scala/radiance/co
   assign dpu_io_in_bits_b_2 = {_in2_T_27,in2_rawIn_2_sig[22:0]}; // @[generators/hardfloat/hardfloat/src/main/scala/recFNFromFN.scala 50:41]
   assign dpu_io_in_bits_b_3 = {_in2_T_37,in2_rawIn_3_sig[22:0]}; // @[generators/hardfloat/hardfloat/src/main/scala/recFNFromFN.scala 50:41]
   assign dpu_io_in_bits_c = {_in3_T_7,in3_rawIn__sig[22:0]}; // @[generators/hardfloat/hardfloat/src/main/scala/recFNFromFN.scala 50:41]
-  assign dpu_io_stall = io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 40:16]
+  assign dpu_io_stall = io_stall; // @[generators/radiance/src/main/scala/radiance/core/TensorDPU.scala 41:16]
 endmodule

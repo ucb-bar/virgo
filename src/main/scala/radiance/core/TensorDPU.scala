@@ -28,6 +28,7 @@ class TensorDotProductUnit extends Module with tile.HasFPUParameters {
 
   val t = tile.FType.S
 
+  // IEEE -> recode() -> unbox() -> Hardfloat -> box() -> ieee() -> IEEE
   val in1 = io.in.bits.a.map(x => unbox(recode(x, S), S, Some(tile.FType.S)))
   val in2 = io.in.bits.b.map(x => unbox(recode(x, S), S, Some(tile.FType.S)))
   val in3 = unbox(recode(io.in.bits.c, S), S, Some(tile.FType.S))
@@ -57,24 +58,25 @@ class StallingPipe[T <: Data](val gen: T, val latency: Int = 1) extends Module {
     val deq = Output(Valid(gen))
   }
 
+  require(latency == 1, "StallingPipe only supports latency equals one!")
+
   val io = IO(new StallingPipeIO)
 
-  io.deq <> StallingPipe(io.stall, io.enq, latency)
+  val v = RegEnable(io.enq.valid, false.B, !io.stall)
+  val b = RegEnable(io.enq.bits, !io.stall && io.enq.valid)
+  io.deq.valid := v
+  io.deq.bits := b
 }
 
 object StallingPipe {
   import chisel3.experimental.prefix
 
   def apply[T <: Data](stall: Bool, enqValid: Bool, enqBits: T, latency: Int): Valid[T] = {
-    require(latency == 1, "StallingPipe only supports latency equals one!")
-    prefix("stalling_pipe") {
-      val out = Wire(Valid(chiselTypeOf(enqBits)))
-      val v = RegEnable(enqValid, false.B, !stall)
-      val b = RegEnable(enqBits, !stall && enqValid)
-      out.valid := v
-      out.bits := b
-      out
-    }
+    val p = Module(new StallingPipe(chiselTypeOf(enqBits), latency))
+    p.io.stall := stall
+    p.io.enq.valid := enqValid
+    p.io.enq.bits := enqBits
+    p.io.deq
   }
 
   def apply[T <: Data](stall: Bool, enqValid: Bool, enqBits: T): Valid[T] = {

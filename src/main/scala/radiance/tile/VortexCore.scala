@@ -329,6 +329,9 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   addResource("/vsrc/vortex/hw/rtl/fpu/VX_fpu_fpnew.sv")
   addResource("/vsrc/vortex/hw/rtl/core/VX_fpu_unit.sv")
 
+  // tensor core
+  // this module is referenced from inside the Verilog RTL of the core
+  // pipeline.
   addResource("/vsrc/TensorDotProductUnit.sv")
 
   // fpnew
