@@ -8,9 +8,12 @@ import chisel3.util._
 import freechips.rocketchip.tile
 
 // Implements the four-element dot product (FEDP) unit in Volta Tensor Cores.
-class TensorDotProductUnit extends Module with tile.HasFPUParameters {
-  val fLen = 32
-  val minFLen = 32
+// `half`: if True, generate fp16 MACs; if False fp32.
+class TensorDotProductUnit(val half: Boolean) extends Module with tile.HasFPUParameters {
+  val t = if (half) tile.FType.H else tile.FType.S
+
+  val fLen = t.ieeeWidth
+  val minFLen = 16 // fp16
   def xLen = 32
   val dotProductDim = 4
 
@@ -26,12 +29,12 @@ class TensorDotProductUnit extends Module with tile.HasFPUParameters {
     })
   })
 
-  val t = tile.FType.S
-
-  // IEEE -> recode() -> unbox() -> Hardfloat -> box() -> ieee() -> IEEE
-  val in1 = io.in.bits.a.map(x => unbox(recode(x, S), S, Some(tile.FType.S)))
-  val in2 = io.in.bits.b.map(x => unbox(recode(x, S), S, Some(tile.FType.S)))
-  val in3 = unbox(recode(io.in.bits.c, S), S, Some(tile.FType.S))
+  // [IEEE] -> recode() -> unbox() -> [Hardfloat] -> box() -> ieee() -> [IEEE]
+  // make sure recoding/uncoding happens only at the edge, not at every
+  // pipeline stage inside the dpu
+  val in1 = io.in.bits.a.map(x => unbox(recode(x, S), S, Some(t)))
+  val in2 = io.in.bits.b.map(x => unbox(recode(x, S), S, Some(t)))
+  val in3 = unbox(recode(io.in.bits.c, S), S, Some(t))
 
   val dpu = Module(new DotProductPipe(dotProductDim, t.exp, t.sig))
   dpu.io.in.valid := io.in.valid
@@ -88,8 +91,8 @@ object StallingPipe {
   }
 }
 
-// Computes d = a(0)*b(0) + ... + a(3)*b(3) + c.
-// Fully pipelined with a fixed latency of 4 cycles.
+// Computes d = a(0)*b(0) + ... + a(`dim`-1)*b(`dim`-1) + c.
+// Fully pipelined with a fixed latency determined by `dim`.
 class DotProductPipe(dim: Int, expWidth: Int, sigWidth: Int) extends Module {
   require(dim == 4, "DPU currently only supports dimension 4")
 
