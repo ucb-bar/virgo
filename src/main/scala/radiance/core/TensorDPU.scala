@@ -32,9 +32,10 @@ class TensorDotProductUnit(val half: Boolean) extends Module with tile.HasFPUPar
   // [IEEE] -> recode() -> unbox() -> [Hardfloat] -> box() -> ieee() -> [IEEE]
   // make sure recoding/uncoding happens only at the edge, not at every
   // pipeline stage inside the dpu
-  val in1 = io.in.bits.a.map(x => unbox(recode(x, S), S, Some(t)))
-  val in2 = io.in.bits.b.map(x => unbox(recode(x, S), S, Some(t)))
-  val in3 = unbox(recode(io.in.bits.c, S), S, Some(t))
+  val tag = if (half) H else S
+  val in1 = io.in.bits.a.map(x => unbox(recode(x, tag), tag, Some(t)))
+  val in2 = io.in.bits.b.map(x => unbox(recode(x, tag), tag, Some(t)))
+  val in3 = unbox(recode(io.in.bits.c, tag), tag, Some(t))
 
   val dpu = Module(new DotProductPipe(dotProductDim, t.exp, t.sig))
   dpu.io.in.valid := io.in.valid
@@ -44,7 +45,7 @@ class TensorDotProductUnit(val half: Boolean) extends Module with tile.HasFPUPar
   dpu.io.stall := io.stall
 
   io.out.valid := dpu.io.out.valid
-  io.out.bits.data := ieee(box(dpu.io.out.bits.data, S))
+  io.out.bits.data := ieee(box(dpu.io.out.bits.data, tag))
 }
 
 // Copied from chisel3.util.Pipe.
