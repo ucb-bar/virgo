@@ -85,7 +85,7 @@ class TensorDotProductUnitTest extends AnyFlatSpec with ChiselScalatestTester {
         // 4-cycle latency + stalls
 
         c.io.out.valid.expect(true.B)
-        c.io.out.bits.data.expect(0x56d0.U)
+        c.io.out.bits.data.expect(0x42da0000L.U)
 
         c.clock.step()
 
