@@ -19,7 +19,6 @@ EXTRA_SIM_PREPROC_DEFINES += \
 	+define+SIMULATION \
 	+define+GPR_RESET \
 	+define+GPR_DUPLICATED \
-	+define+LSU_DUP_DISABLE \
 	+define+DBG_TRACE_CORE_PIPELINE_VCS \
 	+define+PERF_ENABLE \
 	+define+ICACHE_DISABLE +define+DCACHE_DISABLE \
@@ -27,6 +26,7 @@ EXTRA_SIM_PREPROC_DEFINES += \
 	+define+GBAR_CLUSTER_ENABLE \
 	+define+FPU_FPNEW \
 	+define+SMEM_LOG_SIZE=17
+	# +define+LSU_DUP_DISABLE \
 
 VCS_NONCC_OPTS += +vcs+initreg+random
 
