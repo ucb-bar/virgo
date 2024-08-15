@@ -35,7 +35,7 @@ object defaultVortexL1Config
       cacheSize = 16384,
       numBanks = 4,
       inputSize = 16,
-      cacheLineSize = 16,
+      cacheLineSize = 16, // bytes
       writeInfoReqQSize = 16,
       mshrSize = 8,
       memSideSourceIds = 8,
