@@ -332,7 +332,8 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   // tensor core
   // this module is referenced from inside the Verilog RTL of the core
   // pipeline.
-  addResource("/vsrc/TensorDotProductUnit.sv")
+  addResource("/vsrc/TensorDotProductUnitFP32.sv")
+  // addResource("/vsrc/TensorDotProductUnit.sv")
 
   // fpnew
   // compile order matters; package definitions (ex. fpnew_pkg) should be
