@@ -45,8 +45,10 @@ class RadianceCluster (
   val gemminis = gemminiTiles.map(_.gemmini)
   val gemminiConfigs = gemminis.map(_.config)
 
-  if (!(gemminiConfigs.tail.map(_.inputType == gemminiConfigs.head.inputType).reduce(_ && _))) {
-    println("******** WARNING ********\n******** gemmini data types do not match\n******** WARNING ********")
+  if (gemminiConfigs.length > 1) {
+    if (!(gemminiConfigs.tail.map(_.inputType == gemminiConfigs.head.inputType).reduce(_ && _))) {
+      println("******** WARNING ********\n******** gemmini data types do not match\n******** WARNING ********")
+    }
   }
 
   val radianceTiles = leafTiles.values.filter(_.isInstanceOf[RadianceTile]).toSeq.asInstanceOf[Seq[RadianceTile]]

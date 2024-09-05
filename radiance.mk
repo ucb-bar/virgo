@@ -25,7 +25,7 @@ EXTRA_SIM_PREPROC_DEFINES += \
 	+define+GBAR_ENABLE \
 	+define+GBAR_CLUSTER_ENABLE \
 	+define+FPU_FPNEW \
-	+define+SMEM_LOG_SIZE=17
+	+define+SMEM_LOG_SIZE=19
 	# +define+LSU_DUP_DISABLE \
 
 VCS_NONCC_OPTS += +vcs+initreg+random
