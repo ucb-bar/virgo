@@ -24,8 +24,7 @@ EXTRA_SIM_PREPROC_DEFINES += \
 	+define+ICACHE_DISABLE +define+DCACHE_DISABLE \
 	+define+GBAR_ENABLE \
 	+define+GBAR_CLUSTER_ENABLE \
-	+define+FPU_FPNEW \
-	+define+SMEM_LOG_SIZE=19
+	+define+FPU_FPNEW
 	# +define+LSU_DUP_DISABLE \
 
 VCS_NONCC_OPTS += +vcs+initreg+random
