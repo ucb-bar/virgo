@@ -63,7 +63,7 @@ case class GemminiCoreParams(
 case class GemminiTileParams(
     tileId: Int = 0,
     gemminiConfig: GemminiArrayConfig[Float, Float, Float],
-    tileSize: Int = 4,
+    tileSize: Either[(Int, Int, Int), Int] = Right(4),
     slaveAddress: BigInt
 ) extends InstantiableTileParams[GemminiTile] {
   def instantiate(crossing: HierarchicalElementCrossingParamsLike, lookup: LookupByHartIdImpl)(
@@ -188,15 +188,27 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
 
   ciscInst := 0.U.asTypeOf(ciscInstT)
 
-  val tileSize = outer.gemminiParams.tileSize
-  val (boundsInst, spadQuartile) = (ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U,
-    _.rs2 -> (tileSize | (tileSize << 16) | (BigInt(tileSize) << 32)).U),
-      tileSize * tileSize * outer.gemminiParams.gemminiConfig.DIM)
-  println(s"gemmini cisc initialized with DIM=${outer.gemminiParams.gemminiConfig.DIM}, tileSize=${tileSize}")
-  println(f"boundsInst=${boundsInst.litValue}%x, tileSize=${tileSize}, quartile=${spadQuartile}")
+  val (tileSizeM, tileSizeN, tileSizeK) = outer.gemminiParams.tileSize match {
+    case Left(v: (Int, Int, Int)) => v
+    case Right(v: Int) => (v, v, v)
+  }
+  val config = outer.gemminiParams.gemminiConfig
+  val spadQuartile = config.sp_bank_entries * config.sp_banks / 4
+
+  // TODO: as a temporary hack, bit 7 of the cisc opcode
+  // TODO: will force the tile size to be a square base on M.
+
+  val rectBoundsInst = ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U,
+      _.rs2 -> (tileSizeM | (tileSizeN << 16) | (BigInt(tileSizeK) << 32)).U)
+  val squareBoundsInst = ciscInstT.Lit(_.inst -> 0x1220b07b.U, _.rs1 -> 0.U,
+      _.rs2 -> (tileSizeM | (tileSizeM << 16) | (BigInt(tileSizeM) << 32)).U)
+  val boundsInst = Mux(ciscId(7), squareBoundsInst, rectBoundsInst)
+
+  println(s"gemmini cisc initialized with DIM=${config.DIM}, tileSize=${tileSizeM},${tileSizeN},${tileSizeK}")
+  println(f"boundsInst=${rectBoundsInst.litValue}%x, quartile=${spadQuartile}")
   when (ciscValid) {
     assert(!accSlave.cmd.valid, "cisc state machine already busy")
-    switch (ciscId) {
+    switch (ciscId(6, 0)) {
       is (0.U) {
         ciscInst := microcodeEntry(Seq(boundsInst,
           ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> 0.U, _.rs2 -> (spadQuartile * 3).U),        // set A, B address

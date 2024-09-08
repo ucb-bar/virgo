@@ -93,7 +93,7 @@ object RadianceGemminiDataType extends Enumeration {
 }
 
 class WithRadianceGemmini(location: HierarchicalLocation, crossing: RocketCrossingParams,
-                          dim: Int, accSizeInKB: Int, tileSize: Int,
+                          dim: Int, accSizeInKB: Int, tileSize: Either[(Int, Int, Int), Int],
                           dataType: RadianceGemminiDataType.Type, dmaBytes: Int) extends Config((site, _, up) => {
   case TilesLocated(`location`) => {
     val prev = up(TilesLocated(`location`))
@@ -120,7 +120,7 @@ class WithRadianceGemmini(location: HierarchicalLocation, crossing: RocketCrossi
           )),
           mvin_scale_args = Some(ScaleArguments(
             (t: Float, u: Float) => t * u,
-            1, Float(5, 11), -1, identity = "1.0", c_str="((x) * (scale))"
+            1, Float(5, 11), -1, identity = "0x3c00", c_str="((x) * (scale))"
           )),
           mvin_scale_acc_args = None,
           has_training_convs = false,
@@ -164,7 +164,7 @@ class WithRadianceGemmini(location: HierarchicalLocation, crossing: RocketCrossi
   }
   case NumTiles => up(NumTiles) + 1
 }) {
-  def this(location: HierarchicalLocation = InSubsystem, dim: Int, accSizeInKB: Int, tileSize: Int,
+  def this(location: HierarchicalLocation, dim: Int, accSizeInKB: Int, tileSize: Either[(Int, Int, Int), Int],
            dataType: RadianceGemminiDataType.Type = RadianceGemminiDataType.FP32, dmaBytes: Int = 256) =
     this(location, RocketCrossingParams(
       master = HierarchicalElementMasterPortParams.locationDefault(location),
@@ -174,6 +174,13 @@ class WithRadianceGemmini(location: HierarchicalLocation, crossing: RocketCrossi
         case InCluster(clusterId) => CCBUS(clusterId)
       }
     ), dim, accSizeInKB, tileSize, dataType, dmaBytes)
+
+  def this(location: HierarchicalLocation, dim: Int, accSizeInKB: Int, tileSize: Int) =
+    this(location, dim, accSizeInKB, Right(tileSize))
+
+  def this(location: HierarchicalLocation, dim: Int, accSizeInKB: Int, tileSize: (Int, Int, Int),
+           dataType: RadianceGemminiDataType.Type) =
+    this(location, dim, accSizeInKB, Left(tileSize), dataType)
 }
 
 class WithRadianceSharedMem(address: BigInt,

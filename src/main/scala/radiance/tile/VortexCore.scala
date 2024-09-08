@@ -8,6 +8,7 @@ import chisel3.util._
 import chisel3.experimental._
 import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.tile._
+import radiance.subsystem.RadianceGemminiDataType
 
 class VortexBundleA(
   tagWidth: Int,
@@ -332,8 +333,8 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   // tensor core
   // this module is referenced from inside the Verilog RTL of the core
   // pipeline.
-  addResource("/vsrc/TensorDotProductUnitFP32.sv")
-  // addResource("/vsrc/TensorDotProductUnit.sv")
+  // addResource("/vsrc/TensorDotProductUnitFP32.sv")
+  addResource("/vsrc/TensorDotProductUnit.sv")
 
   // fpnew
   // compile order matters; package definitions (ex. fpnew_pkg) should be

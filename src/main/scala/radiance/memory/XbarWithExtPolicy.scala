@@ -22,7 +22,11 @@ class XbarWithExtPolicy(nameSuffix: Option[String] = None)
   val policySlaveNode = ExtPolicySlaveNode()
 
   class ImplChild extends Impl {
-    val policy: TLArbiter.Policy = (_, _, _) => policySlaveNode.in.head._1
+    println(s"policy slave node input width ${policySlaveNode.in.head._1.getWidth}")
+    val policy: TLArbiter.Policy = (width, _, _) => {
+      println(s"evaluated policy width: ${width}")
+      policySlaveNode.in.head._1
+    }
     // val wide_bundle = TLBundleParameters.union((node.in ++ node.out).map(_._2.bundle))
     // override def desiredName = (Seq("TLXbar") ++ nameSuffix ++ Seq(s"i${node.in.size}_o${node.out.size}_${wide_bundle.shortName}")).mkString("_")
     TLXbar.circuit(policy, node.in, node.out)

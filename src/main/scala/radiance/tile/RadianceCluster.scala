@@ -301,8 +301,8 @@ class RadianceCluster (
           r := subbank_r_xbar.node
           w := subbank_w_xbar.node
 
-          val ur_xbar = XbarWithExtPolicy(Some("ur"))
-          val uw_xbar = XbarWithExtPolicy(Some("uw"))
+          val ur_xbar = XbarWithExtPolicy(Some(s"ur_b${bid}_w${wid}"))
+          val uw_xbar = XbarWithExtPolicy(Some(s"uw_b${bid}_w${wid}"))
           val r_policy_node = ExtPolicyMasterNode(uniform_r_nodes(bid)(wid).length)
           val w_policy_node = ExtPolicyMasterNode(uniform_w_nodes(bid)(wid).length)
           ur_xbar.policySlaveNode := r_policy_node
@@ -543,9 +543,7 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
     dontTouch(smemWriteCounter)
 
     if (outer.stride_by_word) {
-      val (uniform_r_nodes, uniform_w_nodes) = (outer.uniform_r_nodes.get, outer.uniform_w_nodes.get)
       val uniform_fires = Seq.fill(2)(VecInit.fill(outer.smem_banks)(VecInit.fill(outer.smem_subbanks)(false.B)))
-      val word_selects_1h = Seq.fill(2)(VecInit.fill(outer.smem_banks)(0.U))
 
       outer.smem_bank_mgrs.grouped(outer.smem_subbanks).zipWithIndex.foreach { case (bank_mgrs, bid) =>
         // TODO move this loop out
@@ -554,10 +552,13 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
         //     VecInit(words_with_same_idx.toSeq).asUInt.orR
         //   }.toSeq).asUInt
         // }
-        val Seq(valid_r_sources, valid_w_sources) = outer.uniform_nodes_in.map { banks =>
-          banks(bid).map(_.map(_.in.head._1.a.valid)).transpose.map { words_in_idx =>
+        val word_selects_1h = Seq(
+          Wire(UInt(outer.uniform_nodes_in.head(bid).head.length.W)).suggestName(s"ws_r_b${bid}"),
+          Wire(UInt(outer.uniform_nodes_in.last(bid).head.length.W)).suggestName(s"ws_w_b${bid}"))
+        val Seq(valid_r_sources, valid_w_sources) = outer.uniform_nodes_in.zipWithIndex.map { case (banks, rw) =>
+          VecInit(banks(bid).map(_.map(_.in.head._1.a.valid)).transpose.map { words_in_idx =>
             VecInit(words_in_idx.toSeq).asUInt.orR
-          }
+          }.toSeq).asUInt.suggestName(s"valid_sources_rw${rw}_b${bid}")
         }
 
         assert(bank_mgrs.flatten.size == 2/* read and write */ * outer.smem_subbanks)
@@ -603,18 +604,29 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
             uf(bid)(wid) := n(bid)(wid).in.head._1.a.fire
           }
         }
-
-        println(f"valid r_sources ${valid_r_sources.length}, ${valid_r_sources}")
+        // use round robin to decide uniform select
         (word_selects_1h zip Seq(valid_r_sources, valid_w_sources)).zipWithIndex.foreach { case ((ws, vs), rw) =>
-          ws(bid) := TLArbiter.roundRobin(vs.length, VecInit(vs.toSeq).asUInt, uniform_fires(rw)(bid).asUInt.orR)
+          ws := TLArbiter.roundRobin(vs.getWidth, vs, uniform_fires(rw)(bid).asUInt.orR)
+        }
+        // mask valid into xbar to prevent triggering assertion
+        (word_selects_1h zip outer.uniform_nodes_in).foreach { case (ws, ui) =>
+          ui(bid).foreach { sources =>
+            val in_valid = sources.map(_.in.head._1.a.valid)
+            val out_valid = sources.map(_.out.head._1.a.valid)
+            (in_valid lazyZip out_valid lazyZip ws.asBools).foreach { case (iv, ov, sel) =>
+              ov := iv && sel // only present output valid if input is selected
+            }
+          }
+        }
+
+        (outer.uniform_policy_nodes zip word_selects_1h).zipWithIndex.foreach { case ((nodes_bw, ws), rw) =>
+          nodes_bw(bid).foreach { policy =>
+            println(s"policy out ${policy.out.head._1.getWidth}, word select ${ws.getWidth}")
+            policy.out.head._1 := ws
+          }
         }
       }
 
-      (outer.uniform_policy_nodes zip word_selects_1h).zipWithIndex.foreach { case ((nodes_bw, ws_b), rw) =>
-        (nodes_bw zip ws_b).zipWithIndex.foreach { case ((nodes_w, ws), bid) =>
-          nodes_w.foreach { _.out.head._1 := ws }
-        }
-      }
     } else {
       outer.smem_bank_mgrs.foreach { case Seq(r, w) =>
         val mem_depth = outer.smem_depth
