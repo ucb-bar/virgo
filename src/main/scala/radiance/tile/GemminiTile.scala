@@ -224,8 +224,8 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
       is (8.U) {
         val inst = Wire(ciscInstT)
         inst.inst := 0x1820b07b.U
-        inst.rs1 := ciscArgs(7, 0)
-        inst.rs2 := ciscArgs(15, 8)
+        inst.rs1 := ciscArgs(11, 0)
+        inst.rs2 := ciscArgs(23, 12)
         ciscInst := microcodeEntry(Seq(inst))
       }
       is (9.U) {
