@@ -18,8 +18,6 @@ import org.chipsalliance.diplomacy.{DisableMonitors, ValName}
 import radiance.memory._
 import radiance.subsystem.{RadianceFrameBufferKey, RadianceSharedMemKey}
 
-import scala.collection.mutable.ArrayBuffer
-
 case class RadianceClusterParams(
   val clusterId: Int,
   val clockSinkParams: ClockSinkParameters = ClockSinkParameters()
@@ -100,14 +98,13 @@ class RadianceCluster (
     guard_monitors { implicit p => t := from }
     t
   }
-  def connect_xbar_name(from: TLNode, name: Option[String] = None,
-                        policy: TLArbiter.Policy = TLArbiter.roundRobin): TLNexusNode = {
-    val t = LazyModule(new TLXbar(policy))
+  def connect_xbar_name(from: TLNode, name: Option[String] = None): TLNode = {
+    val t = LazyModule(new TLXbar(TLArbiter.roundRobin))
     name.map(t.suggestName)
     guard_monitors { implicit p => t.node := from }
     t.node
   }
-  def connect_xbar(from: TLNode): TLNexusNode = {
+  def connect_xbar(from: TLNode): TLNode = {
     connect_xbar_name(from, None)
   }
 
@@ -183,26 +180,19 @@ class RadianceCluster (
     }
   }
 
-  val uniform_policy_nodes: Seq[ArrayBuffer[ArrayBuffer[ExtPolicyMasterNode]]] = // mutable
-    Seq.fill(2)(ArrayBuffer.fill(smem_banks)(ArrayBuffer.fill(smem_subbanks)(null)))
-  val uniform_nodes_in: Seq[ArrayBuffer[ArrayBuffer[Seq[TLIdentityNode]]]] =
-    Seq.fill(2)(ArrayBuffer.fill(smem_banks)(ArrayBuffer.fill(smem_subbanks)(Seq())))
-  val uniform_nodes_out: Seq[ArrayBuffer[ArrayBuffer[TLIdentityNode]]] =
-    Seq.fill(2)(ArrayBuffer.fill(smem_banks)(ArrayBuffer.fill(smem_subbanks)(null)))
-
-  val (uniform_r_nodes, uniform_w_nodes, _, _) =
-
   if (stride_by_word) {
-    def dist_and_duplicate(nodes: Seq[TLNode], suffix: String): Seq[Seq[TLNexusNode]] = {
+    def dist_and_duplicate(nodes: Seq[TLNode], suffix: String): Seq[Seq[TLNode]] = {
       val word_fanout_nodes = gemminis.zip(nodes).zipWithIndex.map { case ((gemmini, node), gemmini_idx) =>
         val sp_width_bytes = gemmini.config.sp_width / 8
         val sp_subbanks = sp_width_bytes / wordSize
         val dist = DistributorNode(from = sp_width_bytes, to = wordSize)
         guard_monitors { implicit p =>
-          dist := TLBuffer(BufferParams(1, false, true), BufferParams(0)) := node
+          dist := node
         }
         val fanout = Seq.tabulate(sp_subbanks) { w =>
-          connect_xbar_name(dist, Some(s"spad_g${gemmini_idx}w${w}_fanout_$suffix"))
+          val buf = TLBuffer(BufferParams(1, false, true), BufferParams(0))
+          buf := dist
+          connect_xbar_name(buf, Some(s"spad_g${gemmini_idx}w${w}_fanout_$suffix"))
         }
         Seq.fill(smem_width / sp_width_bytes)(fanout).flatten // smem wider than spad, duplicate masters
       }
@@ -217,7 +207,7 @@ class RadianceCluster (
     val spad_sp_write_nodes = Seq.fill(smem_banks)(spad_sp_write_nodes_single_bank) // executed only once
 
     val (uniform_r_nodes, uniform_w_nodes, nonuniform_r_nodes, nonuniform_w_nodes):
-      (Seq[Seq[Seq[TLNexusNode]]], Seq[Seq[Seq[TLNexusNode]]], Seq[TLNode], Seq[TLNode]) = if (filter_aligned) {
+      (Seq[Seq[Seq[TLNode]]], Seq[Seq[Seq[TLNode]]], Seq[TLNode], Seq[TLNode]) = if (filter_aligned) {
 
       val num_lanes = radianceTiles.head.numCoreLanes
       val num_lsu_lanes = radianceTiles.head.numLsuLanes
@@ -260,10 +250,10 @@ class RadianceCluster (
         Seq.fill(2)(filter_nodes.flatMap(_.map(_._2).map(connect_xbar)))
       }
 
-      val uniform_r_nodes: Seq[Seq[Seq[TLNexusNode]]] = spad_read_nodes.map { rb =>
+      val uniform_r_nodes: Seq[Seq[Seq[TLNode]]] = spad_read_nodes.map { rb =>
         (rb zip f_aligned.head).map { case (rw, fa) => rw ++ fa }
       }
-      val uniform_w_nodes: Seq[Seq[Seq[TLNexusNode]]] = (spad_write_nodes zip spad_sp_write_nodes).map { case (wb, wsb) =>
+      val uniform_w_nodes: Seq[Seq[Seq[TLNode]]] = (spad_write_nodes zip spad_sp_write_nodes).map { case (wb, wsb) =>
         (wb lazyZip wsb lazyZip f_aligned.last).map {
           case (ww, wsw, fa) => ww ++ wsw ++ fa
         }
@@ -276,8 +266,8 @@ class RadianceCluster (
     } else {
       val splitter_nodes = radiance_smem_fanout.map { connect_one(_, RWSplitterNode.apply) }
       // these nodes access an entire line simultaneously
-      val uniform_r_nodes: Seq[Seq[Seq[TLNexusNode]]] = spad_read_nodes
-      val uniform_w_nodes: Seq[Seq[Seq[TLNexusNode]]] = (spad_write_nodes zip spad_sp_write_nodes).map { case (wb, wsb) =>
+      val uniform_r_nodes: Seq[Seq[Seq[TLNode]]] = spad_read_nodes
+      val uniform_w_nodes: Seq[Seq[Seq[TLNode]]] = (spad_write_nodes zip spad_sp_write_nodes).map { case (wb, wsb) =>
         (wb zip wsb).map { case (ww, wsw) => ww ++ wsw }
       }
       // these nodes are random access
@@ -300,39 +290,14 @@ class RadianceCluster (
         guard_monitors { implicit p =>
           r := subbank_r_xbar.node
           w := subbank_w_xbar.node
-
-          val ur_xbar = XbarWithExtPolicy(Some(s"ur_b${bid}_w${wid}"))
-          val uw_xbar = XbarWithExtPolicy(Some(s"uw_b${bid}_w${wid}"))
-          val r_policy_node = ExtPolicyMasterNode(uniform_r_nodes(bid)(wid).length)
-          val w_policy_node = ExtPolicyMasterNode(uniform_w_nodes(bid)(wid).length)
-          ur_xbar.policySlaveNode := r_policy_node
-          uw_xbar.policySlaveNode := w_policy_node
-          uniform_policy_nodes.head(bid)(wid) = r_policy_node
-          uniform_policy_nodes.last(bid)(wid) = w_policy_node
-
-          (Seq(ur_xbar, uw_xbar) lazyZip uniform_nodes_in lazyZip Seq(uniform_r_nodes, uniform_w_nodes))
-            .foreach { case (xbar, id_buf, u_nodes) =>
-
-            id_buf(bid)(wid) = u_nodes(bid)(wid).map { u =>
-              val id = TLIdentityNode()
-              xbar.node := id := u
-              id
-            }
-          }
-
-          // uniform_w_nodes(bid)(wid).foreach( uw_xbar.node := _ )
-          uniform_nodes_out.head(bid)(wid) = TLIdentityNode()
-          uniform_nodes_out.last(bid)(wid) = TLIdentityNode()
-          subbank_r_xbar.node := uniform_nodes_out.head(bid)(wid) := ur_xbar.node
-          subbank_w_xbar.node := uniform_nodes_out.last(bid)(wid) := uw_xbar.node
+          uniform_r_nodes(bid)(wid).foreach( subbank_r_xbar.node := _ )
+          uniform_w_nodes(bid)(wid).foreach( subbank_w_xbar.node := _ )
 
           nonuniform_r_nodes.foreach( subbank_r_xbar.node := _ )
           nonuniform_w_nodes.foreach( subbank_w_xbar.node := _ )
         }
       }
     }
-
-    (Some(uniform_r_nodes), Some(uniform_w_nodes), Some(nonuniform_r_nodes), Some(nonuniform_w_nodes))
   } else {
     gemminis.foreach { gemmini =>
       unified_mem_read_node :=* TLWidthWidget(smem_width) :=* gemmini.spad_read_nodes
@@ -359,8 +324,6 @@ class RadianceCluster (
       mem.head := smem_r_xbar
       mem.last := smem_w_xbar
     }
-
-    (None, None, None, None)
   }
 
   // *******************************************************
@@ -543,24 +506,7 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
     dontTouch(smemWriteCounter)
 
     if (outer.stride_by_word) {
-      val uniform_fires = Seq.fill(2)(VecInit.fill(outer.smem_banks)(VecInit.fill(outer.smem_subbanks)(false.B)))
-
       outer.smem_bank_mgrs.grouped(outer.smem_subbanks).zipWithIndex.foreach { case (bank_mgrs, bid) =>
-        // TODO move this loop out
-        // val Seq(valid_r_sources, valid_w_sources) = uniform_xbar_nodes.map(_(bid)).map { words =>
-        //   VecInit(words.map(_.out.map(_._1.a.valid)).transpose.map { words_with_same_idx =>
-        //     VecInit(words_with_same_idx.toSeq).asUInt.orR
-        //   }.toSeq).asUInt
-        // }
-        val word_selects_1h = Seq(
-          Wire(UInt(outer.uniform_nodes_in.head(bid).head.length.W)).suggestName(s"ws_r_b${bid}"),
-          Wire(UInt(outer.uniform_nodes_in.last(bid).head.length.W)).suggestName(s"ws_w_b${bid}"))
-        val Seq(valid_r_sources, valid_w_sources) = outer.uniform_nodes_in.zipWithIndex.map { case (banks, rw) =>
-          VecInit(banks(bid).map(_.map(_.in.head._1.a.valid)).transpose.map { words_in_idx =>
-            VecInit(words_in_idx.toSeq).asUInt.orR
-          }.toSeq).asUInt.suggestName(s"valid_sources_rw${rw}_b${bid}")
-        }
-
         assert(bank_mgrs.flatten.size == 2/* read and write */ * outer.smem_subbanks)
         bank_mgrs.zipWithIndex.foreach { case (Seq(r, w), wid) =>
           assert(!r.portParams.map(_.anySupportPutFull).reduce(_ || _))
@@ -596,37 +542,8 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
           // add access counters to banks
           smemReadsPerBankPerCycle(bid)(wid)  := (r_node.a.fire === true.B)
           smemWritesPerBankPerCycle(bid)(wid) := (w_node.a.fire === true.B)
-
-          // (uniform_fires zip Seq(uniform_r_nodes, uniform_w_nodes)).foreach { case (uf, n) =>
-          //   uf(bid)(wid) := VecInit(n(bid)(wid).map(_.out.head._1.a.fire)).asUInt.orR
-          // }
-          (uniform_fires zip outer.uniform_nodes_out).foreach { case (uf, n) =>
-            uf(bid)(wid) := n(bid)(wid).in.head._1.a.fire
-          }
-        }
-        // use round robin to decide uniform select
-        (word_selects_1h zip Seq(valid_r_sources, valid_w_sources)).zipWithIndex.foreach { case ((ws, vs), rw) =>
-          ws := TLArbiter.roundRobin(vs.getWidth, vs, uniform_fires(rw)(bid).asUInt.orR)
-        }
-        // mask valid into xbar to prevent triggering assertion
-        (word_selects_1h zip outer.uniform_nodes_in).foreach { case (ws, ui) =>
-          ui(bid).foreach { sources =>
-            val in_valid = sources.map(_.in.head._1.a.valid)
-            val out_valid = sources.map(_.out.head._1.a.valid)
-            (in_valid lazyZip out_valid lazyZip ws.asBools).foreach { case (iv, ov, sel) =>
-              ov := iv && sel // only present output valid if input is selected
-            }
-          }
-        }
-
-        (outer.uniform_policy_nodes zip word_selects_1h).zipWithIndex.foreach { case ((nodes_bw, ws), rw) =>
-          nodes_bw(bid).foreach { policy =>
-            println(s"policy out ${policy.out.head._1.getWidth}, word select ${ws.getWidth}")
-            policy.out.head._1 := ws
-          }
         }
       }
-
     } else {
       outer.smem_bank_mgrs.foreach { case Seq(r, w) =>
         val mem_depth = outer.smem_depth

@@ -68,8 +68,8 @@ class DistributorNode(from: Int, to: Int)(implicit p: Parameters) extends LazyMo
       m.data := ca.data((i + 1) * to * 8 - 1, i * to * 8)
       m.size := log2Ceil(to).U
     }
-    mn.map(_.a.valid).foreach(_ := cn.a.valid)
-    cn.a.ready := mn.map(_.a.ready).reduce(_ && _)
+    mn.foreach { m => m.a.valid := cn.a.valid && VecInit(mn.filter(_ != m).map(_.a.ready)).reduceTree(_ && _) }
+    cn.a.ready := VecInit(mn.map(_.a.ready)).reduceTree(_ && _)
 
     // D channel
     val cd = cn.d.bits
@@ -99,13 +99,13 @@ class DistributorNode(from: Int, to: Int)(implicit p: Parameters) extends LazyMo
     when (!partialWait) {
       cn.d.valid := false.B
       partialWait := false.B
-      when (partialValid.asBools.reduce(_ && _)) {
+      when (partialValid.andR) {
         // all valids, immediately return both metadata and data
         cn.d.valid := true.B
         cd.data := Cat(mn.map(_.d.bits.data).reverse)
         setMetadata(cd, mn.head.d.bits)
         assert(cd.data === partialData, "sanity check")
-      }.elsewhen (partialValid.asBools.reduce(_ || _)) {
+      }.elsewhen (partialValid.orR) {
         // at least 1 valid: enter partial valid state, store partial data into regs
         partialWait := true.B
         arrived := partialValid
@@ -115,7 +115,7 @@ class DistributorNode(from: Int, to: Int)(implicit p: Parameters) extends LazyMo
     }.otherwise {
       cn.d.valid := false.B
       partialWait := true.B
-      when ((arrived | partialValid).asBools.reduce(_ && _)) {
+      when ((arrived | partialValid).andR) {
         // all valids received now
         when (mn.head.d.valid) {
           setMetadata(cd, mn.head.d.bits)
@@ -127,7 +127,7 @@ class DistributorNode(from: Int, to: Int)(implicit p: Parameters) extends LazyMo
         partialWait := false.B
         cdReg := 0.U.asTypeOf(cdReg.cloneType)
         arrived := 0.U
-      }.elsewhen (partialValid.asBools.reduce(_ || _)) {
+      }.elsewhen (partialValid.orR) {
         // update partial data
         arrived := arrived | partialValid
         cdReg.data := cdReg.data | partialData
