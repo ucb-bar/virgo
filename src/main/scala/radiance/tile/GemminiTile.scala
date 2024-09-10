@@ -169,7 +169,13 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
   }
   val ciscInst = Wire(ciscInstT)
 
-  when (accSlave.cmd.valid) {
+  val accCommandQueue = Module(new Queue(UInt(32.W), 4, false, true))
+  accCommandQueue.io.enq.bits := accSlave.cmd.bits
+  accCommandQueue.io.enq.valid := accSlave.cmd.valid
+  accCommandQueue.io.deq.ready := !ciscValid
+  assert(!accSlave.cmd.valid || accCommandQueue.io.enq.ready, "cisc command queue full")
+
+  when (accCommandQueue.io.deq.fire) {
     ciscValid := true.B
     ciscId := accSlave.cmd.bits(7, 0)
     ciscArgs := accSlave.cmd.bits(31, 8)
@@ -207,7 +213,6 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
   println(s"gemmini cisc initialized with DIM=${config.DIM}, tileSize=${tileSizeM},${tileSizeN},${tileSizeK}")
   println(f"boundsInst=${rectBoundsInst.litValue}%x, quartile=${spadQuartile}")
   when (ciscValid) {
-    assert(!accSlave.cmd.valid, "cisc state machine already busy")
     switch (ciscId(6, 0)) {
       is (0.U) {
         ciscInst := microcodeEntry(Seq(boundsInst,
