@@ -37,6 +37,7 @@ class WithRadianceCores(
   n: Int,
   location: HierarchicalLocation,
   crossing: RocketCrossingParams,
+  tensorCoreFP16: Boolean,
   useVxCache: Boolean
 ) extends Config((site, _, up) => {
   case TilesLocated(`location`) => {
@@ -44,7 +45,7 @@ class WithRadianceCores(
     val idOffset = up(NumTiles)
     val coreIdOffset = up(NumRadianceCores)
     val vortex = RadianceTileParams(
-      core = VortexCoreParams(fpu = None),
+      core = VortexCoreParams(tensorCoreFP16 = tensorCoreFP16),
       btb = None,
       useVxCache = useVxCache,
       dcache = Some(DCacheParams(
@@ -77,14 +78,17 @@ class WithRadianceCores(
   case NumTiles => up(NumTiles) + n
   case NumRadianceCores => up(NumRadianceCores) + n
 }) {
-  def this(n: Int, location: HierarchicalLocation = InSubsystem, useVxCache: Boolean = false) = this(n, location, RocketCrossingParams(
+  // constructor override that omits `crossing`
+  def this(n: Int, location: HierarchicalLocation = InSubsystem,
+    tensorCoreFP16: Boolean = false, useVxCache: Boolean = false)
+  = this(n, location, RocketCrossingParams(
     master = HierarchicalElementMasterPortParams.locationDefault(location),
     slave = HierarchicalElementSlavePortParams.locationDefault(location),
     mmioBaseAddressPrefixWhere = location match {
       case InSubsystem => CBUS
       case InCluster(clusterId) => CCBUS(clusterId)
     }
-  ), useVxCache)
+  ), tensorCoreFP16, useVxCache)
 }
 
 object RadianceGemminiDataType extends Enumeration {
@@ -221,7 +225,7 @@ class WithFuzzerCores(
     val prev = up(TilesLocated(InSubsystem))
     val idOffset = up(NumTiles)
     val fuzzer = FuzzerTileParams(
-      core = VortexCoreParams(fpu = None),
+      core = VortexCoreParams(),
       useVxCache = useVxCache)
     List.tabulate(n)(i => FuzzerTileAttachParams(
       fuzzer.copy(tileId = i + idOffset),

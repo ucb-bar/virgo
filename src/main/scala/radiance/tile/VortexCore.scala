@@ -122,6 +122,7 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
       // across multiple clusters.
       Map(
         "CORE_ID" -> tile.radianceParams.coreId,
+        "TENSOR_FP16" -> (if (tile.radianceParams.core.tensorCoreFP16) 1 else 0),
         // TODO: can we get this as a parameter?
         "BOOTROM_HANG100" -> 0x10100,
         "NUM_THREADS" -> tile.numLsuLanes
@@ -145,7 +146,6 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   // addResource("/vsrc/vortex/hw/syn/synopsys/models/memory/cln28hpc/rf2_32x128_wm1/rf2_32x128_wm1.v")
   // addResource("/vsrc/vortex/hw/syn/synopsys/models/memory/cln28hpc/rf2_32x128_wm1/vsim/rf2_32x128_wm1_tb.v")
   // addResource("/vsrc/vortex/hw/syn/modelsim/vortex_tb.v")
-
 
   addResource("/vsrc/vortex/hw/rtl/VX_gpu_pkg.sv")
 
@@ -333,8 +333,11 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   // tensor core
   // this module is referenced from inside the Verilog RTL of the core
   // pipeline.
-  // addResource("/vsrc/TensorDotProductUnitFP32.sv")
-  addResource("/vsrc/TensorDotProductUnit.sv")
+  if (tile.radianceParams.core.tensorCoreFP16) {
+    addResource("/vsrc/TensorDotProductUnit.sv")
+  } else {
+    addResource("/vsrc/TensorDotProductUnitFP32.sv")
+  }
 
   // fpnew
   // compile order matters; package definitions (ex. fpnew_pkg) should be
