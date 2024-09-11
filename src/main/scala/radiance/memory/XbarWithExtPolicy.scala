@@ -22,10 +22,15 @@ class XbarWithExtPolicy(nameSuffix: Option[String] = None)
   val policySlaveNode = ExtPolicySlaveNode()
 
   class ImplChild extends Impl {
-    println(s"policy slave node input width ${policySlaveNode.in.head._1.getWidth}")
-    val policy: TLArbiter.Policy = (width, _, _) => {
-      println(s"evaluated policy width: ${width}")
-      policySlaveNode.in.head._1
+    val policy: TLArbiter.Policy = (width, valids, select) => {
+      val readys = policySlaveNode.in.head._1
+      Mux((valids & readys).orR,
+        readys, // take hint
+        TLArbiter.lowestIndexFirst(width, valids, select)
+      )
+      // readys & VecInit.fill(width)(VecInit((valids.asBools zip readys.asBools).map {
+      //   case (v, r) => r || !v
+      // }).asUInt.andR).asUInt
     }
     // val wide_bundle = TLBundleParameters.union((node.in ++ node.out).map(_._2.bundle))
     // override def desiredName = (Seq("TLXbar") ++ nameSuffix ++ Seq(s"i${node.in.size}_o${node.out.size}_${wide_bundle.shortName}")).mkString("_")
