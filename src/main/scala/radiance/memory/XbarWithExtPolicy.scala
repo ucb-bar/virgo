@@ -9,8 +9,12 @@ import org.chipsalliance.diplomacy.ValName
 import org.chipsalliance.diplomacy.lazymodule._
 import org.chipsalliance.diplomacy.nodes.{RenderedEdge, SimpleNodeImp, SinkNode, SourceNode}
 
-object ExtPolicyNodeImp extends SimpleNodeImp[Int, Int, Int, UInt] {
-  def bundle(x: Int) = UInt(x.W)
+class ExtPolicyBundle(x: Int) extends Bundle {
+  val hint = Output(UInt(x.W))
+  val actual = Input(UInt(x.W))
+}
+object ExtPolicyNodeImp extends SimpleNodeImp[Int, Int, Int, ExtPolicyBundle] {
+  def bundle(x: Int) = new ExtPolicyBundle(x)
   def edge(x: Int, y: Int, p: Parameters, sourceInfo: SourceInfo): Int = x
   def render(x: Int): RenderedEdge = RenderedEdge("ffffff")
 }
@@ -23,17 +27,12 @@ class XbarWithExtPolicy(nameSuffix: Option[String] = None)
 
   class ImplChild extends Impl {
     val policy: TLArbiter.Policy = (width, valids, select) => {
-      val readys = policySlaveNode.in.head._1
-      Mux((valids & readys).orR,
-        readys, // take hint
-        TLArbiter.lowestIndexFirst(width, valids, select)
-      )
-      // readys & VecInit.fill(width)(VecInit((valids.asBools zip readys.asBools).map {
-      //   case (v, r) => r || !v
-      // }).asUInt.andR).asUInt
+      val in = policySlaveNode.in.head._1
+      val hintHit = (valids & in.hint).orR
+      val fallback = TLArbiter.lowestIndexFirst(width, valids, !hintHit && select)
+      in.actual := select.asTypeOf(in.actual.cloneType)
+      Mux(hintHit, in.hint, fallback)
     }
-    // val wide_bundle = TLBundleParameters.union((node.in ++ node.out).map(_._2.bundle))
-    // override def desiredName = (Seq("TLXbar") ++ nameSuffix ++ Seq(s"i${node.in.size}_o${node.out.size}_${wide_bundle.shortName}")).mkString("_")
     TLXbar.circuit(policy, node.in, node.out)
   }
 

@@ -671,11 +671,26 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
           ws := TLArbiter.roundRobin(vs.getWidth, vs, uniform_fires(rw)(bid).asUInt.orR)
         }
         // mask valid into xbar to prevent triggering assertion
-        (word_selects_1h zip outer.uniform_nodes_in).foreach { case (ws, ui) =>
-          ui(bid).foreach { sources =>
+        // (word_selects_1h zip outer.uniform_nodes_in).foreach { case (ws, ui) =>
+        //   ui(bid).foreach { sources =>
+        //     val in_valid = sources.map(_.in.head._1.a.valid)
+        //     val out_valid = sources.map(_.out.head._1.a.valid)
+        //     val ws_actual = Mux((ws & VecInit(in_valid).asUInt).orR,
+        //       ws, TLArbiter.roundRobin(
+        //         in_valid.length, VecInit(in_valid).asUInt, VecInit(sources.map(_.in.head._1.a.fire)).asUInt.orR))
+        //     (in_valid lazyZip out_valid lazyZip ws_actual.asBools).foreach { case (iv, ov, sel) =>
+        //       ov := iv && sel // only present output valid if input is selected
+        //     }
+        //   }
+        // }
+        (word_selects_1h lazyZip outer.uniform_policy_nodes lazyZip outer.uniform_nodes_in).foreach { case (ws, pn, ui) =>
+          (pn(bid) zip ui(bid)).foreach { case (policies, sources) =>
             val in_valid = sources.map(_.in.head._1.a.valid)
             val out_valid = sources.map(_.out.head._1.a.valid)
-            (in_valid lazyZip out_valid lazyZip ws.asBools).foreach { case (iv, ov, sel) =>
+            val hint_hit = (ws & VecInit(in_valid).asUInt).orR
+            val ws_actual = Mux(hint_hit, ws, TLArbiter.lowestIndexFirst(
+              in_valid.length, VecInit(in_valid).asUInt, hint_hit && policies.out.head._1.actual(0)))
+            (in_valid lazyZip out_valid lazyZip ws_actual.asBools).foreach { case (iv, ov, sel) =>
               ov := iv && sel // only present output valid if input is selected
             }
           }
@@ -683,8 +698,7 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
 
         (outer.uniform_policy_nodes zip word_selects_1h).zipWithIndex.foreach { case ((nodes_bw, ws), rw) =>
           nodes_bw(bid).foreach { policy =>
-            println(s"policy out ${policy.out.head._1.getWidth}, word select ${ws.getWidth}")
-            policy.out.head._1 := ws
+            policy.out.head._1.hint := ws
           }
         }
       }
