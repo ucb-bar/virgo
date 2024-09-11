@@ -97,6 +97,7 @@ case class VortexCoreParams(
   mimpid: Int = 0x20181004, // release date in BCD
   mulDiv: Option[MulDivParams] = None,
   fpu: Option[FPUParams] = None,
+  tensorCoreFP16: Boolean = false, // FP32 if true, FP16 if false
   debugROB: Boolean = false, // if enabled, uses a C++ debug ROB to generate trace-with-wdata
   haveCease: Boolean = true, // non-standard CEASE instruction
   haveSimTimeout: Boolean = true // add plusarg for simulation timeout
