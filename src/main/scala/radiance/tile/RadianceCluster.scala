@@ -223,51 +223,104 @@ class RadianceCluster (
 
       val num_lsu_lanes = radianceTiles.head.numLsuLanes
       val num_lane_dupes = Math.max(1, smem_subbanks / num_lsu_lanes)
-      val filter_range = smem_subbanks / num_lane_dupes
+      val filter_range = Math.min(smem_subbanks, num_lsu_lanes)
+      println(s"num_lsu_lanes ${num_lsu_lanes} num_lane_dupes ${num_lane_dupes} filter_range ${filter_range}")
 
-      // (subbank, source, rw)
-      val filter_nodes: Seq[Seq[(TLNode, TLNode)]] = Seq.tabulate(num_lane_dupes) { did =>
-        Seq.tabulate(filter_range) { wid =>
-          val true_wid = did * filter_range + wid
-          val address = AddressSet(smem_base + wordSize * true_wid, (smem_size - 1) - (smem_subbanks - 1) * wordSize)
+      // (subbank, sources, aligned) = rw node
+      val (f_aligned, f_unaligned) = if (num_lsu_lanes >= smem_subbanks) {
+        val filter_nodes: Seq[Seq[(TLNode, TLNode)]] = Seq.tabulate(num_lane_dupes) { did =>
+          Seq.tabulate(filter_range) { wid =>
+            val true_wid = did * filter_range + wid
+            val address = AddressSet(smem_base + wordSize * true_wid, (smem_size - 1) - (smem_subbanks - 1) * wordSize)
 
-          radiance_smem_fanout.grouped(num_lsu_lanes).toList.zipWithIndex.flatMap { case (lanes, cid) =>
-            lanes.zipWithIndex.flatMap { case (lane, lid) =>
-              if ((lid % filter_range) == wid) {
-                println(f"c${cid}_l${lid} connected to d${did}w${wid}")
-                val filter_node = AlignFilterNode(Seq(address))(p, ValName(s"filter_l${lid}_w${true_wid}"), info)
-                DisableMonitors { implicit p => filter_node := lane }
-                // Seq((aligned splitter, unaligned splitter))
-                Seq((
-                  connect_one(filter_node, () =>
-                    RWSplitterNode(address, s"aligned_splitter_c${cid}_l${lid}_w${true_wid}")),
-                  connect_one(filter_node, () =>
-                    RWSplitterNode(AddressSet.everything, s"unaligned_splitter_c${cid}_l${lid}_w${true_wid}"))
-                ))
-              } else Seq()
+            radiance_smem_fanout.grouped(num_lsu_lanes).toList.zipWithIndex.flatMap { case (lanes, cid) =>
+              lanes.zipWithIndex.flatMap { case (lane, lid) =>
+                if ((lid % filter_range) == wid) {
+                  println(f"c${cid}_l${lid} connected to d${did}w${wid}")
+                  val filter_node = AlignFilterNode(Seq(address))(p, ValName(s"filter_l${lid}_w${true_wid}"), info)
+                  DisableMonitors { implicit p => filter_node := lane }
+                  // Seq((aligned splitter, unaligned splitter))
+                  Seq((
+                    connect_one(filter_node, () =>
+                      RWSplitterNode(address, s"aligned_splitter_c${cid}_l${lid}_w${true_wid}")),
+                    connect_one(filter_node, () =>
+                      RWSplitterNode(AddressSet.everything, s"unaligned_splitter_c${cid}_l${lid}"))
+                  ))
+                } else Seq()
+              }
             }
           }
-        }
-      }.flatten
-      val f_aligned = Seq.fill(2)(filter_nodes.map(_.map(_._1).map(connect_xbar_name(_, Some("rad_aligned")))))
+        }.flatten
 
-      val f_unaligned = if (serialize_unaligned) {
-        Seq.fill(2) {
-          val serialized_node = TLEphemeralNode()
-          val serialized_in_xbar = LazyModule(new TLXbar())
-          val serialized_out_xbar = LazyModule(new TLXbar())
-          serialized_in_xbar.suggestName("unaligned_serialized_in_xbar")
-          serialized_out_xbar.suggestName("unaligned_serialized_out_xbar")
-          guard_monitors { implicit p =>
-            filter_nodes.foreach(_.map(_._2).foreach(serialized_in_xbar.node := _))
-            serialized_node := serialized_in_xbar.node
-            serialized_out_xbar.node := serialized_node
+        val f_aligned = Seq.fill(2)(filter_nodes.map(_.map(_._1).map(connect_xbar_name(_, Some("rad_aligned")))))
+        val f_unaligned = if (serialize_unaligned) {
+          Seq.fill(2) {
+            val serialized_node = TLEphemeralNode()
+            val serialized_in_xbar = LazyModule(new TLXbar())
+            val serialized_out_xbar = LazyModule(new TLXbar())
+            serialized_in_xbar.suggestName("unaligned_serialized_in_xbar")
+            serialized_out_xbar.suggestName("unaligned_serialized_out_xbar")
+            guard_monitors { implicit p =>
+              filter_nodes.foreach(_.map(_._2).foreach(serialized_in_xbar.node := _))
+              serialized_node := serialized_in_xbar.node
+              serialized_out_xbar.node := serialized_node
+            }
+            Seq(serialized_out_xbar.node)
           }
-          Seq(serialized_out_xbar.node)
+        } else {
+          Seq.fill(2)(filter_nodes.flatMap(_.map(_._2).map(connect_xbar)))
         }
-      } else {
-        Seq.fill(2)(filter_nodes.flatMap(_.map(_._2).map(connect_xbar)))
+        (f_aligned, f_unaligned)
+      } else { // aligned: (subbanks, cores) = rw node
+        // (lanes, cores) = filter_node
+        val filter_nodes = Seq.tabulate(filter_range) { wid =>
+          val addresses = Seq.tabulate(num_lane_dupes) { did =>
+            AddressSet(smem_base + (did * filter_range + wid) * wordSize,
+              (smem_size - 1) - (smem_subbanks - 1) * wordSize)
+          }
+          radiance_smem_fanout.grouped(num_lsu_lanes).toSeq.zipWithIndex.map { case (lanes, cid) =>
+            val lane = lanes(wid)
+            val filter_node = AlignFilterNode(addresses)(p, ValName(s"filter_c${cid}_w${wid}"), info)
+            guard_monitors { implicit p =>
+              filter_node := lane
+            }
+            filter_node
+          }
+        }
+        val f_aligned_rw = Seq.tabulate(num_lane_dupes) { did =>
+          filter_nodes.zipWithIndex.map { case (cores, lid) =>
+            cores.zipWithIndex.map { case (fn, cid) =>
+              val address = AddressSet(smem_base + (did * filter_range + lid) * wordSize,
+                (smem_size - 1) - (smem_subbanks - 1) * wordSize)
+              connect_one(fn, () => RWSplitterNode(address, s"aligned_split_c${cid}_l${lid}_d${did}"))
+            }
+          }
+        }.flatten
+        val f_unaligned_rw = filter_nodes.zipWithIndex.flatMap { case (cores, lid) =>
+          cores.zipWithIndex.map { case (fn, cid) =>
+            connect_one(fn, () => RWSplitterNode(AddressSet.everything, s"unaligned_split_c${cid}_l${lid}"))
+          }
+        }
+        val f_aligned = Seq.fill(2)(f_aligned_rw.map(_.map(connect_xbar_name(_, Some("rad_aligned")))))
+
+        val f_unaligned = if (serialize_unaligned) {
+          Seq.fill(2) {
+            val serialized_node = TLEphemeralNode()
+            val serialized_in_xbar = TLXbar(nameSuffix = Some("unaligned_ser_in"))
+            val serialized_out_xbar = TLXbar(nameSuffix = Some("unaligned_ser_out"))
+            guard_monitors { implicit p =>
+              f_unaligned_rw.foreach(serialized_in_xbar := _)
+              serialized_node := serialized_in_xbar
+              serialized_out_xbar := serialized_node
+            }
+            Seq(serialized_out_xbar)
+          }
+        } else {
+          Seq.fill(2)(f_unaligned_rw.map(connect_xbar))
+        }
+        (f_aligned, f_unaligned)
       }
+
 
       val uniform_r_nodes: Seq[Seq[Seq[TLNexusNode]]] = spad_read_nodes.map { rb =>
         (rb zip f_aligned.head).map { case (rw, fa) => rw ++ fa }

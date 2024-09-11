@@ -20,20 +20,23 @@ class AlignFilterNode(filters: Seq[AddressSet])(implicit p: Parameters) extends 
     val master = seq.head.masters.head
 
     // TODO: to implement multiple filters, source Id mapping needs to be redone
-    assert(filters.length == 1, "multiple filters currently not supported")
+    // assert(filters.length == 1, "multiple filters currently not supported")
+
+    val in_mapping = TLXbar.mapInputIds(Seq.fill(filters.length + 1)(seq.head))
+    val unaligned_src_range = in_mapping.last
 
     seq.head.v1copy(
-      clients = filters.map { filter =>
+      clients = filters.zipWithIndex.map { case (filter, i) =>
         master.v2copy(
           name = s"${name}_filter_aligned",
-          sourceId = master.sourceId,
+          sourceId = in_mapping(i),
           visibility = Seq(filter),
           emits = seq.map(_.anyEmitClaims).reduce(_ mincover _)
         )
       } ++ Seq(
         master.v2copy(
           name = s"${name}_filter_unaligned",
-          sourceId = master.sourceId.shift(master.sourceId.size),
+          sourceId = unaligned_src_range,
           visibility = Seq(AddressSet.everything),
           emits = seq.map(_.anyEmitClaims).reduce(_ mincover _)
         ),
@@ -81,14 +84,18 @@ class AlignFilterNode(filters: Seq[AddressSet])(implicit p: Parameters) extends 
     val a = node.out.init.map(_._1)
     val ua = node.out.last._1
 
+    val in_mapping = TLXbar.mapInputIds(Seq.fill(filters.length + 1)(node.in.head._2.client))
+    val unaligned_src = in_mapping.last
+
     val a_aligned = filters.map(_.contains(c.a.bits.address))
 
-    (a zip a_aligned).foreach { case (a, aligned) =>
+    (a zip a_aligned).zipWithIndex.foreach { case ((a, aligned), idx) =>
       a.a.bits := c.a.bits
+      a.a.bits.source := in_mapping(idx).start.U + c.a.bits.source
       a.a.valid := c.a.valid && aligned
     }
     ua.a.bits := c.a.bits
-    ua.a.bits.source := c.a.bits.source + (1.U << c.a.bits.source.getWidth)
+    ua.a.bits.source := unaligned_src.start.U + c.a.bits.source // + (1.U << c.a.bits.source.getWidth)
     ua.a.valid := c.a.valid && !a_aligned.reduce(_ || _)
     c.a.ready := MuxCase(ua.a.ready, (a zip a_aligned).map { case (a, aligned) => aligned -> a.a.ready })
 
