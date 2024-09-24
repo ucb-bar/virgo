@@ -104,7 +104,7 @@ class AlignFilterNode(filters: Seq[AddressSet])(implicit p: Parameters) extends 
 }
 
 object AlignFilterNode {
-  def apply(filters: Seq[AddressSet])(implicit p: Parameters, valName: ValName, sourceInfo: SourceInfo): TLNexusNode = {
+  def apply(filters: Seq[AddressSet])(implicit p: Parameters, valName: ValName): TLNexusNode = {
     LazyModule(new AlignFilterNode(filters)).node
   }
 }
