@@ -3,11 +3,12 @@ package radiance.memory
 import chisel3._
 import chisel3.experimental.SourceInfo
 import chisel3.util._
-import freechips.rocketchip.diplomacy._
+import freechips.rocketchip.diplomacy.{AddressSet, TransferSizes, IdRange}
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util.BundleField
 import org.chipsalliance.cde.config.Parameters
-
+import org.chipsalliance.diplomacy.ValName
+import org.chipsalliance.diplomacy.lazymodule._
 
 class RWSplitterNode(visibility: Option[AddressSet], override val name: String = "rw_splitter")
                     (implicit p: Parameters) extends LazyModule {
@@ -55,7 +56,6 @@ class RWSplitterNode(visibility: Option[AddressSet], override val name: String =
       )
     },
     managerFn = { seq =>
-      // val fifoIdFactory = TLXbar.relabeler()
       println(f"combined address range of $name managers: " +
         f"${AddressSet.unify(seq.flatMap(_.slaves.flatMap(_.address)))}, supports:" +
         f"${seq.map(_.anySupportClaims).reduce(_ mincover _)}")
@@ -152,12 +152,12 @@ class RWSplitterNode(visibility: Option[AddressSet], override val name: String =
 
 object RWSplitterNode {
   def apply()(implicit p: Parameters, valName: ValName, sourceInfo: SourceInfo): TLNexusNode = {
-    LazyModule(new RWSplitterNode(None, name = valName.name)).node
+    LazyModule(new RWSplitterNode(None, name = valName.value)).node
   }
 
   def apply(visibility: AddressSet)
            (implicit p: Parameters, valName: ValName, sourceInfo: SourceInfo): TLNexusNode = {
-    apply(visibility, valName.name)
+    apply(visibility, valName.value)
   }
 
   def apply(visibility: AddressSet, name: String)

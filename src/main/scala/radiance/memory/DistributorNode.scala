@@ -3,10 +3,12 @@ package radiance.memory
 import chisel3._
 import chisel3.experimental.SourceInfo
 import chisel3.util._
-import freechips.rocketchip.diplomacy._
+import freechips.rocketchip.diplomacy.{AddressSet, TransferSizes}
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util.BundleField
 import org.chipsalliance.cde.config.Parameters
+import org.chipsalliance.diplomacy.ValName
+import org.chipsalliance.diplomacy.lazymodule._
 
 
 class DistributorNode(from: Int, to: Int)(implicit p: Parameters) extends LazyModule {

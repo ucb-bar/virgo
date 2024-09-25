@@ -1,12 +1,13 @@
 package radiance.memory
 
 import chisel3._
-import chisel3.experimental.SourceInfo
 import chisel3.util._
-import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util.BundleField
+import freechips.rocketchip.diplomacy.AddressSet
 import org.chipsalliance.cde.config.Parameters
+import org.chipsalliance.diplomacy.ValName
+import org.chipsalliance.diplomacy.lazymodule._
 
 // this node splits the incoming requests into two outgoing edges,
 // the first edge contains requests that match the filter AddressSet,
@@ -18,9 +19,6 @@ class AlignFilterNode(filters: Seq[AddressSet])(implicit p: Parameters) extends 
     require(seq.map(_.masters.size).sum == 1, s"there should only be one client to a filter node, " +
       s"found ${seq.map(_.masters.size).sum}")
     val master = seq.head.masters.head
-
-    // TODO: to implement multiple filters, source Id mapping needs to be redone
-    // assert(filters.length == 1, "multiple filters currently not supported")
 
     val in_mapping = TLXbar.mapInputIds(Seq.fill(filters.length + 1)(seq.head))
     val unaligned_src_range = in_mapping.last

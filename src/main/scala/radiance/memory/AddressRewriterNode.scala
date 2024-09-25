@@ -2,10 +2,10 @@ package radiance.memory
 
 import chisel3._
 import chisel3.experimental.SourceInfo
-import chisel3.util._
-import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink.TLAdapterNode
 import org.chipsalliance.cde.config.Parameters
+import org.chipsalliance.diplomacy.ValName
+import org.chipsalliance.diplomacy.lazymodule._
 
 
 class AddressRewriterNode(rewriteFn: UInt => UInt)(implicit p: Parameters) extends LazyModule {

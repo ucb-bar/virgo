@@ -16,8 +16,8 @@ import radiance.memory._
 import radiance.subsystem.{RadianceFrameBufferKey, RadianceSharedMemKey}
 
 case class RadianceClusterParams(
-  val clusterId: Int,
-  val clockSinkParams: ClockSinkParameters = ClockSinkParameters()
+  clusterId: Int,
+  clockSinkParams: ClockSinkParameters = ClockSinkParameters()
 ) extends InstantiableClusterParams[RadianceCluster] {
   val baseName = "radiance_cluster"
   val uniqueName = s"${baseName}_$clusterId"
@@ -32,28 +32,18 @@ class RadianceCluster (
   crossing: ClockCrossingType,
   lookup: LookupByClusterIdImpl
 )(implicit p: Parameters) extends Cluster(thisClusterParams, crossing, lookup) {
-  // Instantiate cluster-local shared memory scratchpad
-  //
-  // Instantiate the same number of banks as there are lanes.
+  val smemKey = p(RadianceSharedMemKey).get
+  val numCoresInCluster = leafTiles.size - gemminiTiles.size
 
- // must toSeq here, otherwise Iterable is lazy and will break diplomacy
+  // make the shared memory srams and interconnects
   val gemminiTiles = leafTiles.values.filter(_.isInstanceOf[GemminiTile]).toSeq.asInstanceOf[Seq[GemminiTile]]
   val radianceTiles = leafTiles.values.filter(_.isInstanceOf[RadianceTile]).toSeq.asInstanceOf[Seq[RadianceTile]]
 
   // TODO: this probably needs to be instantiated inside the radiance shared mem module
   val virgoSharedMemComponents = new VirgoSharedMemComponents(thisClusterParams, gemminiTiles, radianceTiles)
-  val sharedMemSystem = LazyModule(new RadianceSharedMem(virgoSharedMemComponents, clbus))
+  LazyModule(new RadianceSharedMem(virgoSharedMemComponents, clbus)).suggestName("shared_mem")
 
-  val numCoresInCluster = leafTiles.size - gemminiTiles.size
-
-  val smemKey = p(RadianceSharedMemKey).get
-  val wordSize = smemKey.wordSize
-  val smemBase = smemKey.address
-  val smemBanks = smemKey.numBanks
-  val smemWidth = smemKey.numWords * smemKey.wordSize
-  val smemDepth = smemKey.size / smemWidth / smemBanks
-  val smemSize = smemWidth * smemDepth * smemBanks
-
+  // direct core-accelerator connections
   val radianceAccSlaveNodes = Seq.fill(numCoresInCluster)(AccSlaveNode())
   (radianceAccSlaveNodes zip radianceTiles).foreach { case (a, r) => a := r.accMasterNode }
   val gemminiAccMasterNodes = gemminiTiles.map { tile =>
@@ -63,35 +53,22 @@ class RadianceCluster (
   }
   gemminiTiles.foreach { _.slaveNode :=* TLWidthWidget(4) :=* clbus.outwardNode }
 
-  val traceTLNode = TLAdapterNode(clientFn = c => c, managerFn = m => m)
   // printf and perf counter buffer
-  TLRAM(AddressSet(smemBase + smemSize, numCoresInCluster * 0x200 - 1)) := traceTLNode :=
+  val traceTLNode = TLAdapterNode(clientFn = c => c, managerFn = m => m)
+  TLRAM(AddressSet(smemKey.address + smemKey.size, numCoresInCluster * 0x200 - 1)) := traceTLNode :=
     TLBuffer() := TLFragmenter(4, 4) := clbus.outwardNode
 
+  // framebuffer
   p(RadianceFrameBufferKey).foreach { key =>
     val fb = LazyModule(new FrameBuffer(key.baseAddress, key.width, key.size, key.validAddress, key.fbName))
     fb.node := TLBuffer() := TLFragmenter(4, 4) := clbus.outwardNode
   }
 
-  // Diplomacy sink nodes for cluster-wide barrier sync signal
+  // barrier connections
   val barrierSlaveNode = BarrierSlaveNode(numCoresInCluster)
-
-  // HACK: This is a workaround of the CanAttachTile bus connecting API that
-  // works by downcasting tile and directly accessing the node inside that is
-  // not exposed as a master in HierarchicalElementCrossingParamsLike.
-  // val tile = leafTiles(0).asInstanceOf[RadianceTile]
-  // val perSmemPortXbars = Seq.fill(tile.smemNodes.size) { LazyModule(new TLXbar) }
-
-  // Tie corresponding smem ports from every tile into a single port using
-  // Xbars so that the number of ports going into the sharedmem do not scale
-  // with the number of tiles.
   radianceTiles.foreach { tile =>
-    // (perSmemPortXbars zip tile.smemNodes).foreach {
-    //   case (xbar, node) => xbar.node := node
-    // }
     barrierSlaveNode := tile.barrierMasterNode
   }
-  // perSmemPortXbars.foreach { clbus.inwardNode := _.node }
 
   override lazy val module = new RadianceClusterModuleImp(this)
 }
@@ -112,10 +89,6 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
 
   val coreAccs = outer.radianceAccSlaveNodes.map(_.in.head._1)
   val gemminiAccs = outer.gemminiAccMasterNodes.map(_.out.head._1)
-  // val gemminiTileAcc = outer.gemminiTile.accSlaveNode.in.head._1
-
-  // gemminiTileAcc.cmd := gemminiAcc.cmd
-  // gemminiAcc.status := gemminiTileAcc.status
 
   gemminiAccs.zipWithIndex.foreach { case (g, gi) =>
     val active = coreAccs.map(acc => acc.cmd.valid && (acc.dest() === gi.U))

@@ -1,7 +1,7 @@
 package radiance.memory
 import freechips.rocketchip.tilelink._
 import org.chipsalliance.diplomacy.lazymodule._
-import org.chipsalliance.diplomacy.{DisableMonitors, ValName}
+import org.chipsalliance.diplomacy.DisableMonitors
 import org.chipsalliance.cde.config.Parameters
 
 object guardMonitors {

@@ -2,7 +2,6 @@ package radiance.memory
 
 import chisel3._
 import chisel3.experimental.SourceInfo
-import chisel3.util.Valid
 import freechips.rocketchip.tilelink._
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.ValName
