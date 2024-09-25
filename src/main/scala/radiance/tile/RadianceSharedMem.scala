@@ -248,23 +248,14 @@ class RadianceSharedMemImp(outer: RadianceSharedMem) extends LazyModuleImp(outer
     wNode.d <> Queue(writeResp, 2)
   }
 
-
-  // TODO: simplify wire initialization and use tree reduction
-  // read OR write access counter for smem banks
-  val smemBankMgrsGrouped = outer.smemBankMgrs.grouped(outer.smemSubbanks)
-  val numBanks = smemBankMgrsGrouped.length
-  val counterWidth = 32
-  val smemReadsPerBankPerCycle  = Seq.fill(numBanks)(Seq.fill(outer.smemSubbanks)
-  (Wire(UInt(counterWidth.W))))
-  val smemWritesPerBankPerCycle = Seq.fill(numBanks)(Seq.fill(outer.smemSubbanks)
-  (Wire(UInt(counterWidth.W))))
-  val smemReadsPerCycle  = smemReadsPerBankPerCycle.map(_.reduce(_ + _)).reduce(_ + _)
-  val smemWritesPerCycle = smemWritesPerBankPerCycle.map(_.reduce(_ + _)).reduce(_ + _)
-  val smemReadCounter = RegInit(UInt(counterWidth.W), 0.U)
-  val smemWriteCounter = RegInit(UInt(counterWidth.W), 0.U)
-  smemReadCounter  := smemReadCounter + smemReadsPerCycle
-  smemWriteCounter := smemWriteCounter + smemWritesPerCycle
-  // smemReadsPerBankPerCycle.foreach(_.foreach(dontTouch(_)))
+  // read/write access counter for smem banks
+  val Seq(smemReadsPerCycle, smemWritesPerCycle) = outer.smemBankMgrs.transpose.map { rw =>
+    VecInit(rw.map(_.in.head._1.a.fire.asUInt)).reduceTree(_ +& _)
+  }
+  val smemReadCounter = RegInit(0.U(32.W))
+  val smemWriteCounter = RegInit(0.U(32.W))
+  smemReadCounter := smemReadCounter +& smemReadsPerCycle
+  smemWriteCounter := smemWriteCounter +& smemWritesPerCycle
   dontTouch(smemReadCounter)
   dontTouch(smemWriteCounter)
 
@@ -314,11 +305,6 @@ class RadianceSharedMemImp(outer: RadianceSharedMem) extends LazyModuleImp(outer
           log2Ceil(wordWidth).U).asUInt) || !rNode.a.valid, "word id mismatch with request")
 
         makeBuffer(mem, rNode, rEdge, wNode, wEdge)
-
-        // TODO: these should also work for non-stride-by-word
-        // add access counters to banks
-        smemReadsPerBankPerCycle(bid)(wid)  := (rNode.a.fire === true.B)
-        smemWritesPerBankPerCycle(bid)(wid) := (wNode.a.fire === true.B)
 
         (uniformFires zip outer.uniformNodesOut).foreach { case (uf, n) =>
           uf(bid)(wid) := n(bid)(wid).in.head._1.a.fire

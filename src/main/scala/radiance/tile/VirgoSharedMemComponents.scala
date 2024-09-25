@@ -31,7 +31,7 @@ class VirgoSharedMemComponents(
   val gemminis = gemminiTiles.map(_.gemmini)
   val gemminiConfigs = gemminis.map(_.config)
   gemminiConfigs.foreach { config =>
-    assert(smemBanks == config.sp_banks && isPow2(smemBanks / config.sp_banks)) // TODO: should allow >=
+    assert(smemBanks == config.sp_banks && isPow2(smemBanks / config.sp_banks))
     assert(smemWidth >= (config.sp_width / 8) && isPow2(smemWidth / (config.sp_width / 8)))
     assert(smemSize == config.sp_capacity.asInstanceOf[CapacityInKilobytes].kilobytes * 1024)
   }

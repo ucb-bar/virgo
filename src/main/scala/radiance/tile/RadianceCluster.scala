@@ -35,7 +35,6 @@ class RadianceCluster (
   // Instantiate cluster-local shared memory scratchpad
   //
   // Instantiate the same number of banks as there are lanes.
-  // val numLsuLanes = 4 // FIXME: hardcoded
 
  // must toSeq here, otherwise Iterable is lazy and will break diplomacy
   val gemminiTiles = leafTiles.values.filter(_.isInstanceOf[GemminiTile]).toSeq.asInstanceOf[Seq[GemminiTile]]
@@ -43,7 +42,7 @@ class RadianceCluster (
 
   // TODO: this probably needs to be instantiated inside the radiance shared mem module
   val virgoSharedMemComponents = new VirgoSharedMemComponents(thisClusterParams, gemminiTiles, radianceTiles)
-  lazy val sharedMemSystem = LazyModule(new RadianceSharedMem(virgoSharedMemComponents, clbus))
+  val sharedMemSystem = LazyModule(new RadianceSharedMem(virgoSharedMemComponents, clbus))
 
   val numCoresInCluster = leafTiles.size - gemminiTiles.size
 
