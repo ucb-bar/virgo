@@ -20,21 +20,21 @@ class AlignFilterNode(filters: Seq[AddressSet])(implicit p: Parameters) extends 
       s"found ${seq.map(_.masters.size).sum}")
     val master = seq.head.masters.head
 
-    val in_mapping = TLXbar.mapInputIds(Seq.fill(filters.length + 1)(seq.head))
-    val unaligned_src_range = in_mapping.last
+    val inMapping = TLXbar.mapInputIds(Seq.fill(filters.length + 1)(seq.head))
+    val unalignedSrcRange = inMapping.last
 
     seq.head.v1copy(
       clients = filters.zipWithIndex.map { case (filter, i) =>
         master.v2copy(
           name = s"${name}_filter_aligned",
-          sourceId = in_mapping(i),
+          sourceId = inMapping(i),
           visibility = Seq(filter),
           emits = seq.map(_.anyEmitClaims).reduce(_ mincover _)
         )
       } ++ Seq(
         master.v2copy(
           name = s"${name}_filter_unaligned",
-          sourceId = unaligned_src_range,
+          sourceId = unalignedSrcRange,
           visibility = Seq(AddressSet.everything),
           emits = seq.map(_.anyEmitClaims).reduce(_ mincover _)
         ),
@@ -58,46 +58,46 @@ class AlignFilterNode(filters: Seq[AddressSet])(implicit p: Parameters) extends 
     )
   })
 
-  def cast_d[T <: TLBundleD](d: TLBundleD, target_d_t: T): T = {
-    val new_d = Wire(target_d_t.cloneType)
+  def castD[T <: TLBundleD](d: TLBundleD, targetDType: T): T = {
+    val newD = Wire(targetDType.cloneType)
     d.elements.foreach { case (name, data) =>
-      val new_d_field = new_d.elements.filter(_._1 == name).head._2
-      new_d_field := data.asTypeOf(new_d_field)
+      val newDField = newD.elements.filter(_._1 == name).head._2
+      newDField := data.asTypeOf(newDField)
     }
-    new_d
+    newD
   }
 
-  def cast_d[T <: DecoupledIO[TLBundleD]](ds: Seq[DecoupledIO[TLBundleD]], target_d_t: T): Seq[T] = {
+  def castD[T <: DecoupledIO[TLBundleD]](ds: Seq[DecoupledIO[TLBundleD]], targetDType: T): Seq[T] = {
     ds.map { d =>
-      val new_d = Wire(target_d_t.cloneType)
-      new_d.valid := d.valid
-      new_d.bits := cast_d(d.bits, target_d_t.bits)
-      d.ready := new_d.ready
-      new_d
+      val newD = Wire(targetDType.cloneType)
+      newD.valid := d.valid
+      newD.bits := castD(d.bits, targetDType.bits)
+      d.ready := newD.ready
+      newD
     }
   }
 
   lazy val module = new LazyModuleImp(this) {
-    val (c, c_edge) = node.in.head
+    val (c, cEdge) = node.in.head
     val a = node.out.init.map(_._1)
     val ua = node.out.last._1
 
-    val in_mapping = TLXbar.mapInputIds(Seq.fill(filters.length + 1)(node.in.head._2.client))
-    val unaligned_src = in_mapping.last
+    val inMapping = TLXbar.mapInputIds(Seq.fill(filters.length + 1)(node.in.head._2.client))
+    val unalignedSrc = inMapping.last
 
-    val a_aligned = filters.map(_.contains(c.a.bits.address))
+    val aAligned = filters.map(_.contains(c.a.bits.address))
 
-    (a zip a_aligned).zipWithIndex.foreach { case ((a, aligned), idx) =>
+    (a zip aAligned).zipWithIndex.foreach { case ((a, aligned), idx) =>
       a.a.bits := c.a.bits
-      a.a.bits.source := in_mapping(idx).start.U + c.a.bits.source
+      a.a.bits.source := inMapping(idx).start.U + c.a.bits.source
       a.a.valid := c.a.valid && aligned
     }
     ua.a.bits := c.a.bits
-    ua.a.bits.source := unaligned_src.start.U + c.a.bits.source // + (1.U << c.a.bits.source.getWidth)
-    ua.a.valid := c.a.valid && !a_aligned.reduce(_ || _)
-    c.a.ready := MuxCase(ua.a.ready, (a zip a_aligned).map { case (a, aligned) => aligned -> a.a.ready })
+    ua.a.bits.source := unalignedSrc.start.U + c.a.bits.source // + (1.U << c.a.bits.source.getWidth)
+    ua.a.valid := c.a.valid && !aAligned.reduce(_ || _)
+    c.a.ready := MuxCase(ua.a.ready, (a zip aAligned).map { case (a, aligned) => aligned -> a.a.ready })
 
-    TLArbiter.robin(c_edge, c.d, cast_d(a.map(_.d) ++ Seq(ua.d), c.d): _*)
+    TLArbiter.robin(cEdge, c.d, castD(a.map(_.d) ++ Seq(ua.d), c.d): _*)
   }
 }
 

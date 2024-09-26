@@ -32,18 +32,17 @@ class RadianceCluster (
   crossing: ClockCrossingType,
   lookup: LookupByClusterIdImpl
 )(implicit p: Parameters) extends Cluster(thisClusterParams, crossing, lookup) {
-  val smemKey = p(RadianceSharedMemKey).get
-  val numCoresInCluster = leafTiles.size - gemminiTiles.size
-
   // make the shared memory srams and interconnects
   val gemminiTiles = leafTiles.values.filter(_.isInstanceOf[GemminiTile]).toSeq.asInstanceOf[Seq[GemminiTile]]
   val radianceTiles = leafTiles.values.filter(_.isInstanceOf[RadianceTile]).toSeq.asInstanceOf[Seq[RadianceTile]]
 
   // TODO: this probably needs to be instantiated inside the radiance shared mem module
-  val virgoSharedMemComponents = new VirgoSharedMemComponents(thisClusterParams, gemminiTiles, radianceTiles)
-  LazyModule(new RadianceSharedMem(virgoSharedMemComponents, clbus)).suggestName("shared_mem")
+  def virgoSharedMemComponentsGen() = new VirgoSharedMemComponents(thisClusterParams, gemminiTiles, radianceTiles)
+  LazyModule(new RadianceSharedMem(virgoSharedMemComponentsGen, clbus)).suggestName("shared_mem")
 
   // direct core-accelerator connections
+  val smemKey = p(RadianceSharedMemKey).get
+  val numCoresInCluster = leafTiles.size - gemminiTiles.size
   val radianceAccSlaveNodes = Seq.fill(numCoresInCluster)(AccSlaveNode())
   (radianceAccSlaveNodes zip radianceTiles).foreach { case (a, r) => a := r.accMasterNode }
   val gemminiAccMasterNodes = gemminiTiles.map { tile =>

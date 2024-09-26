@@ -20,7 +20,7 @@ trait RadianceSmemNodeProvider {
 }
 
 class RadianceSharedMem(
-    provider: RadianceSmemNodeProvider,
+    provider: () => RadianceSmemNodeProvider,
     clbus: TLBusWrapper
   )(implicit p: Parameters) extends LazyModule {
   val smemKey = p(RadianceSharedMemKey).get
@@ -34,8 +34,9 @@ class RadianceSharedMem(
 
   require(isPow2(smemBanks))
 
+  val smNodes = provider()
   val (uniformRNodes, uniformWNodes, nonuniformRNodes, nonuniformWNodes) =
-    (provider.uniformRNodes, provider.uniformWNodes, provider.nonuniformRNodes, provider.nonuniformWNodes)
+    (smNodes.uniformRNodes, smNodes.uniformWNodes, smNodes.nonuniformRNodes, smNodes.nonuniformWNodes)
 
   // TODO: move this to config
   val strideByWord = true
@@ -174,7 +175,7 @@ class RadianceSharedMem(
     }
   } // stride by word
 
-  guardMonitors { implicit p => provider.clBusClients.foreach(clbus.inwardNode := _) }
+  guardMonitors { implicit p => smNodes.clBusClients.foreach(clbus.inwardNode := _) }
 
   lazy val module = new RadianceSharedMemImp(this)
 }

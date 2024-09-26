@@ -14,14 +14,14 @@ import org.chipsalliance.diplomacy.lazymodule._
 class DistributorNode(from: Int, to: Int)(implicit p: Parameters) extends LazyModule {
   require(isPow2(from) && isPow2(to) && (from >= to), "invalid distributor node parameters")
   println(s"distributor node to segment from $from into $to")
-  val num_clients = from / to
+  val numClients = from / to
 
   val node = TLNexusNode(clientFn = seq => {
     require(seq.map(_.masters.size).sum == 1, s"there should only be one client to a distributor node, found ${seq.map(_.masters.size).sum}")
     val master = seq.head.masters.head
     require(isPow2(master.sourceId.size))
     seq.head.v1copy(
-      clients = Seq.tabulate(num_clients)(i => master.v2copy(
+      clients = Seq.tabulate(numClients)(i => master.v2copy(
         name = s"${name}_dist_client_$i",
         emits = TLMasterToSlaveTransferSizes(
           get = TransferSizes(to, to),
@@ -55,7 +55,7 @@ class DistributorNode(from: Int, to: Int)(implicit p: Parameters) extends LazyMo
     val cn = node.in.head._1
     val mn = node.out.map(_._1)
     println(f"$name node in size ${node.in.size}, out size ${node.out.size}")
-    assert(node.out.size == num_clients, s"got ${node.out.size} clients instead of $num_clients")
+    assert(node.out.size == numClients, s"got ${node.out.size} clients instead of $numClients")
 
     // A channel
     val ca = cn.a.bits
@@ -64,7 +64,7 @@ class DistributorNode(from: Int, to: Int)(implicit p: Parameters) extends LazyMo
       m.opcode := ca.opcode
       m.param := ca.param
       m.user := ca.user
-      m.source := Cat(i.U(log2Ceil(num_clients).W), ca.source)
+      m.source := Cat(i.U(log2Ceil(numClients).W), ca.source)
       m.address := ca.address + (to * i).U
       m.mask := ca.mask((i + 1) * to - 1, i * to)
       m.data := ca.data((i + 1) * to * 8 - 1, i * to * 8)
@@ -77,7 +77,7 @@ class DistributorNode(from: Int, to: Int)(implicit p: Parameters) extends LazyMo
     val cd = cn.d.bits
     cd.size := log2Ceil(from).U
     val partialWait = RegInit(false.B)
-    val arrived = RegInit(0.U(num_clients.W))
+    val arrived = RegInit(0.U(numClients.W))
     val cdReg = RegInit(0.U.asTypeOf(cd.cloneType))
 
     def setMetadata(to: TLBundleD, from: TLBundleD): Unit = {
