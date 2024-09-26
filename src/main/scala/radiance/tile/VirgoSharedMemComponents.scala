@@ -41,10 +41,10 @@ class VirgoSharedMemComponents(
     }
   }
 
-  val strideByWord = true
-  val filterAligned = true
-  val serializeUnaligned = true
-  implicit val disableMonitors = true // otherwise it generate 1k+ different tl monitors
+  val strideByWord = smemKey.strideByWord
+  val filterAligned = smemKey.filterAligned
+  val serializeUnaligned = smemKey.serializeUnaligned
+  implicit val disableMonitors: Boolean = smemKey.disableMonitors // otherwise it generate 1k+ different tl monitors
 
   val radianceSmemFanout = radianceTiles.zipWithIndex.flatMap { case (tile, cid) =>
     tile.smemNodes.zipWithIndex.map { case (m, lid) =>
