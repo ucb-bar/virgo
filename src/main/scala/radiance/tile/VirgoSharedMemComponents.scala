@@ -54,6 +54,7 @@ class VirgoSharedMemComponents(
       smemFanoutXbar.node
     }
   }
+  val tcNodeFanouts = radianceTiles.flatMap(_.tcSmemNodes).map(connectXbarName(_, Some("tc_fanout")))
   val clBusClients: Seq[TLNode] = radianceSmemFanout
 
   val (uniformRNodes, uniformWNodes, nonuniformRNodes, nonuniformWNodes) =
@@ -83,6 +84,12 @@ class VirgoSharedMemComponents(
     val spadWriteNodes = Seq.fill(smemBanks)(distAndDuplicate(gemminis.map(_.spad_write_nodes), "w"))
     val spadSpWriteNodesSingleBank = distAndDuplicate(gemminis.map(_.spad.spad_writer.node), "ws")
     val spadSpWriteNodes = Seq.fill(smemBanks)(spadSpWriteNodesSingleBank) // executed only once
+
+    // tensor core read nodes
+    val tcDistNodes = Seq.fill(smemBanks)(tcNodeFanouts.map(connectOne(_, () => DistributorNode(smemWidth, wordSize))))
+    val tcNodes = tcDistNodes.map { tcBank =>
+      Seq.fill(smemSubbanks)(tcBank.map(connectXbarName(_, Some("tc_dist_fanout"))))
+    } // (banks, subbanks, tc client)
 
     if (filterAligned) {
       val numLsuLanes = radianceTiles.head.numLsuLanes
@@ -186,8 +193,8 @@ class VirgoSharedMemComponents(
       }
 
 
-      val uniformRNodes: Seq[Seq[Seq[TLNexusNode]]] = spadReadNodes.map { rb =>
-        (rb zip fAligned.head).map { case (rw, fa) => rw ++ fa }
+      val uniformRNodes: Seq[Seq[Seq[TLNexusNode]]] = (spadReadNodes zip tcNodes).map { case (rb, tcrb) =>
+        (rb lazyZip tcrb lazyZip fAligned.head).map { case (rw, tcrw, fa) => rw ++ tcrw ++ fa }
       }
       val uniformWNodes: Seq[Seq[Seq[TLNexusNode]]] = (spadWriteNodes zip spadSpWriteNodes).map { case (wb, wsb) =>
         (wb lazyZip wsb lazyZip fAligned.last).map {

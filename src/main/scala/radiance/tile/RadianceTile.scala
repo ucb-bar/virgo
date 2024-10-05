@@ -274,6 +274,19 @@ class RadianceTile private (
     )
   }
 
+  val tcSmemSize = 32
+  val tcSmemNodes = Seq(TLClientNode(Seq(TLMasterPortParameters.v2(
+    masters = Seq(TLMasterParameters.v2(
+      name = s"rad_tc_${radianceParams.coreId}",
+      sourceId = IdRange(0, 1 << smemSourceWidth),
+      supports = TLSlaveToMasterTransferSizes(
+        get = TransferSizes(1, tcSmemSize),
+        putFull = TransferSizes(1, tcSmemSize),
+        putPartial = TransferSizes(1, tcSmemSize)
+      )
+    ))
+  ))))
+
   // combine outgoing per-lane dmemNode into 1 idenity node
   //
   // NOTE: We need TLWidthWidget here because there might be a data width
