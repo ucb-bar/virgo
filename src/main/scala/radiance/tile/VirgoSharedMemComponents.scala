@@ -54,7 +54,9 @@ class VirgoSharedMemComponents(
       smemFanoutXbar.node
     }
   }
-  val tcNodeFanouts = radianceTiles.flatMap(_.tcSmemNodes).map(connectXbarName(_, Some("tc_fanout")))
+  val tcNodeFanouts = radianceTiles.flatMap(_.tcSmemNodes)
+    .map(connectOne(_, () => TLBuffer(BufferParams(2, false, false), BufferParams(0))))
+    .map(connectXbarName(_, Some("tc_fanout")))
   val clBusClients: Seq[TLNode] = radianceSmemFanout
 
   val (uniformRNodes, uniformWNodes, nonuniformRNodes, nonuniformWNodes) =
@@ -69,7 +71,7 @@ class VirgoSharedMemComponents(
           dist := node
         }
         val fanout = Seq.tabulate(spSubbanks) { w =>
-          val buf = TLBuffer(BufferParams(1, false, true), BufferParams(0))
+          val buf = TLBuffer(BufferParams(2, false, false), BufferParams(0))
           buf := dist
           connectXbarName(buf, Some(s"spad_g${gemminiIdx}w${w}_fanout_$suffix"))
         }
@@ -88,7 +90,7 @@ class VirgoSharedMemComponents(
     // tensor core read nodes
     val tcDistNodes = Seq.fill(smemBanks)(tcNodeFanouts.map(connectOne(_, () => DistributorNode(smemWidth, wordSize))))
     val tcNodes = tcDistNodes.map { tcBank =>
-      Seq.fill(smemSubbanks)(tcBank.map(connectXbarName(_, Some("tc_dist_fanout"))))
+      Seq.fill(smemSubbanks)(tcBank.map(connectOne(_, () => TLBuffer(BufferParams(2, false, false)))).map(connectXbarName(_, Some("tc_dist_fanout"))))
     } // (banks, subbanks, tc client)
 
     if (filterAligned) {

@@ -90,6 +90,13 @@ class VortexBundle(tile: RadianceTile)(implicit p: Parameters) extends CoreBundl
   val smem_d_bits_data = Input(UInt((tile.numLsuLanes * 32).W))
   val smem_d_ready = Output(UInt((tile.numLsuLanes * 1).W))
 
+  val tc_a_valid = Output(UInt(2.W))
+  val tc_a_bits_address = Output(UInt((2 * 32).W))
+  val tc_a_ready = Input(UInt(2.W))
+  val tc_d_valid = Input(UInt(2.W))
+  val tc_d_bits_data = Input(UInt((2 * 32 * 8).W))
+  val tc_d_ready = Output(UInt(2.W))
+
   // FIXME: hardcoded
   val barrierIdBits = tile.barrierMasterNode.out(0)._2.barrierIdBits
   val coreIdBits = tile.barrierMasterNode.out(0)._2.numCoreBits
@@ -232,6 +239,8 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   addResource("/vsrc/vortex/hw/rtl/mem/VX_gbar_bus_if.sv")
   // addResource("/vsrc/vortex/hw/rtl/mem/VX_gbar_arb.sv")
   // addResource("/vsrc/vortex/hw/rtl/mem/VX_gbar_unit.sv")
+
+  addResource("/vsrc/vortex/hw/rtl/mem/VX_tc_bus_if.sv")
 
   addResource("/vsrc/vortex/hw/rtl/libs/VX_allocator.sv")
   // addResource("/vsrc/vortex/hw/rtl/libs/VX_avs_adapter.sv")
