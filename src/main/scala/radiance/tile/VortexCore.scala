@@ -396,6 +396,7 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
 
   // tensor core
   addResource("/vsrc/vortex/hw/rtl/core/VX_tensor_core.sv")
+  addResource("/vsrc/vortex/hw/rtl/core/VX_tensor_hopper_core.sv")
 //  addResource("/vsrc/vortex/hw/rtl/core/VX_tensor_ucode.vh")
   addResource("/vsrc/vortex/hw/rtl/core/VX_uop_sequencer.sv")
   addResource("/vsrc/vortex/hw/rtl/core/VX_reduce_unit.sv")
