@@ -6,7 +6,10 @@ package radiance.core
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
-import freechips.rocketchip.unittest.UnitTest
+import org.chipsalliance.diplomacy.lazymodule.{LazyModule, LazyModuleImp}
+import freechips.rocketchip.tilelink._
+import freechips.rocketchip.diplomacy.AddressSet
+import freechips.rocketchip.unittest.{UnitTest, UnitTestModule}
 
 case class TensorTilingParams(
   // Dimension of the SMEM tile
@@ -157,19 +160,68 @@ class TensorMemResp(val dataWidth: Int) extends Bundle {
 
 // synthesizable unit tests
 
+// wraps TensorCoreDecoupled with TileLink client node for use in a Diplomacy
+// network.
+class TensorCoreDecoupledTL(implicit p: Parameters) extends LazyModule {
+  val node = TLClientNode(Seq(TLMasterPortParameters.v2(
+    Seq(TLMasterParameters.v2(
+      name = "TensorCoreDecoupledClientNode",
+      // sourceId : TODO
+    ))
+  )))
+
+  lazy val module = new TensorCoreDecoupledTLImp(this)
+}
+
+class TensorCoreDecoupledTLImp(outer: TensorCoreDecoupledTL)
+    extends LazyModuleImp(outer) with UnitTestModule {
+  val tensor = Module(new TensorCoreDecoupled(8, 8, TensorTilingParams()))
+
+  require(outer.node.out.length == 1)
+
+  val (tlOut, edge) = outer.node.out(0)
+  tlOut.a.valid := tensor.io.reqA.valid
+  tlOut.a.bits.address := tensor.io.reqA.bits.address
+  tlOut.a.bits.source := 0.U // TODO: tensor.io.reqA.bits.source
+  tensor.io.respA.valid := tlOut.d.valid
+  tensor.io.respA.bits.data := tlOut.d.bits.data
+  // TODO: tensor.io.respA.bits.source := tlOut.d.bits.source
+
+  tensor.io.initiate.valid := io.start
+  tensor.io.initiate.bits.wid := 0.U
+  // TODO
+  tensor.io.respA.valid := false.B
+  tensor.io.respA.bits := DontCare
+  tensor.io.respB.valid := false.B
+  tensor.io.respB.bits := DontCare
+  tensor.io.reqA.ready := true.B
+  tensor.io.reqB.ready := true.B
+  tensor.io.writeback.ready := true.B
+
+  io.finished := tensor.io.writeback.valid
+}
+
+// a minimal Diplomacy graph with a tensor core and a TLRAM
+class TensorCoreDecoupledTLRAM(implicit p: Parameters) extends LazyModule {
+  val tensor = LazyModule(new TensorCoreDecoupledTL)
+  val ram = LazyModule(new TLRAM(
+    address = AddressSet(0x0000, 0xffffff),
+    beatBytes = 32 // FIXME: hardcoded
+  ))
+
+  ram.node :=* tensor.node
+
+  lazy val module = new Impl
+  class Impl extends LazyModuleImp(this) with UnitTestModule {
+    tensor.module.io.start := io.start
+    io.finished := tensor.module.io.finished
+  }
+}
+
+// unit test harness
 class TensorCoreDecoupledTest(timeout: Int = 500000)(implicit p: Parameters)
     extends UnitTest(timeout) {
-  val dut = Module(new TensorCoreDecoupled(8, 8, TensorTilingParams()))
-  dut.io.initiate.valid := io.start
-  dut.io.initiate.bits.wid := 0.U
-  // TODO
-  dut.io.respA.valid := false.B
-  dut.io.respA.bits := DontCare
-  dut.io.respB.valid := false.B
-  dut.io.respB.bits := DontCare
-  dut.io.reqA.ready := true.B
-  dut.io.reqB.ready := true.B
-  dut.io.writeback.ready := true.B
-
-  io.finished := dut.io.writeback.valid
+  val dut = Module(LazyModule(new TensorCoreDecoupledTLRAM).module)
+  dut.io.start := io.start
+  io.finished := dut.io.finished
 }
