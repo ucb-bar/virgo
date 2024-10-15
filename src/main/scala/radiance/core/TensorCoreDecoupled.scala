@@ -101,9 +101,18 @@ class TensorCoreDecoupled(
   when (nextStep) {
     step := (step + 1.U) & lastStep.U
     when (stepDone) {
-      set  := (set + 1.U)  & lastSet.U
+      set := (set + 1.U) & lastSet.U
     }
   }
+
+  // memory traffic generation
+  io.reqA.valid := (state === TensorState.run) // FIXME
+  io.reqA.bits.address := 0.U // FIXME
+  io.respA.ready := true.B
+  io.respB.ready := true.B
+  // FIXME
+  io.reqB.valid := false.B
+  io.reqB.bits := DontCare
 
   // state transition logic
   switch(state) {
@@ -139,14 +148,6 @@ class TensorCoreDecoupled(
   // val queueDepth = 2
   // val widQueue = Queue(io.initiate, queueDepth, pipe = (queueDepth == 1))
   // val rdQueue = Queue(io.initiate, queueDepth, pipe = (queueDepth == 1))
-
-  // FIXME
-  io.respA.ready := true.B
-  io.respB.ready := true.B
-  io.reqA.valid := false.B
-  io.reqB.valid := false.B
-  io.reqA.bits := DontCare
-  io.reqB.bits := DontCare
 }
 
 class TensorMemReq extends Bundle {
@@ -163,12 +164,21 @@ class TensorMemResp(val dataWidth: Int) extends Bundle {
 // wraps TensorCoreDecoupled with TileLink client node for use in a Diplomacy
 // network.
 class TensorCoreDecoupledTL(implicit p: Parameters) extends LazyModule {
-  val node = TLClientNode(Seq(TLMasterPortParameters.v2(
-    Seq(TLMasterParameters.v2(
-      name = "TensorCoreDecoupledClientNode",
-      // sourceId : TODO
-    ))
-  )))
+  // node with two edges; one for A and one for B matrix
+  val node = TLClientNode(Seq(
+    TLMasterPortParameters.v2(
+      Seq(TLMasterParameters.v2(
+        name = "TensorCoreDecoupledMatrixANode",
+        // sourceId : TODO
+      ))
+    ),
+    TLMasterPortParameters.v2(
+      Seq(TLMasterParameters.v2(
+        name = "TensorCoreDecoupledMatrixBNode",
+        // sourceId : TODO
+      ))
+    )
+  ))
 
   lazy val module = new TensorCoreDecoupledTLImp(this)
 }
@@ -176,13 +186,28 @@ class TensorCoreDecoupledTL(implicit p: Parameters) extends LazyModule {
 class TensorCoreDecoupledTLImp(outer: TensorCoreDecoupledTL)
     extends LazyModuleImp(outer) with UnitTestModule {
   val tensor = Module(new TensorCoreDecoupled(8, 8, TensorTilingParams()))
+  val wordSize = 4 // FIXME: hardcoded
 
-  require(outer.node.out.length == 1)
+  require(outer.node.out.length == 2/*A and B*/)
 
   val (tlOut, edge) = outer.node.out(0)
-  tlOut.a.valid := tensor.io.reqA.valid
-  tlOut.a.bits.address := tensor.io.reqA.bits.address
-  tlOut.a.bits.source := 0.U // TODO: tensor.io.reqA.bits.source
+  val (tlOutB, edgeB) = outer.node.out(1)
+
+  val zip = List((outer.node.out(0), tensor.io.reqA),
+                 (outer.node.out(1), tensor.io.reqB))
+  zip.foreach { case ((tl, edge), req) =>
+    tl.a.valid := req.valid
+    val (legal, bits) = edge.Get(
+      fromSource = 0.U, // TODO: sourceGen.io.id.bits,
+      toAddress = req.bits.address,
+      lgSize = log2Ceil(wordSize).U
+    )
+    tl.a.bits := bits
+    when(tl.a.fire) {
+      assert(legal, "illegal TL req gen")
+    }
+  }
+
   tensor.io.respA.valid := tlOut.d.valid
   tensor.io.respA.bits.data := tlOut.d.bits.data
   // TODO: tensor.io.respA.bits.source := tlOut.d.bits.source
@@ -204,12 +229,13 @@ class TensorCoreDecoupledTLImp(outer: TensorCoreDecoupledTL)
 // a minimal Diplomacy graph with a tensor core and a TLRAM
 class TensorCoreDecoupledTLRAM(implicit p: Parameters) extends LazyModule {
   val tensor = LazyModule(new TensorCoreDecoupledTL)
+  val xbar = LazyModule(new TLXbar)
   val ram = LazyModule(new TLRAM(
     address = AddressSet(0x0000, 0xffffff),
     beatBytes = 32 // FIXME: hardcoded
   ))
 
-  ram.node :=* tensor.node
+  ram.node :=* xbar.node :=* tensor.node
 
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) with UnitTestModule {
