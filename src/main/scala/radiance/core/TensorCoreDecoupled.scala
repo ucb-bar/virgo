@@ -5,6 +5,8 @@ package radiance.core
 
 import chisel3._
 import chisel3.util._
+import org.chipsalliance.cde.config.Parameters
+import freechips.rocketchip.unittest.UnitTest
 
 case class TensorTilingParams(
   // Dimension of the SMEM tile
@@ -62,7 +64,7 @@ class TensorCoreDecoupled(
 
   // TODO: just transition every cycle for now
   def nextState(state: TensorState.Type) = state match {
-    case TensorState.idle      => Mux(io.initiate.fire, TensorState.run, state)
+    case TensorState.idle => Mux(io.initiate.fire, TensorState.run, state)
     case TensorState.run  => TensorState.finish
     case TensorState.finish => {
       // hold until writeback is cleared
@@ -135,4 +137,23 @@ class TensorMemReq extends Bundle {
 class TensorMemResp(val dataWidth: Int) extends Bundle {
   // TODO: tag
   val data = UInt(32.W)
+}
+
+// synthesizable unit tests
+
+class TensorCoreDecoupledTest(timeout: Int = 500000)(implicit p: Parameters)
+    extends UnitTest(timeout) {
+  val dut = Module(new TensorCoreDecoupled(8, 8, TensorTilingParams()))
+  dut.io.initiate.valid := io.start
+  dut.io.initiate.bits.wid := 0.U
+  // TODO
+  dut.io.respA.valid := false.B
+  dut.io.respA.bits := DontCare
+  dut.io.respB.valid := false.B
+  dut.io.respB.bits := DontCare
+  dut.io.reqA.ready := true.B
+  dut.io.reqB.ready := true.B
+  dut.io.writeback.ready := true.B
+
+  io.finished := dut.io.writeback.valid
 }
