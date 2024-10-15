@@ -42,7 +42,7 @@ class TensorCoreDecoupled(
     val writeback = Decoupled(new Bundle {
       val last = Bool()
       val wid = UInt(numWarpBits.W)
-      val data = Vec(numLanes, UInt(wordSize.W))
+      val data = Vec(numLanes, UInt((wordSize * 8/*bits*/).W))
     })
     val respA = Flipped(Decoupled(new TensorMemResp(sourceWidth, dataWidth)))
     val respB = Flipped(Decoupled(new TensorMemResp(sourceWidth, dataWidth)))
@@ -135,7 +135,7 @@ class TensorCoreDecoupled(
 
   // Execute stage
   // -------------
-  // Execute backend of the decoupled access/execute pipeline.
+  // Backend of the decoupled access/execute pipeline.
   //
   val respQueueDepth = 4 // FIXME: parameterize
   val respQueueA = Queue(io.respA, respQueueDepth)
@@ -144,7 +144,7 @@ class TensorCoreDecoupled(
   respQueueB.ready := io.writeback.ready // FIXME
 
   require(respQueueA.bits.data.widthOption.get ==
-          io.writeback.bits.data.widthOption.get * numLanes,
+          io.writeback.bits.data.widthOption.get,
     "response data width does not match the writeback data width")
 
   // FIXME: debug dummy: pipe A directly to writeback
