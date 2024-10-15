@@ -32,7 +32,7 @@ class TensorCoreDecoupled(
 ) extends Module {
   val numWarpBits = log2Ceil(numWarps)
   val wordSize = 4 // TODO FP16
-  val dataWidth = numLanes * wordSize // TODO FP16
+  val dataWidth = numLanes * wordSize * 8/*bits*/ // TODO FP16
   val sourceWidth = log2Ceil(numSourceIds)
 
   val io = IO(new Bundle {
@@ -40,8 +40,9 @@ class TensorCoreDecoupled(
       val wid = UInt(numWarpBits.W)
     }))
     val writeback = Decoupled(new Bundle {
-      val wid = UInt(numWarpBits.W)
       val last = Bool()
+      val wid = UInt(numWarpBits.W)
+      val data = Vec(numLanes, UInt(wordSize.W))
     })
     val respA = Flipped(Decoupled(new TensorMemResp(sourceWidth, dataWidth)))
     val respB = Flipped(Decoupled(new TensorMemResp(sourceWidth, dataWidth)))
@@ -95,7 +96,9 @@ class TensorCoreDecoupled(
     busy := false.B
   }
 
-  // memory traffic generation
+  // Memory traffic generation
+  // -------------------------
+  //
   val genReq = (state === TensorState.run)
 
   Seq((io.reqA, io.respA), (io.reqB, io.respB)).foreach {
@@ -127,9 +130,33 @@ class TensorCoreDecoupled(
     firedABReg := Seq(false.B, false.B)
   }
 
-  io.respA.ready := true.B
-  io.respB.ready := true.B
+  io.respA.ready := true.B // FIXME
+  io.respB.ready := true.B // FIXME
 
+  // Execute stage
+  // -------------
+  // Execute backend of the decoupled access/execute pipeline.
+  //
+  val respQueueDepth = 4 // FIXME: parameterize
+  val respQueueA = Queue(io.respA, respQueueDepth)
+  val respQueueB = Queue(io.respB, respQueueDepth)
+  respQueueA.ready := io.writeback.ready // FIXME
+  respQueueB.ready := io.writeback.ready // FIXME
+
+  require(respQueueA.bits.data.widthOption.get ==
+          io.writeback.bits.data.widthOption.get * numLanes,
+    "response data width does not match the writeback data width")
+
+  // FIXME: debug dummy: pipe A directly to writeback
+  io.writeback.valid := respQueueA.valid
+  val groupedRespA = respQueueA.bits.data.asBools.grouped(wordSize * 8/*bits*/)
+  (io.writeback.bits.data zip groupedRespA).foreach { case (wb, data) =>
+    wb := VecInit(data).asUInt
+  }
+
+  // State transition
+  // ----------------
+  //
   // set/step sequencing logic
   val lastSet = ((1 << setBits) - 1)
   val lastStep = ((1 << stepBits) - 1)
@@ -142,7 +169,6 @@ class TensorCoreDecoupled(
     }
   }
 
-  // state transition logic
   switch(state) {
     is(TensorState.idle) {
       when(io.initiate.fire) {
@@ -189,13 +215,13 @@ class TensorMemResp(
   dataWidth: Int
 ) extends Bundle {
   val source = UInt(sourceWidth.W)
-  val data = UInt(32.W)
+  val data = UInt(dataWidth.W)
 }
 
 // synthesizable unit tests
 
-// wraps TensorCoreDecoupled with TileLink client node for use in a Diplomacy
-// network.
+// wraps TensorCoreDecoupled with a TileLink client node for use in a Diplomacy
+// graph.
 class TensorCoreDecoupledTL(implicit p: Parameters) extends LazyModule {
   val numSrcIds = 4
 
