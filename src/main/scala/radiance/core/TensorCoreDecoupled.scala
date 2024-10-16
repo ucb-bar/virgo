@@ -97,15 +97,16 @@ class TensorCoreDecoupled(
   // steps: i-j iteration
   val numSteps = (tilingParams.m * tilingParams.n) / (tilingParams.mc * tilingParams.nc)
   val stepBits = log2Ceil(numSteps)
-  val set = RegInit(0.U(setBits.W))
-  val step = RegInit(0.U(stepBits.W))
+  // set and step being currently accessed in the acc/ex frontend
+  val setAccess = RegInit(0.U(setBits.W))
+  val stepAccess = RegInit(0.U(stepBits.W))
 
   when(io.initiate.fire) {
     val wid = io.initiate.bits.wid
     busy := true.B
     warpReg := wid
-    set := 0.U
-    step := 0.U
+    setAccess := 0.U
+    stepAccess := 0.U
     when(io.writeback.fire) {
       assert(
         io.writeback.bits.wid =/= wid,
@@ -129,8 +130,8 @@ class TensorCoreDecoupled(
   // use concatenation of set/step as the memory request source.  This will get
   // translated to the actual TL sourcewidth in sourceGen.
   val tag = Wire(new TensorMemTag)
-  tag.set := set
-  tag.step := step
+  tag.set := setAccess
+  tag.step := stepAccess
 
   val respATagged = Wire(Decoupled(new TensorMemRespWithTag(dataWidth)))
   val respBTagged = Wire(Decoupled(new TensorMemRespWithTag(dataWidth)))
@@ -176,15 +177,31 @@ class TensorCoreDecoupled(
   // -------------
   // Backend of the decoupled access/execute pipeline.
   //
+  // set and step being currently executed in the acc/ex backend
+  val setExecute = RegInit(0.U(setBits.W))
+  val stepExecute = RegInit(0.U(stepBits.W))
+
   val respQueueDepth = 4 // FIXME: parameterize
   val respQueueA = Queue(respATagged, respQueueDepth)
   val respQueueB = Queue(respBTagged, respQueueDepth)
-  respQueueA.ready := io.writeback.ready // FIXME
-  respQueueB.ready := io.writeback.ready // FIXME
 
   require(respQueueA.bits.data.widthOption.get ==
           io.writeback.bits.data.widthOption.get,
     "response data width does not match the writeback data width")
+
+  val bothQueueValid = (respQueueA.valid && respQueueB.valid)
+  // assume in-order response and that A/B responses are always aligned; this
+  // might be too strong an assumption depending on the backing memory
+  when (bothQueueValid) {
+    assert((respQueueA.bits.tag.set === respQueueB.bits.tag.set) &&
+           (respQueueA.bits.tag.step === respQueueB.bits.tag.step),
+           "A and B response queue pointing to different set/steps. " ++
+           "This might indicate memory response coming back out-of-order.")
+  }
+  // synchronized dequeue
+  val deqResp = bothQueueValid && io.writeback.ready
+  respQueueA.ready := deqResp
+  respQueueB.ready := deqResp
 
   // FIXME: debug dummy: pipe A directly to writeback
   io.writeback.valid := respQueueA.valid
@@ -201,12 +218,12 @@ class TensorCoreDecoupled(
   // set/step sequencing logic
   val lastSet = ((1 << setBits) - 1)
   val lastStep = ((1 << stepBits) - 1)
-  val setDone = (set === lastSet.U)
-  val stepDone = (step === lastStep.U)
+  val setDone = (setAccess === lastSet.U)
+  val stepDone = (stepAccess === lastStep.U)
   when (nextStep) {
-    step := (step + 1.U) & lastStep.U
+    stepAccess := (stepAccess + 1.U) & lastStep.U
     when (stepDone) {
-      set := (set + 1.U) & lastSet.U
+      setAccess := (setAccess + 1.U) & lastSet.U
     }
   }
 
