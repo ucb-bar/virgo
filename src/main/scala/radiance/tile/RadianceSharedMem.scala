@@ -4,14 +4,14 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.diplomacy.lazymodule._
 import org.chipsalliance.cde.config.Parameters
-import radiance.memory._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.diplomacy.{AddressSet, TransferSizes}
+import gemmini.Pipeline
 import radiance.subsystem.RadianceSharedMemKey
-import gemmini._
+import radiance.memory._
 import scala.collection.mutable.ArrayBuffer
 
-trait RadianceSmemNodeProvider {
+abstract class RadianceSmemNodeProvider {
   val uniformRNodes: Seq[Seq[Seq[TLNexusNode]]]
   val uniformWNodes: Seq[Seq[Seq[TLNexusNode]]]
   val nonuniformRNodes: Seq[TLNode]
@@ -19,8 +19,11 @@ trait RadianceSmemNodeProvider {
   val clBusClients: Seq[TLNode]
 }
 
-class RadianceSharedMem(
-    provider: () => RadianceSmemNodeProvider,
+abstract class RadianceSmemNodeProviderImp[T <: RadianceSmemNodeProvider](val outer: T) {}
+
+class RadianceSharedMem[T <: RadianceSmemNodeProvider](
+    provider: () => T,
+    val providerImp: Option[(T) => RadianceSmemNodeProviderImp[T]],
     clbus: TLBusWrapper
   )(implicit p: Parameters) extends LazyModule {
   val smemKey = p(RadianceSharedMemKey).get
@@ -31,6 +34,7 @@ class RadianceSharedMem(
   val smemDepth = smemKey.size / smemWidth / smemBanks
   val smemSubbanks = smemWidth / wordSize
   val smemSize = smemWidth * smemDepth * smemBanks
+  val strideByWord = smemKey.strideByWord
 
   require(isPow2(smemBanks))
 
@@ -38,11 +42,7 @@ class RadianceSharedMem(
   val (uniformRNodes, uniformWNodes, nonuniformRNodes, nonuniformWNodes) =
     (smNodes.uniformRNodes, smNodes.uniformWNodes, smNodes.nonuniformRNodes, smNodes.nonuniformWNodes)
 
-  // TODO: move this to config
-  val strideByWord = true
-  val filterAligned = true
-  val serializeUnaligned = true
-  implicit val disableMonitors = true // otherwise it generate 1k+ different tl monitors
+  implicit val disableMonitors = smemKey.disableMonitors // otherwise it generate 1k+ different tl monitors
 
   // collection of read and write managers for each sram (sub)bank
   val smemBankMgrs : Seq[Seq[TLManagerNode]] = if (strideByWord) {
@@ -180,9 +180,11 @@ class RadianceSharedMem(
   lazy val module = new RadianceSharedMemImp(this)
 }
 
-class RadianceSharedMemImp(outer: RadianceSharedMem) extends LazyModuleImp(outer) {
+class RadianceSharedMemImp[T <: RadianceSmemNodeProvider](outer: RadianceSharedMem[T]) extends LazyModuleImp(outer) {
 
-  def makeBuffer[T <: Data](mem: TwoPortSyncMem[T], rNode: TLBundle, rEdge: TLEdgeIn,
+  val smNodesImp = outer.providerImp.map(impFn => impFn(outer.smNodes))
+
+  def makeBuffer[U <: Data](mem: TwoPortSyncMem[U], rNode: TLBundle, rEdge: TLEdgeIn,
                             wNode: TLBundle, wEdge: TLEdgeIn): Unit = {
     mem.io.ren := rNode.a.fire
 
@@ -240,7 +242,7 @@ class RadianceSharedMemImp(outer: RadianceSharedMem) extends LazyModuleImp(outer
     // WRITE
     mem.io.wen := RegNext(wNode.a.fire)
     mem.io.wdata := RegNext(wNode.a.bits.data)
-    mem.io.mask := RegNext(VecInit(wNode.a.bits.mask.asBools))
+    mem.io.mask := RegNext(wNode.a.bits.mask)
 
     val writeResp = Wire(Flipped(wNode.d.cloneType))
     writeResp.bits := wEdge.AccessAck(wNode.a.bits)
@@ -286,7 +288,6 @@ class RadianceSharedMemImp(outer: RadianceSharedMem) extends LazyModuleImp(outer
         val mem = TwoPortSyncMem(
           n = memDepth,
           t = UInt((wordWidth * 8).W),
-          mask_len = wordWidth // byte level mask
         )
         // TODO: bring in cluster id
         // mem.suggestName(s"rad_smem_cl${outer.thisClusterParams.clusterId}_b${bid}_w${wid}")
@@ -346,7 +347,6 @@ class RadianceSharedMemImp(outer: RadianceSharedMem) extends LazyModuleImp(outer
       val mem = TwoPortSyncMem(
         n = memDepth,
         t = UInt((memWidth * 8).W),
-        mask_len = memWidth // byte level mask
       )
 
       val (rNode, rEdge) = r.in.head
