@@ -128,7 +128,13 @@ class TensorCoreDecoupled(
       )
     }
   }
-  when(io.writeback.fire) {
+
+  // TODO: @perf: Instead of waiting until the last writeback, release busy as
+  // soon as the access frontend is complete so that there's a better chance to
+  // saturate the backend with back-to-back HGMMAs.  This would require sending
+  // the 'wid' register to backend instead of having it shared with the
+  // frontend.
+  when(io.writeback.fire && io.writeback.bits.last) {
     busy := false.B
   }
 
