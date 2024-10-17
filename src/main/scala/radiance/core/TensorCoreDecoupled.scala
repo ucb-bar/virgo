@@ -155,8 +155,8 @@ class TensorCoreDecoupled(
   val respATagged = Wire(Decoupled(new TensorMemRespWithTag(dataWidth)))
   val respBTagged = Wire(Decoupled(new TensorMemRespWithTag(dataWidth)))
   Seq((io.reqA, (io.respA, respATagged)),
-      (io.reqB, (io.respB, respBTagged))).foreach {
-    case (req, (resp, respTagged)) => {
+      (io.reqB, (io.respB, respBTagged))).zipWithIndex.foreach {
+    case ((req, (resp, respTagged)), i) => {
       val sourceGen = Module(new SourceGenerator(
         log2Ceil(numSourceIds),
         metadata = Some(tag)
@@ -165,7 +165,9 @@ class TensorCoreDecoupled(
       sourceGen.io.gen := req.fire
       sourceGen.io.meta := tag
       req.valid := genReq
-      req.bits.address := 0.U // FIXME
+      // FIXME: bogus address
+      // req.bits.address := (if (i == 0) 0.U else 0x100.U) // avoids bank conflict for A and B
+      req.bits.address := 0.U
       req.bits.source := sourceGen.io.id.bits
 
       sourceGen.io.reclaim.valid := resp.fire
@@ -270,7 +272,8 @@ class TensorCoreDecoupled(
   fullAQueue.io.deq.ready := dpuFire && (substepCompute === 1.U)
   val nextStepExecute = dpuFire && (substepCompute === 1.U)
 
-  // make sure to dequeue from response queues only when both A and B valid
+  // respQueueA output arbitrates to either halfAQueue or fullAQueue depending
+  // on the substep
   respQueueA.ready := MuxCase(false.B,
                               Seq((substepExecute === 0.U) -> halfAQueue.io.enq.ready,
                                   (substepExecute === 1.U) -> fullAQueue.io.enq.ready))
@@ -446,10 +449,35 @@ class TensorCoreDecoupledTLRAM(implicit p: Parameters) extends LazyModule {
   }
 }
 
+// two separate TLRAMs for A and B for full throughput
+class TensorCoreDecoupledTwoTLRAM(implicit p: Parameters) extends LazyModule {
+  val tensor = LazyModule(new TensorCoreDecoupledTL)
+  val xbar = LazyModule(new TLXbar)
+  val ramA = LazyModule(new TLRAM(
+    address = AddressSet(0x000, 0xfffeff),
+    beatBytes = 32 // FIXME: hardcoded
+  ))
+  val ramB = LazyModule(new TLRAM(
+    address = AddressSet(0x100, 0xfffeff),
+    beatBytes = 32 // FIXME: hardcoded
+  ))
+
+  xbar.node :=* tensor.node
+  ramA.node := xbar.node
+  ramB.node := xbar.node
+
+  lazy val module = new Impl
+  class Impl extends LazyModuleImp(this) with UnitTestModule {
+    tensor.module.io.start := io.start
+    io.finished := tensor.module.io.finished
+  }
+}
+
 // unit test harness
 class TensorCoreDecoupledTest(timeout: Int = 500000)(implicit p: Parameters)
     extends UnitTest(timeout) {
-  val dut = Module(LazyModule(new TensorCoreDecoupledTLRAM).module)
+  // val dut = Module(LazyModule(new TensorCoreDecoupledTLRAM).module)
+  val dut = Module(LazyModule(new TensorCoreDecoupledTwoTLRAM).module)
   dut.io.start := io.start
   io.finished := dut.io.finished
 }
