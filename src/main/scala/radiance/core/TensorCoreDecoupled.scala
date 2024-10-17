@@ -267,6 +267,7 @@ class TensorCoreDecoupled(
 
   val operandsValid = fullAQueue.io.deq.valid && respQueueB.valid
   val operandA = fullAQueue.io.deq.bits.data
+  val operandATag = fullAQueue.io.deq.bits.tag
   val operandB = respQueueB.bits.data
   val dpuReady = Wire(Bool())
   val dpuFire = operandsValid && dpuReady
@@ -314,8 +315,6 @@ class TensorCoreDecoupled(
   val operandADimensional =
     operandA.asBools.grouped(wordSizeInBits).map(VecInit(_).asUInt).toSeq
     .grouped(4).toSeq
-  println(s"operandA: ${fullAQueue.io.deq.bits.data.widthOption.get} bits")
-  println(s"A: ${operandADimensional.length}, ${operandADimensional(0).length}")
   assert(operandADimensional.length == tilingParams.mc &&
          operandADimensional(0).length == tilingParams.kc,
          "operand width doesn't agree with tiling parameter")
@@ -323,7 +322,6 @@ class TensorCoreDecoupled(
   val operandBDimensional =
     operandB.asBools.grouped(wordSizeInBits).map(VecInit(_).asUInt).toSeq
     .grouped(4).toSeq
-  println(s"B: ${operandBDimensional.length}, ${operandBDimensional(0).length}")
   val ncSubstep = tilingParams.nc / 2
   assert(tilingParams.mc * ncSubstep == numLanes,
          "substep tile size doesn't match writeback throughput")
@@ -369,18 +367,20 @@ class TensorCoreDecoupled(
   // These queues hold metadata needed for writeback in sync with the DPU.
 
   val queueDepth = 4 // needs to be at least the DPU latency
-  val rdQueue = Module(new Queue(
-    chiselTypeOf(io.writeback.bits.rd), queueDepth
+  val tagQueue = Module(new Queue(
+    chiselTypeOf(operandATag), queueDepth
   ))
-  rdQueue.io.enq.valid := dpuFire
-  rdQueue.io.enq.bits := rdGen(stepCompute, substepCompute)
-  rdQueue.io.deq.ready := io.writeback.fire
-  assert(rdQueue.io.enq.ready === true.B,
-         "rd queue full, throttling DPU operation")
-  assert(!dpuValid || rdQueue.io.deq.valid,
-         "rd queue and DPU went out of sync")
+  tagQueue.io.enq.valid := dpuFire
+  // A and B should have the same tags
+  tagQueue.io.enq.bits := operandATag
+  // @cleanup: awkward
+  tagQueue.io.enq.bits.substep := substepCompute
+  tagQueue.io.deq.ready := io.writeback.fire
+  assert(tagQueue.io.enq.ready === true.B,
+         "tag queue full, DPU operation might be throttled")
+  assert(!dpuValid || tagQueue.io.deq.valid,
+         "tag queue and DPU went out of sync")
 
-  // TODO: decouple wid from frontend
   // val widQueue = Queue(io.initiate, queueDepth, pipe = (queueDepth == 1))
 
   // note rd is independent to sets
@@ -390,11 +390,14 @@ class TensorCoreDecoupled(
     (step << 1/*2 substeps*/) + substep
   }
 
+  val setWriteback = tagQueue.io.deq.bits.set
+  val stepWriteback = tagQueue.io.deq.bits.step
+  val substepWriteback = tagQueue.io.deq.bits.substep
   io.writeback.valid := dpuValid
+  // TODO: decouple wid from frontend
   io.writeback.bits.wid := warpReg
-  io.writeback.bits.rd := rdQueue.io.deq.bits
-  // FIXME: look at set/step of dpu output not setExecute
-  io.writeback.bits.last := setDone(setExecute) && stepDone(stepExecute)
+  io.writeback.bits.rd := rdGen(stepWriteback, substepWriteback)
+  io.writeback.bits.last := setDone(setWriteback) && stepDone(stepWriteback)
 
   // State transition
   // ----------------
@@ -500,6 +503,10 @@ class TensorCoreDecoupledTLImp(outer: TensorCoreDecoupledTL)
   tensor.io.writeback.ready := true.B
 
   io.finished := tensor.io.writeback.valid && tensor.io.writeback.bits.last
+  when (io.finished) {
+    // might be too strong
+    assert(tensor.io.writeback.bits.rd === 31.U)
+  }
 }
 
 // a minimal Diplomacy graph with a tensor core and a TLRAM
