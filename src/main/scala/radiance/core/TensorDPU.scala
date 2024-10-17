@@ -53,7 +53,7 @@ class TensorDotProductUnit(val half: Boolean) extends Module with tile.HasFPUPar
   io.out.bits.data := ieee(box(dpu.io.out.bits.data, S))
 }
 
-// Copied from chisel3.util.Pipe.
+// An implementation of chisel3.util.Pipe that supports stalls.
 class StallingPipe[T <: Data](val gen: T, val latency: Int = 1) extends Module {
   /** A non-ambiguous name of this `StallingPipe` for use in generated Verilog
    *  names. Includes the latency cycle count in the name as well as the
