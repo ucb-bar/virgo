@@ -27,6 +27,7 @@ class TensorDotProductUnit(val half: Boolean) extends Module with tile.HasFPUPar
       val b = Vec(dotProductDim, Bits((inFLen).W))
       val c = Bits((outFLen).W) // note C has the out length for accumulation
     }))
+    // 'stall' is effectively out.ready, combinationally coupled to in.ready
     val stall = Input(Bool())
     val out = Valid(new Bundle {
       val data = Bits((outFLen).W)
