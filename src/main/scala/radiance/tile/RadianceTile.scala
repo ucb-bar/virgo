@@ -736,11 +736,13 @@ class RadianceTileModuleImp(outer: RadianceTile)
     def connectTc {
       val tcb0 = new {
         val addr = core.io.tc_a_bits_address(31, 0)
+        val tag = core.io.tc_a_bits_tag(3, 0)
         val aValid = core.io.tc_a_valid(0)
         val dReady = core.io.tc_d_ready(0)
       }
       val tcb1 = new {
         val addr = core.io.tc_a_bits_address(63, 32)
+        val tag = core.io.tc_a_bits_tag(7, 4)
         val aValid = core.io.tc_a_valid(1)
         val dReady = core.io.tc_d_ready(1)
       }
@@ -758,7 +760,7 @@ class RadianceTileModuleImp(outer: RadianceTile)
         adapter.io.inReq.bits <> DontCare
         adapter.io.inReq.valid := bundle.aValid
         adapter.io.inReq.bits.address := bundle.addr
-        adapter.io.inReq.bits.source := i.U
+        adapter.io.inReq.bits.source := bundle.tag
         adapter.io.inReq.bits.size := 5.U
         adapter.io.inReq.bits.opcode := TLMessages.Get
         adapter.io.inReq.bits.mask := x"ffffffff".U
@@ -771,6 +773,7 @@ class RadianceTileModuleImp(outer: RadianceTile)
       core.io.tc_a_ready := Cat(adapters.last.io.inReq.ready, adapters.head.io.inReq.ready)
       core.io.tc_d_valid := Cat(adapters.last.io.inResp.valid, adapters.head.io.inResp.valid)
       core.io.tc_d_bits_data := Cat(adapters.last.io.inResp.bits.data, adapters.head.io.inResp.bits.data)
+      core.io.tc_d_bits_tag := Cat(adapters.last.io.inResp.bits.source, adapters.head.io.inResp.bits.source)
     }
 
     def connectBarrier = {

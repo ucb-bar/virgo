@@ -92,9 +92,11 @@ class VortexBundle(tile: RadianceTile)(implicit p: Parameters) extends CoreBundl
 
   val tc_a_valid = Output(UInt(2.W))
   val tc_a_bits_address = Output(UInt((2 * 32).W))
+  val tc_a_bits_tag = Output(UInt((2 * 4).W))
   val tc_a_ready = Input(UInt(2.W))
   val tc_d_valid = Input(UInt(2.W))
   val tc_d_bits_data = Input(UInt((2 * 32 * 8).W))
+  val tc_d_bits_tag = Input(UInt((2 * 4).W))
   val tc_d_ready = Output(UInt(2.W))
 
   // FIXME: hardcoded
