@@ -269,13 +269,13 @@ class TensorCoreDecoupled(
 
   require(respQueueA.bits.data.widthOption.get ==
           io.writeback.bits.data.widthOption.get,
-    "response data width does not match the writeback data width")
+          "response data width does not match the writeback data width")
 
-  val substepExecute = RegInit(0.U(1.W))
+  val substepDeqA = RegInit(0.U(1.W))
   when (respQueueA.fire) {
-    substepExecute := substepExecute + 1.U
+    substepDeqA := substepDeqA + 1.U
   }
-  dontTouch(substepExecute)
+  dontTouch(substepDeqA)
 
   // Do pipelining for the A operand so that we obtain the full 4x4 A tile
   // ready for compute.  The pipeline is two-stage:
@@ -292,7 +292,7 @@ class TensorCoreDecoupled(
   val halfAQueue = Module(new Queue(
     chiselTypeOf(respQueueA.bits), entries = 1, pipe = true
   ))
-  halfAQueue.io.enq.valid := respQueueA.valid && (substepExecute === 0.U)
+  halfAQueue.io.enq.valid := respQueueA.valid && (substepDeqA === 0.U)
   halfAQueue.io.enq.bits := respQueueA.bits
 
   // substep == 0 data goes to the LSB
@@ -305,9 +305,9 @@ class TensorCoreDecoupled(
     new TensorMemRespWithTag(dataWidth * 2), entries = 1, pipe = true
   ))
   // hold first half A data for the first substep
-  halfAQueue.io.deq.ready := respQueueA.valid && (substepExecute === 1.U) &&
+  halfAQueue.io.deq.ready := respQueueA.valid && (substepDeqA === 1.U) &&
                              fullAQueue.io.enq.ready
-  fullAQueue.io.enq.valid := respQueueA.valid && (substepExecute === 1.U) &&
+  fullAQueue.io.enq.valid := respQueueA.valid && (substepDeqA === 1.U) &&
                              halfAQueue.io.deq.valid
   fullAQueue.io.enq.bits.data := fullAEnqData
   fullAQueue.io.enq.bits.tag := fullAEnqTag
@@ -332,8 +332,8 @@ class TensorCoreDecoupled(
   // respQueueA output arbitrates to either halfAQueue or fullAQueue depending
   // on the substep
   respQueueA.ready := MuxCase(false.B,
-                              Seq((substepExecute === 0.U) -> halfAQueue.io.enq.ready,
-                                  (substepExecute === 1.U) -> fullAQueue.io.enq.ready))
+                              Seq((substepDeqA === 0.U) -> halfAQueue.io.enq.ready,
+                                  (substepDeqA === 1.U) -> fullAQueue.io.enq.ready))
   // Hold B tile at respQueueB for multiple steps for reuse, only dequeue when
   // we fully iterated a column (M-dimension).
   val shouldDequeueBMask = ((1 << numTilesMBits) - 1).U
