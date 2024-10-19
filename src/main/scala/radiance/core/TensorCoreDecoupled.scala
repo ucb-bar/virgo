@@ -272,7 +272,13 @@ class TensorCoreDecoupled(
   //
   // Backend of the decoupled access/execute pipeline.
   //
-  val respQueueDepth = 2 // FIXME: parameterize
+  val respQueueDepth = 4 // FIXME: parameterize
+  require(respQueueDepth >= 4,
+    "respQueueDepth must be at least 4.  This is because the B operand buffer " ++
+    "is shallower than A's, so the B response queue has to be deep enough to " ++
+    "hold younger requests until A operand buffer becomes valid and the first DPU " ++
+    "fire can happen.  FIXME: make operand buffer report per-subtile valid so " ++
+    "the first compute can happen earlier.")
   val respQueueA = Queue(respATagged, respQueueDepth)
   val respQueueB = Queue(respBTagged, respQueueDepth)
 
@@ -547,6 +553,7 @@ class FillBuffer[T <: Data](
 
   val data = Reg(Vec(entries, gen))
   val ptr = Counter(entries + 1)
+  dontTouch(ptr.value)
   val full = (ptr.value === entries.U)
   io.enq.ready := !full
   when (io.enq.fire) {
