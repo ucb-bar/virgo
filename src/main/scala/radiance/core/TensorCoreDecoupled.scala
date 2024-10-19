@@ -225,7 +225,7 @@ class TensorCoreDecoupled(
   when (lastReqA && io.reqA.fire) { doneReqA := true.B }
   when (lastReqB && io.reqB.fire) { doneReqB := true.B }
   val genReqA = (state === AccessorState.access) && !doneReqA
-  val genReqB = (state === AccessorState.access) && !doneReqA
+  val genReqB = (state === AccessorState.access) && !doneReqB
   when (state === AccessorState.finish) {
     doneReqA := false.B
     doneReqB := false.B
@@ -272,7 +272,7 @@ class TensorCoreDecoupled(
   //
   // Backend of the decoupled access/execute pipeline.
   //
-  val respQueueDepth = 8 // FIXME: parameterize
+  val respQueueDepth = 2 // FIXME: parameterize
   val respQueueA = Queue(respATagged, respQueueDepth)
   val respQueueB = Queue(respBTagged, respQueueDepth)
 
