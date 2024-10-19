@@ -5,6 +5,7 @@ package radiance.core
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.requireIsChiselType
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.{LazyModule, LazyModuleImp}
 import freechips.rocketchip.tilelink._
@@ -312,10 +313,17 @@ class TensorCoreDecoupled(
   fullAQueue.io.enq.bits.data := fullAEnqData
   fullAQueue.io.enq.bits.tag := fullAEnqTag
 
-  val operandsValid = fullAQueue.io.deq.valid && respQueueB.valid
+  val fillBufB = Module(new FillBuffer(
+    chiselTypeOf(respQueueB.bits.data), 2/*substeps*/
+  ))
+  fillBufB.io.enq.valid := respQueueB.valid
+  fillBufB.io.enq.bits := respQueueB.bits.data
+  respQueueB.ready := fillBufB.io.enq.ready
+
+  val operandsValid = fullAQueue.io.deq.valid && fillBufB.io.deq.valid
   val operandA = fullAQueue.io.deq.bits.data
   val operandATag = fullAQueue.io.deq.bits.tag
-  val operandB = respQueueB.bits.data
+  val operandB = fillBufB.io.deq.bits
   val dpuReady = Wire(Bool())
   val dpuFire = operandsValid && dpuReady
   val setCompute = fullAQueue.io.deq.bits.tag.set
@@ -338,7 +346,7 @@ class TensorCoreDecoupled(
   // we fully iterated a column (M-dimension).
   val shouldDequeueBMask = ((1 << numTilesMBits) - 1).U
   val shouldDequeueB = (stepExecute & shouldDequeueBMask) === shouldDequeueBMask
-  respQueueB.ready := dpuFire && shouldDequeueB
+  fillBufB.io.deq.ready := dpuFire && shouldDequeueB
   dontTouch(respQueueA)
   dontTouch(respQueueB)
   dontTouch(shouldDequeueB)
@@ -375,8 +383,11 @@ class TensorCoreDecoupled(
           operandADimensional(0).length == tilingParams.kc,
           "operand width doesn't agree with tiling parameter")
   // operandB is 2x4 in K-major
+  // val operandBDimensional =
+  //   operandB.asBools.grouped(wordSizeInBits).map(VecInit(_).asUInt).toSeq
+  //   .grouped(4/*k-dim*/).toSeq
   val operandBDimensional =
-    operandB.asBools.grouped(wordSizeInBits).map(VecInit(_).asUInt).toSeq
+    operandB(0)/*FIXME!*/.asBools.grouped(wordSizeInBits).map(VecInit(_).asUInt).toSeq
     .grouped(4/*k-dim*/).toSeq
   require(tilingParams.mc * ncSubstep == numLanes,
           "substep tile size doesn't match writeback throughput")
@@ -487,6 +498,37 @@ class TensorCoreDecoupled(
         state := TensorState.idle
       }
     }
+  }
+}
+
+// A buffer that collects multiple entries of input data and exposes the
+// coalesced data as output.  Effectively acts as a width-widening
+// chisel.util.Pipe.
+class FillBuffer[T <: Data](
+  gen: T,
+  entries: Int
+) extends Module {
+  require(entries > 0, "FillBuffer must have a positive number of entries")
+  requireIsChiselType(gen)
+
+  val io = IO(new Bundle {
+    val enq = Flipped(Decoupled(gen))
+    val deq = Decoupled(Vec(entries, gen))
+  })
+
+  val data = Reg(Vec(entries, gen))
+  val ptr = Counter(entries + 1)
+  val full = (ptr.value === entries.U)
+  io.enq.ready := !full
+  when (io.enq.fire) {
+    data(ptr.value) := io.enq.bits
+    ptr.inc()
+  }
+  io.deq.valid := full
+  (io.deq.bits zip data).foreach { case (io, d) => io := d }
+  when (io.deq.fire) {
+    assert(ptr.value === entries.U, "FillBuffer fired before buffer was full")
+    ptr.reset()
   }
 }
 
