@@ -16,16 +16,20 @@ import radiance.memory._
 import radiance.subsystem.RadianceGemminiDataType.{BF16, FP16, FP32, Int8}
 
 sealed trait RadianceSmemSerialization
-
 case object FullySerialized extends RadianceSmemSerialization
 case object CoreSerialized extends RadianceSmemSerialization
 case object NotSerialized extends RadianceSmemSerialization
+
+sealed trait MemType
+case object TwoPort extends MemType
+case object TwoReadOneWrite extends MemType
 
 case class RadianceSharedMemKey(address: BigInt,
                                 size: Int,
                                 numBanks: Int,
                                 numWords: Int,
                                 wordSize: Int = 4,
+                                memType: MemType = TwoPort,
                                 strideByWord: Boolean = true,
                                 filterAligned: Boolean = true,
                                 disableMonitors: Boolean = true,
@@ -197,6 +201,7 @@ class WithRadianceSharedMem(address: BigInt,
                             size: Int,
                             numBanks: Int,
                             numWords: Int,
+                            memType: MemType = TwoPort,
                             strideByWord: Boolean = true,
                             filterAligned: Boolean = true,
                             disableMonitors: Boolean = true,
@@ -205,8 +210,8 @@ class WithRadianceSharedMem(address: BigInt,
   case RadianceSharedMemKey => {
     require(isPow2(size) && size >= 1024)
     Some(RadianceSharedMemKey(
-      address, size, numBanks, numWords, 4, strideByWord,
-      filterAligned, disableMonitors, serializeUnaligned
+      address, size, numBanks, numWords, 4, memType,
+      strideByWord, filterAligned, disableMonitors, serializeUnaligned
     ))
   }
 })
