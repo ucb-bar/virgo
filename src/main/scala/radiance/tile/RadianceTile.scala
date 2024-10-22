@@ -845,9 +845,8 @@ class RadianceTileModuleImp(outer: RadianceTile)
   // TODO: generalize for useVxCache
   if (!outer.radianceParams.useVxCache) {}
 
-  // connect io.start and io.finish of the fake TensorCoreDecoupled module to
-  // prevent optimize-out
-  outer.tensor.module.io.start := true.B
+  // connect io.start and io.finish of the fake TensorCoreDecoupled module
+  outer.tensor.module.io.start := false.B
 
   // // RoCC
   // if (outer.roccs.size > 0) {

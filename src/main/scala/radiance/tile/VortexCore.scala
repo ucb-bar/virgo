@@ -435,7 +435,7 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
     addPath("/scratch/hansung/chipyard/sims/vcs/generated-src/chipyard.unittest.TestHarness.TensorUnitTestConfig/gen-collateral/TensorCoreDecoupled.sv")
     addPath("/scratch/hansung/chipyard/sims/vcs/generated-src/chipyard.unittest.TestHarness.TensorUnitTestConfig/gen-collateral/TensorDotProductUnit.sv")
   }
-  addHopperTensorCore
+  // addHopperTensorCore
   addResource("/vsrc/vortex/hw/rtl/core/VX_uop_sequencer.sv")
   addResource("/vsrc/vortex/hw/rtl/core/VX_reduce_unit.sv")
   addResource("/vsrc/vortex/hw/rtl/fpu/VX_tensor_dpu.sv")
