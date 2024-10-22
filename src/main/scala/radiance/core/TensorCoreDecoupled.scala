@@ -216,7 +216,7 @@ class TensorCoreDecoupled(
 
   // FIXME: bogus base address
   val addressA = addressGen(0.U, tagA.set, tagA.index)
-  val addressB = addressGen(0.U, tagB.set, tagB.index)
+  val addressB = addressGen(0x400.U, tagB.set, tagB.index)
 
   val lastReqA = (tagA.set === lastSet.U) && (tagA.index === lastIndex.U)
   val lastReqB = (tagB.set === lastSet.U) && (tagB.index === lastIndex.U)
@@ -672,14 +672,36 @@ class TensorCoreDecoupledTwoTLRAM(implicit p: Parameters) extends LazyModule {
     beatBytes = 32 // @cleanup: hardcoded
   ))
 
+  val stutter = new TLIdentityNode
   xbar.node :=* tensor.node
-  ramA.node := xbar.node
+  ramA.node := stutter := xbar.node
   ramB.node := xbar.node
+
+  val fuzz = true
 
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) with UnitTestModule {
     tensor.module.io.start := io.start
     io.finished := tensor.module.io.finished
+
+    val (tlIn, _) = stutter.in(0)
+    val (tlOut, _) = stutter.out(0)
+    require(stutter.in.length == 1)
+    require(stutter.out.length == 1)
+
+    // inject stalls for fuzzing
+    val incr = Wire(Bool())
+    val (count, _) = Counter(incr, 0x1000)
+    def cond(x: UInt) = (x & ((1 << 3) - 1).U) =/= 0.U
+    val stall = if (fuzz) cond(count) else false.B
+
+    tlOut.a <> tlIn.a
+    tlIn.d <> tlOut.d
+    incr := tlIn.a.fire || stall
+    when (stall) {
+      tlIn.a.ready := false.B
+      tlOut.a.valid := false.B
+    }
   }
 }
 
