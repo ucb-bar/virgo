@@ -38,7 +38,9 @@ class RadianceCluster (
 
   // TODO: this probably needs to be instantiated inside the radiance shared mem module
   def virgoSharedMemComponentsGen() = new VirgoSharedMemComponents(thisClusterParams, gemminiTiles, radianceTiles)
-  LazyModule(new RadianceSharedMem(virgoSharedMemComponentsGen, clbus)).suggestName("shared_mem")
+  def virgoSharedMemComponentsImpGen(outer: VirgoSharedMemComponents) = new VirgoSharedMemComponentsImp(outer)
+  LazyModule(new RadianceSharedMem(
+    virgoSharedMemComponentsGen, Some(virgoSharedMemComponentsImpGen(_)), clbus)).suggestName("shared_mem")
 
   // direct core-accelerator connections
   val smemKey = p(RadianceSharedMemKey).get

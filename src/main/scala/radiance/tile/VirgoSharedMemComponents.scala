@@ -9,8 +9,9 @@ import radiance.memory._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.diplomacy.{AddressSet, BufferParams}
 import freechips.rocketchip.subsystem.BaseClusterParams
-import radiance.subsystem.RadianceSharedMemKey
+import radiance.subsystem.{CoreSerialized, FullySerialized, NotSerialized, RadianceSharedMemKey}
 import gemmini._
+import scala.collection.mutable.ArrayBuffer
 
 // virgo-specific tilelink nodes
 // generic smem implementation is in RadianceSharedMem.scala
@@ -27,6 +28,9 @@ class VirgoSharedMemComponents(
   val smemDepth = smemKey.size / smemWidth / smemBanks
   val smemSubbanks = smemWidth / wordSize
   val smemSize = smemWidth * smemDepth * smemBanks
+
+  val numCores = radianceTiles.length
+  val numLanes = radianceTiles.head.numLsuLanes
 
   val gemminis = gemminiTiles.map(_.gemmini)
   val gemminiConfigs = gemminis.map(_.config)
@@ -54,9 +58,26 @@ class VirgoSharedMemComponents(
       smemFanoutXbar.node
     }
   }
+  val tcNodeFanouts = radianceTiles.flatMap(_.tcSmemNodes)
+    // .map(connectOne(_, () => TLBuffer(BufferParams(2, false, false), BufferParams(0))))
+    .map(connectXbarName(_, Some("tc_fanout")))
   val clBusClients: Seq[TLNode] = radianceSmemFanout
 
-  val (uniformRNodes, uniformWNodes, nonuniformRNodes, nonuniformWNodes) =
+  // convert to monad (very fancy)
+  val coreSerialOpt: Option[Unit] = serializeUnaligned match {
+    case CoreSerialized => Some(())
+    case _ => None
+  }
+
+  // uniform mux select for selecting lanes from a single core in unison
+  val coreSerialPolicy = coreSerialOpt.map(_ => Seq.fill(2)(Seq.fill(numLanes)(ExtPolicyMasterNode(numCores))))
+  val laneSerialXbars = coreSerialOpt.map(_ => Seq.tabulate(2) { rw =>
+    Seq.tabulate(numLanes) { lid =>
+      XbarWithExtPolicyNoFallback(Some(f"lane_${lid}_serial_in_xbar_$rw"))
+    }
+  })
+
+  override val (uniformRNodes, uniformWNodes, nonuniformRNodes, nonuniformWNodes) =
 
   if (strideByWord) {
     def distAndDuplicate(nodes: Seq[TLNode], suffix: String): Seq[Seq[TLNexusNode]] = {
@@ -68,7 +89,7 @@ class VirgoSharedMemComponents(
           dist := node
         }
         val fanout = Seq.tabulate(spSubbanks) { w =>
-          val buf = TLBuffer(BufferParams(1, false, true), BufferParams(0))
+          val buf = TLBuffer(BufferParams(2, false, false), BufferParams(0))
           buf := dist
           connectXbarName(buf, Some(s"spad_g${gemminiIdx}w${w}_fanout_$suffix"))
         }
@@ -84,57 +105,41 @@ class VirgoSharedMemComponents(
     val spadSpWriteNodesSingleBank = distAndDuplicate(gemminis.map(_.spad.spad_writer.node), "ws")
     val spadSpWriteNodes = Seq.fill(smemBanks)(spadSpWriteNodesSingleBank) // executed only once
 
+    // tensor core read nodes
+    val tcDistNodes = Seq.fill(smemBanks)(tcNodeFanouts.map(connectOne(_, () => DistributorNode(smemWidth, wordSize))))
+    val tcNodes = tcDistNodes.map { tcBank =>
+      Seq.fill(smemSubbanks)(tcBank.map(connectOne(_, () => TLBuffer(BufferParams(2, false, false)))).map(connectXbarName(_, Some("tc_dist_fanout"))))
+    } // (banks, subbanks, tc client)
+
+    val unalignedRWNodes: ArrayBuffer[ArrayBuffer[TLNexusNode]] = // mutable for readability
+      ArrayBuffer.fill(numLanes)(ArrayBuffer.fill(numCores)(null))
+
     if (filterAligned) {
-      val numLsuLanes = radianceTiles.head.numLsuLanes
-      val numLaneDupes = Math.max(1, smemSubbanks / numLsuLanes)
-      val filterRange = Math.min(smemSubbanks, numLsuLanes)
-      println(s"num_lsu_lanes ${numLsuLanes} num_lane_dupes ${numLaneDupes} filter_range ${filterRange}")
+      val numLaneDupes = Math.max(1, smemSubbanks / numLanes)
+      val filterRange = Math.min(smemSubbanks, numLanes)
 
-      // (subbank, sources, aligned) = rw node
-      val (fAligned, fUnaligned) = if (numLsuLanes >= smemSubbanks) {
-        val filterNodes: Seq[Seq[(TLNode, TLNode)]] = Seq.tabulate(numLaneDupes) { did =>
-          Seq.tabulate(filterRange) { wid =>
-            val trueWid = did * filterRange + wid
-            val address = AddressSet(smemBase + wordSize * trueWid, (smemSize - 1) - (smemSubbanks - 1) * wordSize)
+      // (subbank, sources) = rw node
+      val fAligned = if (numLanes >= smemSubbanks) {
+        val filterNodes: Seq[Seq[TLNode]] = Seq.tabulate(filterRange) { wid =>
+          val address = AddressSet(smemBase + wordSize * wid, (smemSize - 1) - (smemSubbanks - 1) * wordSize)
 
-            radianceSmemFanout.grouped(numLsuLanes).toList.zipWithIndex.flatMap { case (lanes, cid) =>
-              lanes.zipWithIndex.flatMap { case (lane, lid) =>
-                if ((lid % filterRange) == wid) {
-                  println(f"c${cid}_l${lid} connected to d${did}w${wid}")
-                  val filterNode = AlignFilterNode(Seq(address))(p, ValName(s"filter_l${lid}_w${trueWid}"))
-                  DisableMonitors { implicit p => filterNode := lane }
-                  // Seq((aligned splitter, unaligned splitter))
-                  Seq((
-                    connectOne(filterNode, () =>
-                      RWSplitterNode(address, s"aligned_splitter_c${cid}_l${lid}_w${trueWid}")),
-                    connectOne(filterNode, () =>
-                      RWSplitterNode(AddressSet.everything, s"unaligned_splitter_c${cid}_l${lid}"))
-                  ))
-                } else Seq()
-              }
+          radianceSmemFanout.grouped(numLanes).toList.zipWithIndex.flatMap { case (lanes, cid) =>
+            lanes.zipWithIndex.flatMap { case (lane, lid) =>
+              if ((lid % filterRange) == wid) {
+                val filterNode = AlignFilterNode(Seq(address))(p, ValName(s"filter_l${lid}_w${wid}"))
+                DisableMonitors { implicit p => filterNode := lane }
+
+                unalignedRWNodes(lid)(cid) = connectOne(filterNode, () =>
+                  RWSplitterNode(AddressSet.everything, s"unaligned_splitter_c${cid}_l${lid}"))
+
+                Seq(connectOne(filterNode, () =>
+                  RWSplitterNode(address, s"aligned_splitter_c${cid}_l${lid}_w${wid}")))
+              } else Seq()
             }
           }
-        }.flatten
-
-        val fAligned = Seq.fill(2)(filterNodes.map(_.map(_._1).map(connectXbarName(_, Some("rad_aligned")))))
-        val fUnaligned = if (serializeUnaligned) {
-          Seq.fill(2) {
-            val serializedNode = TLEphemeralNode()
-            val serializedInXbar = LazyModule(new TLXbar())
-            val serializedOutXbar = LazyModule(new TLXbar())
-            serializedInXbar.suggestName("unaligned_serialized_in_xbar")
-            serializedOutXbar.suggestName("unaligned_serialized_out_xbar")
-            guardMonitors { implicit p =>
-              filterNodes.foreach(_.map(_._2).foreach(serializedInXbar.node := _))
-              serializedNode := serializedInXbar.node
-              serializedOutXbar.node := serializedNode
-            }
-            Seq(serializedOutXbar.node)
-          }
-        } else {
-          Seq.fill(2)(filterNodes.flatMap(_.map(_._2).map(connectXbar.apply)))
         }
-        (fAligned, fUnaligned)
+
+        Seq.fill(2)(filterNodes.map(_.map(connectXbarName(_, Some("rad_aligned")))))
       } else { // aligned: (subbanks, cores) = rw node
         // (lanes, cores) = filter_node
         val filterNodes = Seq.tabulate(filterRange) { wid =>
@@ -142,7 +147,7 @@ class VirgoSharedMemComponents(
             AddressSet(smemBase + (did * filterRange + wid) * wordSize,
               (smemSize - 1) - (smemSubbanks - 1) * wordSize)
           }
-          radianceSmemFanout.grouped(numLsuLanes).toSeq.zipWithIndex.map { case (lanes, cid) =>
+          radianceSmemFanout.grouped(numLanes).toSeq.zipWithIndex.map { case (lanes, cid) =>
             val lane = lanes(wid)
             val filterNode = AlignFilterNode(addresses)(p, ValName(s"filter_c${cid}_w${wid}"))
             guardMonitors { implicit p =>
@@ -160,34 +165,45 @@ class VirgoSharedMemComponents(
             }
           }
         }.flatten
-        val fUnalignedRW = filterNodes.zipWithIndex.flatMap { case (cores, lid) =>
-          cores.zipWithIndex.map { case (fn, cid) =>
-            connectOne(fn, () => RWSplitterNode(AddressSet.everything, s"unaligned_split_c${cid}_l${lid}"))
+        filterNodes.zipWithIndex.foreach { case (cores, lid) =>
+          cores.zipWithIndex.foreach { case (fn, cid) =>
+            unalignedRWNodes(lid)(cid) = connectOne(fn, () =>
+              RWSplitterNode(AddressSet.everything, s"unaligned_split_c${cid}_l${lid}"))
           }
         }
-        val fAligned = Seq.fill(2)(fAlignedRW.map(_.map(connectXbarName(_, Some("rad_aligned")))))
+        Seq.fill(2)(fAlignedRW.map(_.map(connectXbarName(_, Some("rad_aligned")))))
+      }
 
-        val fUnaligned = if (serializeUnaligned) {
-          Seq.fill(2) {
-            val serializedNode = TLEphemeralNode()
-            val serializedInXbar = TLXbar(nameSuffix = Some("unaligned_ser_in"))
-            val serializedOutXbar = TLXbar(nameSuffix = Some("unaligned_ser_out"))
-            guardMonitors { implicit p =>
-              fUnalignedRW.foreach(serializedInXbar := _)
-              serializedNode := serializedInXbar
-              serializedOutXbar := serializedNode
-            }
-            Seq(serializedOutXbar)
+      val fUnaligned: Seq[Seq[TLNode]] = serializeUnaligned match {
+        case FullySerialized => Seq.fill(2) {
+          val serializedNode = TLEphemeralNode()
+          val serializedInXbar = LazyModule(new TLXbar())
+          val serializedOutXbar = LazyModule(new TLXbar())
+          serializedInXbar.suggestName("unaligned_serialized_in_xbar")
+          serializedOutXbar.suggestName("unaligned_serialized_out_xbar")
+          guardMonitors { implicit p =>
+            unalignedRWNodes.flatten.foreach(serializedInXbar.node := _)
+            serializedNode := serializedInXbar.node
+            serializedOutXbar.node := serializedNode
           }
-        } else {
-          Seq.fill(2)(fUnalignedRW.map(connectXbar.apply))
+          Seq(serializedOutXbar.node)
         }
-        (fAligned, fUnaligned)
+        case CoreSerialized => Seq.tabulate(2) { rw =>
+          // we can either have one core per lane selected (multiple mux selects)
+          // or strictly lanes from a single selected core (one mux select). doing the latter here
+          unalignedRWNodes.toSeq.zipWithIndex.map { case (coresRW, lid) =>
+            val laneSerialXbar = laneSerialXbars.get(rw)(lid)
+            laneSerialXbar._1.policySlaveNode := coreSerialPolicy.get(rw)(lid)
+            coresRW.foreach(laneSerialXbar._2 := _)
+            connectXbarName(connectOne(laneSerialXbar._1.node, TLEphemeralNode.apply), Some(s"lane_${lid}_serial_out"))
+          }
+        }
+        case NotSerialized => Seq.fill(2)(unalignedRWNodes.toSeq.flatten.map(connectXbar.apply))
       }
 
 
-      val uniformRNodes: Seq[Seq[Seq[TLNexusNode]]] = spadReadNodes.map { rb =>
-        (rb zip fAligned.head).map { case (rw, fa) => rw ++ fa }
+      val uniformRNodes: Seq[Seq[Seq[TLNexusNode]]] = (spadReadNodes zip tcNodes).map { case (rb, tcrb) =>
+        (rb lazyZip tcrb lazyZip fAligned.head).map { case (rw, tcrw, fa) => rw ++ tcrw ++ fa }
       }
       val uniformWNodes: Seq[Seq[Seq[TLNexusNode]]] = (spadWriteNodes zip spadSpWriteNodes).map { case (wb, wsb) =>
         (wb lazyZip wsb lazyZip fAligned.last).map {
@@ -206,6 +222,8 @@ class VirgoSharedMemComponents(
       val uniformWNodes: Seq[Seq[Seq[TLNexusNode]]] = (spadWriteNodes zip spadSpWriteNodes).map { case (wb, wsb) =>
         (wb zip wsb).map { case (ww, wsw) => ww ++ wsw }
       }
+      // random accesses are not serialized here, require so
+      require(serializeUnaligned == NotSerialized, "when not filtering, unaligned accesses must be serialized")
       // these nodes are random access
       val nonuniformRNodes: Seq[TLNode] = splitterNodes.map(connectXbarName(_, Some("rad_unaligned_r")))
       val nonuniformWNodes: Seq[TLNode] = splitterNodes.map(connectXbarName(_, Some("rad_unaligned_w")))
@@ -231,5 +249,25 @@ class VirgoSharedMemComponents(
     splitterNode :=* TLWidthWidget(4) :=* coreXbar
 
     (Seq.empty, Seq.empty, Seq(unifiedMemReadNode), Seq(unifiedMemWriteNode))
+  }
+}
+
+class VirgoSharedMemComponentsImp[T <: VirgoSharedMemComponents]
+  (override val outer: T) extends RadianceSmemNodeProviderImp[T](outer) {
+
+  (outer.laneSerialXbars zip outer.coreSerialPolicy).foreach { case (xbarsRW, policiesRW) =>
+    (xbarsRW zip policiesRW).foreach { case (xbars, policies) =>
+      // for each lane, if any core is valid
+      val coreValids = xbars.map(_._2.in.map(_._1)).transpose.map { core => VecInit(core.map(_.a.valid)).asUInt.orR }
+      val select = xbars.map(_._2.out.map(_._1)).transpose.map { core => VecInit(core.map(_.a.ready)).asUInt.orR }
+      val coreSelect = TLArbiter.roundRobin(outer.numCores, VecInit(coreValids).asUInt, VecInit(select).asUInt.orR)
+      // TODO: roll this into XbarWithExtPolicy
+      xbars.foreach { lane =>
+        (lane._2.in.map(_._1) lazyZip lane._2.out.map(_._1) lazyZip coreSelect.asBools).foreach { case (li, lo, cs) =>
+          lo.a.valid := li.a.valid && cs
+        }
+      }
+      policies.foreach { _.out.head._1.hint := coreSelect }
+    }
   }
 }

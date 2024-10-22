@@ -91,13 +91,15 @@ class DistributorNode(from: Int, to: Int)(implicit p: Parameters) extends LazyMo
     }
 
     def partialData: UInt = VecInit(mn.map(_.d).map(d => Mux(d.fire, d.bits.data, 0.U(d.bits.data.getWidth.W)))).asUInt
-    def partialValid: UInt = VecInit(mn.map(_.d.fire)).asUInt
+    def partialValid: UInt = VecInit(mn.map(_.d.valid)).asUInt
+    def partialFire: UInt = VecInit(mn.map(_.d.fire)).asUInt
 
     mn.map(_.d.ready).zip(arrived.asBools).foreach { case (r, a) =>
       r := cn.d.ready && (!partialWait || !a) // if waiting for partial response, ready only if not arrived yet
     }
 
     // TODO: might need coverage test for this
+    cd := DontCare
     when (!partialWait) {
       cn.d.valid := false.B
       partialWait := false.B
@@ -109,31 +111,36 @@ class DistributorNode(from: Int, to: Int)(implicit p: Parameters) extends LazyMo
         assert(cd.data === partialData, "sanity check")
       }.elsewhen (partialValid.orR) {
         // at least 1 valid: enter partial valid state, store partial data into regs
-        partialWait := true.B
-        arrived := partialValid
+        partialWait := cn.d.ready // if something fired, enter partial wait
+        arrived := partialFire
         cdReg.data := partialData
-        when (mn.head.d.valid) { setMetadata(cdReg, mn.head.d.bits) }
+        when (mn.head.d.fire) { setMetadata(cdReg, mn.head.d.bits) }
       }
     }.otherwise {
       cn.d.valid := false.B
       partialWait := true.B
       when ((arrived | partialValid).andR) {
         // all valids received now
-        when (mn.head.d.valid) {
-          setMetadata(cd, mn.head.d.bits)
-        }.otherwise {
-          cd := cdReg
-        }
         cn.d.valid := true.B
-        cd.data := cdReg.data | partialData
-        partialWait := false.B
-        cdReg := 0.U.asTypeOf(cdReg.cloneType)
-        arrived := 0.U
+        when (cn.d.ready) {
+          assert((arrived | partialFire).andR)
+          when (mn.head.d.valid) {
+            setMetadata(cd, mn.head.d.bits)
+          }.otherwise {
+            cd := cdReg
+          }
+          cd.data := cdReg.data | partialData
+          partialWait := false.B
+          cdReg := 0.U.asTypeOf(cdReg.cloneType)
+          arrived := 0.U
+        }
       }.elsewhen (partialValid.orR) {
         // update partial data
-        arrived := arrived | partialValid
-        cdReg.data := cdReg.data | partialData
-        when (mn.head.d.valid) { setMetadata(cdReg, mn.head.d.bits) }
+        when (cn.d.ready) {
+          arrived := arrived | partialValid
+          cdReg.data := cdReg.data | partialData
+          when (mn.head.d.valid) { setMetadata(cdReg, mn.head.d.bits) }
+        }
       }
     }
   }

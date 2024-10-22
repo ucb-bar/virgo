@@ -20,17 +20,22 @@ object ExtPolicyNodeImp extends SimpleNodeImp[Int, Int, Int, ExtPolicyBundle] {
 case class ExtPolicyMasterNode(w: Int)(implicit valName: ValName) extends SourceNode(ExtPolicyNodeImp)(Seq(w))
 case class ExtPolicySlaveNode()(implicit valName: ValName) extends SinkNode(ExtPolicyNodeImp)(Seq(0))
 
-class XbarWithExtPolicy(nameSuffix: Option[String] = None)
+class XbarWithExtPolicy(nameSuffix: Option[String] = None, useFallback: Boolean = true)
                        (implicit p: Parameters) extends TLXbar(nameSuffix = nameSuffix) {
   val policySlaveNode = ExtPolicySlaveNode()
 
   class ImplChild extends Impl {
     val policy: TLArbiter.Policy = (width, valids, select) => {
       val in = policySlaveNode.in.head._1
-      val hintHit = (valids & in.hint).orR
-      val fallback = TLArbiter.lowestIndexFirst(width, valids, !hintHit && select)
       in.actual := select.asTypeOf(in.actual.cloneType)
-      Mux(hintHit, in.hint, fallback)
+
+      if (useFallback) {
+        val hintHit = (valids & in.hint).orR
+        val fallback = TLArbiter.lowestIndexFirst(width, valids, !hintHit && select)
+        Mux(hintHit, in.hint, fallback)
+      } else {
+        in.hint
+      }
     }
     TLXbar.circuit(policy, node.in, node.out)
   }
@@ -43,5 +48,15 @@ object XbarWithExtPolicy {
            (implicit p: Parameters): XbarWithExtPolicy = {
     val xbar = LazyModule(new XbarWithExtPolicy(nameSuffix))
     xbar
+  }
+}
+
+object XbarWithExtPolicyNoFallback {
+  def apply(nameSuffix: Option[String] = None)
+           (implicit p: Parameters): (XbarWithExtPolicy, TLIdentityNode) = {
+    val inIdNode = TLIdentityNode()
+    val xbar = LazyModule(new XbarWithExtPolicy(nameSuffix, false))
+    xbar.node :=* inIdNode
+    (xbar, inIdNode)
   }
 }

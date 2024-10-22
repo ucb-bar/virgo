@@ -15,6 +15,12 @@ import radiance.tile._
 import radiance.memory._
 import radiance.subsystem.RadianceGemminiDataType.{BF16, FP16, FP32, Int8}
 
+sealed trait RadianceSmemSerialization
+
+case object FullySerialized extends RadianceSmemSerialization
+case object CoreSerialized extends RadianceSmemSerialization
+case object NotSerialized extends RadianceSmemSerialization
+
 case class RadianceSharedMemKey(address: BigInt,
                                 size: Int,
                                 numBanks: Int,
@@ -23,7 +29,7 @@ case class RadianceSharedMemKey(address: BigInt,
                                 strideByWord: Boolean = true,
                                 filterAligned: Boolean = true,
                                 disableMonitors: Boolean = true,
-                                serializeUnaligned: Boolean = true)
+                                serializeUnaligned: RadianceSmemSerialization = FullySerialized)
 case object RadianceSharedMemKey extends Field[Option[RadianceSharedMemKey]](None)
 
 case class RadianceFrameBufferKey(baseAddress: BigInt,
@@ -56,7 +62,7 @@ class WithRadianceCores(
         nTLBWays = 1,
         nTLBBasePageSectors = 1,
         nTLBSuperpages = 1,
-      nMSHRs = 0,
+        nMSHRs = 0,
         blockBytes = site(CacheBlockBytes))),
       icache = Some(ICacheParams(
         rowBits = site(SystemBusKey).beatBits,
@@ -194,8 +200,8 @@ class WithRadianceSharedMem(address: BigInt,
                             strideByWord: Boolean = true,
                             filterAligned: Boolean = true,
                             disableMonitors: Boolean = true,
-                            serializeUnaligned: Boolean = true
-                           ) extends Config((site, _, _) => {
+                            serializeUnaligned: RadianceSmemSerialization = FullySerialized
+                           ) extends Config((_, _, _) => {
   case RadianceSharedMemKey => {
     require(isPow2(size) && size >= 1024)
     Some(RadianceSharedMemKey(
