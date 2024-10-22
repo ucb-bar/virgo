@@ -372,7 +372,8 @@ class SourceGenerator[T <: Data](
       outstanding := outstanding + 1.U
     }
   }.elsewhen(io.reclaim.valid) {
-    assert(outstanding > 0.U)
+    assert(outstanding > 0.U,
+           "Over-reclaim. Did some responses get dropped?")
     outstanding := outstanding - 1.U
   }
   dontTouch(outstanding)
