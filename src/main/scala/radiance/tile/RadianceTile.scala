@@ -379,6 +379,12 @@ class RadianceTile private (
     tlMasterXbar.node :=* AddressOrNode(base) :=* dcacheNode
   }
 
+  // Instantiate a fake TensorCoreDecoupled module to force unique-ification of
+  // module names in the Chisel-generated Verilog.  This should be disabled for
+  // synthesis runs
+  val tensor = LazyModule(new radiance.core.TensorCoreDecoupledTL)
+  tlMasterXbar.node :=* tensor.node
+
   /* below are copied from rocket */
 
   val tile_master_blocker =
@@ -838,6 +844,10 @@ class RadianceTileModuleImp(outer: RadianceTile)
 
   // TODO: generalize for useVxCache
   if (!outer.radianceParams.useVxCache) {}
+
+  // connect io.start and io.finish of the fake TensorCoreDecoupled module to
+  // prevent optimize-out
+  outer.tensor.module.io.start := true.B
 
   // // RoCC
   // if (outer.roccs.size > 0) {

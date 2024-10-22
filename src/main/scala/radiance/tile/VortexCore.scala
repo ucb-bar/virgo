@@ -242,8 +242,6 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   // addResource("/vsrc/vortex/hw/rtl/mem/VX_gbar_arb.sv")
   // addResource("/vsrc/vortex/hw/rtl/mem/VX_gbar_unit.sv")
 
-  addResource("/vsrc/vortex/hw/rtl/mem/VX_tc_bus_if.sv")
-
   addResource("/vsrc/vortex/hw/rtl/libs/VX_allocator.sv")
   // addResource("/vsrc/vortex/hw/rtl/libs/VX_avs_adapter.sv")
   // addResource("/vsrc/vortex/hw/rtl/libs/VX_axi_adapter.sv")
@@ -408,6 +406,7 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   // tensor core
   addResource("/vsrc/vortex/hw/rtl/core/VX_tensor_core.sv")
   addResource("/vsrc/vortex/hw/rtl/core/VX_tensor_hopper_core.sv")
+  addResource("/vsrc/vortex/hw/rtl/mem/VX_tc_bus_if.sv")
 //  addResource("/vsrc/vortex/hw/rtl/core/VX_tensor_ucode.vh")
   addResource("/vsrc/vortex/hw/rtl/core/VX_uop_sequencer.sv")
   addResource("/vsrc/vortex/hw/rtl/core/VX_reduce_unit.sv")
