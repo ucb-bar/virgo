@@ -53,10 +53,12 @@ object XbarWithExtPolicy {
 
 object XbarWithExtPolicyNoFallback {
   def apply(nameSuffix: Option[String] = None)
-           (implicit p: Parameters): (XbarWithExtPolicy, TLIdentityNode) = {
+           (implicit p: Parameters): (XbarWithExtPolicy, TLIdentityNode, TLIdentityNode) = {
     val inIdNode = TLIdentityNode()
+    val outIdNode = TLIdentityNode()
     val xbar = LazyModule(new XbarWithExtPolicy(nameSuffix, false))
     xbar.node :=* inIdNode
-    (xbar, inIdNode)
+    outIdNode :=* xbar.node
+    (xbar, inIdNode, outIdNode)
   }
 }

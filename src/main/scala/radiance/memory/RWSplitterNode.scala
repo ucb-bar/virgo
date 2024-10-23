@@ -16,6 +16,7 @@ class RWSplitterNode(visibility: Option[AddressSet], override val name: String =
   // splits & arbitrates them into one client node per type of operation;
   // there will be N incoming edges, two outgoing edges, with two N:1 muxes;
   // it keeps the read and write channels fully separate to allow parallel processing.
+  suggestName(name)
   val node = TLNexusNode(
     clientFn = { seq =>
       val in_mapping = TLXbar.mapInputIds(seq)
@@ -153,6 +154,11 @@ class RWSplitterNode(visibility: Option[AddressSet], override val name: String =
 object RWSplitterNode {
   def apply()(implicit p: Parameters, valName: ValName, sourceInfo: SourceInfo): TLNexusNode = {
     LazyModule(new RWSplitterNode(None, name = valName.value)).node
+  }
+
+  def apply(name: String)
+           (implicit p: Parameters, valName: ValName, sourceInfo: SourceInfo): TLNexusNode = {
+    LazyModule(new RWSplitterNode(None, name = name)).node
   }
 
   def apply(visibility: AddressSet)

@@ -108,7 +108,8 @@ class VirgoSharedMemComponents(
     // tensor core read nodes
     val tcDistNodes = Seq.fill(smemBanks)(tcNodeFanouts.map(connectOne(_, () => DistributorNode(smemWidth, wordSize))))
     val tcNodes = tcDistNodes.map { tcBank =>
-      Seq.fill(smemSubbanks)(tcBank.map(connectOne(_, () => TLBuffer(BufferParams(2, false, false)))).map(connectXbarName(_, Some("tc_dist_fanout"))))
+      Seq.fill(smemSubbanks)(tcBank.map(connectOne(_,
+        () => TLBuffer(BufferParams(2, false, false)))).map(connectXbarName(_, Some("tc_dist_fanout"))))
     } // (banks, subbanks, tc client)
 
     val unalignedRWNodes: ArrayBuffer[ArrayBuffer[TLNexusNode]] = // mutable for readability
@@ -195,7 +196,7 @@ class VirgoSharedMemComponents(
             val laneSerialXbar = laneSerialXbars.get(rw)(lid)
             laneSerialXbar._1.policySlaveNode := coreSerialPolicy.get(rw)(lid)
             coresRW.foreach(laneSerialXbar._2 := _)
-            connectXbarName(connectOne(laneSerialXbar._1.node, TLEphemeralNode.apply), Some(s"lane_${lid}_serial_out"))
+            connectXbarName(connectOne(laneSerialXbar._3, TLEphemeralNode.apply), Some(s"lane_${lid}_serial_out"))
           }
         }
         case NotSerialized => Seq.fill(2)(unalignedRWNodes.toSeq.flatten.map(connectXbar.apply))
@@ -216,7 +217,7 @@ class VirgoSharedMemComponents(
 
       (uniformRNodes, uniformWNodes, nonuniformRNodes, nonuniformWNodes)
     } else {
-      val splitterNodes = radianceSmemFanout.map { connectOne(_, RWSplitterNode.apply) }
+      val splitterNodes = radianceSmemFanout.map { connectOne(_, () => RWSplitterNode("rad_fanout_splitter")) }
       // these nodes access an entire line simultaneously
       val uniformRNodes: Seq[Seq[Seq[TLNexusNode]]] = spadReadNodes
       val uniformWNodes: Seq[Seq[Seq[TLNexusNode]]] = (spadWriteNodes zip spadSpWriteNodes).map { case (wb, wsb) =>
@@ -259,7 +260,7 @@ class VirgoSharedMemComponentsImp[T <: VirgoSharedMemComponents]
     (xbarsRW zip policiesRW).foreach { case (xbars, policies) =>
       // for each lane, if any core is valid
       val coreValids = xbars.map(_._2.in.map(_._1)).transpose.map { core => VecInit(core.map(_.a.valid)).asUInt.orR }
-      val select = xbars.map(_._2.out.map(_._1)).transpose.map { core => VecInit(core.map(_.a.ready)).asUInt.orR }
+      val select = xbars.map(_._3.in.map(_._1)).transpose.map { core => VecInit(core.map(_.a.fire)).asUInt.orR }
       val coreSelect = TLArbiter.roundRobin(outer.numCores, VecInit(coreValids).asUInt, VecInit(select).asUInt.orR)
       // TODO: roll this into XbarWithExtPolicy
       xbars.foreach { lane =>

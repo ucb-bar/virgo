@@ -2,7 +2,7 @@ package radiance.memory
 
 import chisel3._
 import chisel3.util._
-import freechips.rocketchip.diplomacy.{AddressSet, TransferSizes, IdRange}
+import freechips.rocketchip.diplomacy.{AddressSet, TransferSizes, IdRange, BufferParams}
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util.BundleField
 import org.chipsalliance.cde.config.Parameters
@@ -77,23 +77,29 @@ class DuplicatorNode(override val name: String = "dup")
     sourceEnq.bits := nodeIn.a.bits.source
 
     val idQueue = Queue(sourceEnq, entries = 4, pipe = false, flow = false)
+
     val srcMatch = nodeOuts.map(_.d.bits.source(inSourceWidth - 1, 0) === idQueue.bits)
-    idQueue.ready := nodeIn.d.ready && srcMatch.reduce(_ || _)
+    idQueue.ready := nodeIn.d.fire
 
     assert(sourceEnq.fire === nodeIn.a.fire)
     assert(idQueue.fire === nodeIn.d.fire)
 
-    (nodeOuts zip srcMatch).foreach { case (o, m) =>
+    (nodeOuts lazyZip srcMatch lazyZip Seq(0, inSourceEnd)).foreach { case (o, m, p) =>
       o.a.bits := nodeIn.a.bits
-      o.a.bits.source := nodeIn.a.bits.source | inSourceEnd.U
+      o.a.bits.source := nodeIn.a.bits.source | p.U
       o.a.valid := nodeIn.a.valid
-      nodeIn.d.bits := o.d.bits
-      nodeIn.d.bits.source := o.d.bits.source(inSourceWidth - 1, 0)
-      nodeIn.d.valid := o.d.valid
       o.d.ready := nodeIn.d.ready && m
     }
-    assert(!(nodeOuts.head.a.ready && nodeOuts.last.a.ready) || !nodeIn.a.valid, "double output fire")
+    nodeIn.d.bits := MuxCase(DontCare, (nodeOuts zip srcMatch).map { case (o, m) =>
+      m -> o.d.bits
+    })
+    nodeIn.d.bits.source := MuxCase(DontCare, (nodeOuts zip srcMatch).map { case (o, m) =>
+      m -> o.d.bits.source(inSourceWidth - 1, 0)
+    })
+    nodeIn.d.valid := (nodeOuts zip srcMatch).map { case (o, m) => o.d.valid && m }.reduce(_ || _)
     nodeIn.a.ready := nodeOuts.map(_.a.ready).reduce(_ || _) && sourceEnq.ready
+
+    assert(!(nodeOuts.head.a.ready && nodeOuts.last.a.ready) || !nodeIn.a.valid, "double output fire")
   }
 }
 
@@ -105,24 +111,30 @@ object DuplicatorNode {
 
 class DoubleOutXbar(clients: Seq[TLNode], override val name: String = "2o_xbar")
                    (implicit p: Parameters) extends LazyModule {
-  val xbar0 = TLXbar(TLArbiter.lowestIndexFirst)
-  val xbar1 = TLXbar(TLArbiter.lowestIndexFirst)
+  val xbar0 = TLXbar(TLArbiter.lowestIndexFirst, Some("double_out_xbar0"))
+  val xbar1 = TLXbar(TLArbiter.lowestIndexFirst, Some("double_out_xbar1"))
 
   implicit val disableMonitors: Boolean = false
 
+  val bufGen = () => TLBuffer(ace = BufferParams(0), bd = BufferParams(2, flow = false, pipe = false))
   val dupedIds = clients.map(connectOne(_, DuplicatorNode.apply)).map { c =>
     val id0 = connectOne(c, TLIdentityNode.apply)
     val id1 = connectOne(c, TLIdentityNode.apply)
-    xbar0 := id0
-    xbar1 := id1
+    xbar0 := connectOne(id0, bufGen)
+    xbar1 := connectOne(id1, bufGen)
     Seq(id0, id1)
   }.transpose
 
   lazy val module = new LazyModuleImp(this) {
     val id0InReadys = VecInit(dupedIds.head.map(_.in.head._1.a.ready)).asUInt
     val id1InValids = VecInit(dupedIds.last.map(_.in.head._1.a.valid)).asUInt
-    (dupedIds.last.map(_.out.head._1.a.valid) zip (id1InValids & (~id0InReadys).asUInt).asBools)
+    val id1OutValids = dupedIds.last.map(_.out.head._1.a.valid)
+    val id1InReadys = dupedIds.last.map(_.in.head._1.a.ready)
+    val id1OutReadys = VecInit(dupedIds.last.map(_.out.head._1.a.ready)).asUInt
+    (id1OutValids zip (id1InValids & (~id0InReadys).asUInt).asBools)
       .foreach { case (o, i) => o := i }
+    (id1InReadys zip (id1OutReadys & (~id0InReadys).asUInt).asBools)
+      .foreach { case (i, o) => i := o }
   }
 }
 
