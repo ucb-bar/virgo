@@ -573,20 +573,20 @@ class FillBuffer[T <: Data](
 // wraps TensorCoreDecoupled with a TileLink client node for use in a Diplomacy
 // graph.
 class TensorCoreDecoupledTL(implicit p: Parameters) extends LazyModule {
-  val numSrcIds = 4
+  val numSourceIds = 16
 
   // node with two edges; one for A and one for B matrix
   val node = TLClientNode(Seq(
     TLMasterPortParameters.v2(
       Seq(TLMasterParameters.v2(
         name = "TensorCoreDecoupledMatrixANode",
-        sourceId = IdRange(0, numSrcIds)
+        sourceId = IdRange(0, numSourceIds)
       ))
     ),
     TLMasterPortParameters.v2(
       Seq(TLMasterParameters.v2(
         name = "TensorCoreDecoupledMatrixBNode",
-        sourceId = IdRange(0, numSrcIds)
+        sourceId = IdRange(0, numSourceIds)
       ))
     )
   ))
@@ -599,7 +599,7 @@ class TensorCoreDecoupledTLImp(outer: TensorCoreDecoupledTL)
   require(outer.node.out.length == 2/*A and B*/)
 
   val tensor = Module(new TensorCoreDecoupled(
-                      8, 8, outer.numSrcIds , TensorTilingParams()))
+                      8, 8, outer.numSourceIds , TensorTilingParams()))
   val wordSize = 4 // @cleanup: hardcoded
 
   val zip = Seq((outer.node.out(0), tensor.io.reqA),
