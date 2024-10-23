@@ -33,6 +33,7 @@ class TensorDotProductUnit(val half: Boolean) extends Module with tile.HasFPUPar
       val data = Bits((outFLen).W)
     })
   })
+  dontTouch(io)
 
   // [IEEE] -> recode() -> unbox() -> [Hardfloat] -> box() -> ieee() -> [IEEE]
   // make sure recoding/uncoding happens only at the edge, not at every
