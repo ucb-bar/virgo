@@ -200,22 +200,30 @@ class TensorCoreDecoupled(
     // note that both A and B are K-major to facilitate bank conflict-free SMEM
     // accesses, so that below code applies to both.
     //
-    // (row,col) coordinate of the compute tile
-    val tileRow = index
-    val tileCol = set
-    // (row,col) coordinate of the starting element of the compute tile
-    val elemRow = index << 1
-    val elemCol =  tileCol << log2Ceil(tilingParams.kc)
-    val rowStride = tilingParams.k * wordSize
-    val rowStrideBits = log2Ceil(rowStride)
-    val wordStrideBits = log2Ceil(wordSize)
-    val tileOffset = (elemRow << rowStrideBits) + (elemCol << wordStrideBits)
+    // a "block" is the 4*8 byte-sized contiguous memory that can be read in
+    // one SMEM request.  The A and B matrix is assumed to be stored in
+    // block-wise "index"-major order (M-major for A, N-major for B)
+    val blockRow = set
+    val blockCol = index
+    val blockIndex = (blockRow << indexBits) + blockCol
+    val blockSize = numLanes * wordSize
+    val blockSizeBits = log2Ceil(blockSize)
+    val byteOffset = blockIndex << blockSizeBits
+    base + byteOffset
 
-    base + tileOffset
+    // address generation for byte-wise K-major A and B layout
+    // val elemRow = blockRow << 1
+    // val elemCol =  blockCol << log2Ceil(tilingParams.kc)
+    // val rowStride = tilingParams.k * wordSize
+    // val rowStrideBits = log2Ceil(rowStride)
+    // val wordStrideBits = log2Ceil(wordSize)
+    // val tileOffset = (elemRow << rowStrideBits) + (elemCol << wordStrideBits)
+    // base + tileOffset
   }
 
   // FIXME: bogus base address
   val addressA = addressGen(0.U, tagA.set, tagA.index)
+  // SMEM 256KB, 8 banks: 0x8000B(32KB) per bank
   val addressB = addressGen(0x400.U, tagB.set, tagB.index)
 
   val lastReqA = (tagA.set === lastSet.U) && (tagA.index === lastIndex.U)
