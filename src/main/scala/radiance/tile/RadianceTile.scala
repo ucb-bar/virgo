@@ -379,6 +379,12 @@ class RadianceTile private (
     tlMasterXbar.node :=* AddressOrNode(base) :=* dcacheNode
   }
 
+  // Instantiate a fake TensorCoreDecoupled module to force unique-ification of
+  // module names in the Chisel-generated Verilog.  This should be disabled for
+  // synthesis runs
+  val tensor = LazyModule(new radiance.core.TensorCoreDecoupledTL)
+  tlMasterXbar.node :=* tensor.node
+
   /* below are copied from rocket */
 
   val tile_master_blocker =
@@ -733,7 +739,7 @@ class RadianceTileModuleImp(outer: RadianceTile)
       }
     }
 
-    def connectTc {
+    def connectTensor = {
       val tcb0 = new {
         val addr = core.io.tc_a_bits_address(31, 0)
         val tag = core.io.tc_a_bits_tag(3, 0)
@@ -752,16 +758,18 @@ class RadianceTileModuleImp(outer: RadianceTile)
         val adapter = Module(
           new VortexTLAdapter(
             outer.smemSourceWidth,
-            new VortexBundleA(tagWidth = 1, dataWidth = 32 * 8),
-            new VortexBundleD(tagWidth = 1, dataWidth = 32 * 8),
+            new VortexBundleA(tagWidth = 4, dataWidth = 32 * 8),
+            new VortexBundleD(tagWidth = 4, dataWidth = 32 * 8),
             client
           )
         )
+        require(adapter.io.inReq.bits.source.widthOption.get == bundle.tag.widthOption.get)
+        require(adapter.io.inReq.bits.address.widthOption.get == bundle.addr.widthOption.get)
         adapter.io.inReq.bits <> DontCare
         adapter.io.inReq.valid := bundle.aValid
         adapter.io.inReq.bits.address := bundle.addr
         adapter.io.inReq.bits.source := bundle.tag
-        adapter.io.inReq.bits.size := 5.U
+        adapter.io.inReq.bits.size := 5.U // 256 bits
         adapter.io.inReq.bits.opcode := TLMessages.Get
         adapter.io.inReq.bits.mask := x"ffffffff".U
         adapter.io.inResp.ready := bundle.dReady
@@ -774,6 +782,8 @@ class RadianceTileModuleImp(outer: RadianceTile)
       core.io.tc_d_valid := Cat(adapters.last.io.inResp.valid, adapters.head.io.inResp.valid)
       core.io.tc_d_bits_data := Cat(adapters.last.io.inResp.bits.data, adapters.head.io.inResp.bits.data)
       core.io.tc_d_bits_tag := Cat(adapters.last.io.inResp.bits.source, adapters.head.io.inResp.bits.source)
+      require(core.io.tc_d_bits_data.widthOption.get == adapters.head.io.inResp.bits.data.widthOption.get * 2)
+      require(core.io.tc_d_bits_tag.widthOption.get == adapters.head.io.inResp.bits.source.widthOption.get * 2)
     }
 
     def connectBarrier = {
@@ -790,7 +800,7 @@ class RadianceTileModuleImp(outer: RadianceTile)
       outer.barrierMasterNode.out(0)._1.resp.ready := true.B
     }
 
-    def connectAccelerator: Unit = {
+    def connectAccelerator = {
       outer.accMasterNode.out.head._1.cmd.bits := core.io.acc_write_out
       outer.accMasterNode.out.head._1.cmd.valid := core.io.acc_write_en
       core.io.acc_read_in := outer.accMasterNode.out.head._1.status
@@ -831,13 +841,16 @@ class RadianceTileModuleImp(outer: RadianceTile)
     connectImem
     connectDmem
     connectSmem
-    connectTc
+    connectTensor
     connectBarrier
     connectAccelerator
   }
 
   // TODO: generalize for useVxCache
   if (!outer.radianceParams.useVxCache) {}
+
+  // connect io.start and io.finish of the fake TensorCoreDecoupled module
+  outer.tensor.module.io.start := false.B
 
   // // RoCC
   // if (outer.roccs.size > 0) {
