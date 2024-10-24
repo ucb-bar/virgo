@@ -130,11 +130,13 @@ class VirgoSharedMemComponents(
                 val filterNode = AlignFilterNode(Seq(address))(p, ValName(s"filter_l${lid}_w${wid}"))
                 DisableMonitors { implicit p => filterNode := lane }
 
+                val alignedSplitter = Seq(connectOne(filterNode, () =>
+                  RWSplitterNode(address, s"aligned_splitter_c${cid}_l${lid}_w${wid}")))
+
                 unalignedRWNodes(lid)(cid) = connectOne(filterNode, () =>
                   RWSplitterNode(AddressSet.everything, s"unaligned_splitter_c${cid}_l${lid}"))
 
-                Seq(connectOne(filterNode, () =>
-                  RWSplitterNode(address, s"aligned_splitter_c${cid}_l${lid}_w${wid}")))
+                alignedSplitter
               } else Seq()
             }
           }
