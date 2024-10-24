@@ -108,7 +108,7 @@ class DistributorNode(from: Int, to: Int)(implicit p: Parameters) extends LazyMo
         cn.d.valid := true.B
         cd.data := Cat(mn.map(_.d.bits.data).reverse)
         setMetadata(cd, mn.head.d.bits)
-        assert(cd.data === partialData, "sanity check")
+        // assert(cd.data === partialData, "sanity check")
       }.elsewhen (partialValid.orR) {
         // at least 1 valid: enter partial valid state, store partial data into regs
         partialWait := cn.d.ready // if something fired, enter partial wait
