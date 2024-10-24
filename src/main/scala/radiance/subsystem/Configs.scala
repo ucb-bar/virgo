@@ -48,6 +48,7 @@ class WithRadianceCores(
   location: HierarchicalLocation,
   crossing: RocketCrossingParams,
   tensorCoreFP16: Boolean,
+  tensorCoreDecoupled: Boolean,
   useVxCache: Boolean
 ) extends Config((site, _, up) => {
   case TilesLocated(`location`) => {
@@ -55,7 +56,10 @@ class WithRadianceCores(
     val idOffset = up(NumTiles)
     val coreIdOffset = up(NumRadianceCores)
     val vortex = RadianceTileParams(
-      core = VortexCoreParams(tensorCoreFP16 = tensorCoreFP16),
+      core = VortexCoreParams(
+        tensorCoreFP16 = tensorCoreFP16,
+        tensorCoreDecoupled = tensorCoreDecoupled
+      ),
       btb = None,
       useVxCache = useVxCache,
       dcache = Some(DCacheParams(
@@ -90,7 +94,8 @@ class WithRadianceCores(
 }) {
   // constructor override that omits `crossing`
   def this(n: Int, location: HierarchicalLocation = InSubsystem,
-    tensorCoreFP16: Boolean = false, useVxCache: Boolean = false)
+    tensorCoreFP16: Boolean = false, tensorCoreDecoupled: Boolean = false,
+    useVxCache: Boolean = false)
   = this(n, location, RocketCrossingParams(
     master = HierarchicalElementMasterPortParams.locationDefault(location),
     slave = HierarchicalElementSlavePortParams.locationDefault(location),
@@ -98,7 +103,7 @@ class WithRadianceCores(
       case InSubsystem => CBUS
       case InCluster(clusterId) => CCBUS(clusterId)
     }
-  ), tensorCoreFP16, useVxCache)
+  ), tensorCoreFP16, tensorCoreDecoupled, useVxCache)
 }
 
 object RadianceGemminiDataType extends Enumeration {

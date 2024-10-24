@@ -99,6 +99,7 @@ case class VortexCoreParams(
   mulDiv: Option[MulDivParams] = None,
   fpu: Option[FPUParams] = None,
   tensorCoreFP16: Boolean = false, // FP16 if true, FP32 if false
+  tensorCoreDecoupled: Boolean = false, // hopper-style SMEM operand decoupling
   debugROB: Boolean = false, // if enabled, uses a C++ debug ROB to generate trace-with-wdata
   haveCease: Boolean = true, // non-standard CEASE instruction
   haveSimTimeout: Boolean = true // add plusarg for simulation timeout
