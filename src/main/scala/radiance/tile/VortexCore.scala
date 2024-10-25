@@ -406,6 +406,7 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   // tensor core
   addResource("/vsrc/vortex/hw/rtl/core/VX_tensor_core.sv")
   addResource("/vsrc/vortex/hw/rtl/mem/VX_tc_bus_if.sv")
+  addResource("/vsrc/vortex/hw/rtl/mem/VX_tc_rf_if.sv")
 
   // hopper-style SMEM operand decoupling
   if (tile.radianceParams.core.tensorCoreDecoupled) {
