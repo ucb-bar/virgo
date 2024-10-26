@@ -192,6 +192,8 @@ class RadianceTile private (
   //     "We recommend setting nSrcIds to at least 16."
   // )
 
+  val tensorTagWidth = 4 // hardcoded
+
   // Replicates some of the logic of how Vortex determines the tag width of
   // memory requests so that Chisel and Verilog are in agreement on bitwidths.
   // See VX_gpu_pkg.sv
@@ -379,12 +381,6 @@ class RadianceTile private (
     tlMasterXbar.node :=* AddressOrNode(base) :=* icacheNode
     tlMasterXbar.node :=* AddressOrNode(base) :=* dcacheNode
   }
-
-  // Instantiate a fake TensorCoreDecoupled module to force unique-ification of
-  // module names in the Chisel-generated Verilog.  This should be disabled for
-  // synthesis runs
-  val tensor = LazyModule(new radiance.core.TensorCoreDecoupledTL)
-  tlMasterXbar.node :=* tensor.node
 
   /* below are copied from rocket */
 
@@ -743,13 +739,13 @@ class RadianceTileModuleImp(outer: RadianceTile)
     def connectTensor = {
       val tcb0 = new {
         val addr = core.io.tc_a_bits_address(31, 0)
-        val tag = core.io.tc_a_bits_tag(3, 0)
+        val tag = core.io.tc_a_bits_tag(outer.tensorTagWidth - 1, 0)
         val aValid = core.io.tc_a_valid(0)
         val dReady = core.io.tc_d_ready(0)
       }
       val tcb1 = new {
         val addr = core.io.tc_a_bits_address(63, 32)
-        val tag = core.io.tc_a_bits_tag(7, 4)
+        val tag = core.io.tc_a_bits_tag(4 + outer.tensorTagWidth - 1, 4)
         val aValid = core.io.tc_a_valid(1)
         val dReady = core.io.tc_d_ready(1)
       }
@@ -759,8 +755,8 @@ class RadianceTileModuleImp(outer: RadianceTile)
         val adapter = Module(
           new VortexTLAdapter(
             outer.smemSourceWidth,
-            new VortexBundleA(tagWidth = 4, dataWidth = 32 * 8),
-            new VortexBundleD(tagWidth = 4, dataWidth = 32 * 8),
+            new VortexBundleA(tagWidth = outer.tensorTagWidth, dataWidth = 32 * 8),
+            new VortexBundleD(tagWidth = outer.tensorTagWidth, dataWidth = 32 * 8),
             client
           )
         )
@@ -850,8 +846,31 @@ class RadianceTileModuleImp(outer: RadianceTile)
   // TODO: generalize for useVxCache
   if (!outer.radianceParams.useVxCache) {}
 
-  // connect io.start and io.finish of the fake TensorCoreDecoupled module
-  outer.tensor.module.io.start := false.B
+  // Instantiate a fake tensor core module to force unique-ification of module
+  // names in the Chisel-generated Verilog.  These should be left out for
+  // synthesis runs, although these will likely be optimized-out if the inputs
+  // are tied to low.
+
+  val tensorNumSourceIds = (1 << outer.tensorTagWidth)
+  val tensor = Module(new radiance.core.TensorCoreDecoupled(
+                      8, 8, half = true, tensorNumSourceIds))
+  tensor.io.initiate.valid := false.B
+  tensor.io.initiate.bits := DontCare
+  tensor.io.respA.valid := false.B
+  tensor.io.respA.bits := DontCare
+  tensor.io.respB.valid := false.B
+  tensor.io.respB.bits := DontCare
+  tensor.io.respC := DontCare
+  tensor.io.reqA.ready := false.B
+  tensor.io.reqB.ready := false.B
+  tensor.io.writeback.ready := false.B
+
+  val dpu = Module(new radiance.core.TensorDotProductUnit(8, half = true))
+  dpu.io.in.valid := false.B
+  dpu.io.in.bits.a := DontCare
+  dpu.io.in.bits.b := DontCare
+  dpu.io.in.bits.c := DontCare
+  dpu.io.stall := false.B
 
   // // RoCC
   // if (outer.roccs.size > 0) {

@@ -342,11 +342,11 @@ class Vortex(tile: RadianceTile)(implicit p: Parameters)
   // tensor core
   // this module is referenced from inside the Verilog RTL of the core
   // pipeline.
-  if (tile.radianceParams.core.tensorCoreFP16) {
-    addResource("/vsrc/TensorDotProductUnit.sv")
-  } else {
-    addResource("/vsrc/TensorDotProductUnitFP32.sv")
-  }
+  // if (tile.radianceParams.core.tensorCoreFP16) {
+  //   addResource("/vsrc/TensorDotProductUnit.sv")
+  // } else {
+  //   addResource("/vsrc/TensorDotProductUnitFP32.sv")
+  // }
 
   // fpnew
   // compile order matters; package definitions (ex. fpnew_pkg) should be
