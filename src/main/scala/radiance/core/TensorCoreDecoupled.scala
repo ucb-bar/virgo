@@ -270,7 +270,7 @@ class TensorCoreDecoupled(
   val respCValid = RegInit(false.B)
 
   // regfile latency is 1 cycle; don't need a deep response queue
-  val respQueueCDepth = 1
+  val respQueueCDepth = 2
   val respQueueC = Module(new Queue(
     new Bundle {
       val tag = new TensorMemTag
@@ -278,9 +278,17 @@ class TensorCoreDecoupled(
     },
     respQueueCDepth
   ))
-  // make sure there's space at the response queue to be latched at the next
-  // cycle
-  val genReqC = (state === AccessorState.access) && respQueueC.io.enq.ready
+
+  // because C reg IO arrives 1 cycle later, it will get latched onto the
+  // response queue 2 cycles later.  Make sure there's at least two entries of
+  // space at the queue before requesting the reg value
+  // FIXME: doesn't feel very clean
+  require(respQueueC.entries >= 2)
+  val hasSpace =
+    respQueueC.io.count <= Mux(respQueueC.io.deq.fire,
+                               (respQueueC.entries - 1).U,
+                               (respQueueC.entries - 2).U)
+  val genReqC = (state === AccessorState.access) && hasSpace
   // 1-cycle delay
   respCValid := genReqC
 
