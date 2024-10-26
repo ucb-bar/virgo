@@ -655,10 +655,11 @@ class TensorCoreDecoupled(
 // coalesced data as output.  Effectively acts as a width-widening
 // chisel.util.Pipe.
 class FillBuffer[T <: Data](
-  gen: T,
-  entries: Int
+  val gen: T,
+  val entries: Int,
+  val pipe: Boolean = true,
 ) extends Module {
-  require(entries > 0, "FillBuffer must have a positive number of entries")
+  require(entries > 1, "FillBuffer must have more than one entries")
   requireIsChiselType(gen)
 
   val io = IO(new Bundle {
@@ -667,20 +668,32 @@ class FillBuffer[T <: Data](
   })
 
   val data = Reg(Vec(entries, gen))
-  val ptr = Counter(entries + 1)
+  val ptr = Counter(entries)
   dontTouch(ptr.value)
-  val full = (ptr.value === entries.U)
+  // val full = (ptr.value === entries.U)
+  val full = RegInit(false.B)
   io.enq.ready := !full
+  if (pipe) {
+    when(io.deq.fire) { io.enq.ready := true.B }
+  }
+
   when (io.enq.fire) {
+    when (ptr.value === (entries - 1).U) {
+      full := true.B
+    }
+    // if buffer was full and pipe was true, ptr.value would point to 0, and
+    // enq will correctly write to the first element
     data(ptr.value) := io.enq.bits
     ptr.inc()
   }
   io.deq.valid := full
-  (io.deq.bits zip data).foreach { case (io, d) => io := d }
   when (io.deq.fire) {
-    assert(ptr.value === entries.U, "FillBuffer fired before buffer was full")
-    ptr.reset()
+    assert(full === true.B, "FillBuffer fired before buffer was full")
+    assert(ptr.value === 0.U, "ptr did not wrap around when FillBuffer fired")
+    // TODO: if entries == 1, full might stay high if enq also fired
+    full := false.B
   }
+  (io.deq.bits zip data).foreach { case (io, d) => io := d }
 }
 
 // synthesizable unit tests
