@@ -46,8 +46,8 @@ class TensorDotProductUnitTest extends AnyFlatSpec with ChiselScalatestTester {
 
   implicit val p: Parameters = Parameters.empty
 
-  it should "pass fp16" in {
-    test(new TensorDotProductUnit(half = true))
+  it should "pass 4-dim fp16" in {
+    test(new TensorDotProductUnit(4, half = true))
       // .withAnnotations(Seq(VerilatorBackendAnnotation))
       // .withAnnotations(Seq(WriteVcdAnnotation))
       { c =>
@@ -93,9 +93,9 @@ class TensorDotProductUnitTest extends AnyFlatSpec with ChiselScalatestTester {
       }
   }
 
-  it should "pass fp16 2" in {
-    test(new TensorDotProductUnit(half = true))
-      .withAnnotations(Seq(VerilatorBackendAnnotation))
+  it should "pass 4-dim fp16 2" in {
+    test(new TensorDotProductUnit(4, half = true))
+      // .withAnnotations(Seq(VerilatorBackendAnnotation))
       // .withAnnotations(Seq(WriteVcdAnnotation))
       { c =>
         c.io.in.valid.poke(true.B)
@@ -129,8 +129,8 @@ class TensorDotProductUnitTest extends AnyFlatSpec with ChiselScalatestTester {
       }
   }
 
-  it should "pass fp32" in {
-    test(new TensorDotProductUnit(half = false))
+  it should "pass 4-dim fp32" in {
+    test(new TensorDotProductUnit(4, half = false))
       // .withAnnotations(Seq(VerilatorBackendAnnotation))
       // .withAnnotations(Seq(WriteVcdAnnotation))
       { c =>

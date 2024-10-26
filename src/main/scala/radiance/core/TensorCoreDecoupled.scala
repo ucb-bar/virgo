@@ -543,7 +543,7 @@ class TensorCoreDecoupled(
   require(tilingParams.mc * ncSubstep == numLanes,
           "substep tile size doesn't match writeback throughput")
   val dpus = Seq.fill(tilingParams.mc)(Seq.fill(ncSubstep)(
-    Module(new TensorDotProductUnit(half = false))
+    Module(new TensorDotProductUnit(dim = 4, half = false))
   ))
 
   // reshape operands for easier routing to DPU
