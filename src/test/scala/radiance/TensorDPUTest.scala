@@ -46,7 +46,7 @@ class TensorDotProductUnitTest extends AnyFlatSpec with ChiselScalatestTester {
 
   implicit val p: Parameters = Parameters.empty
 
-  it should "pass 4-dim fp16" in {
+  it should "pass 4-dim fp16 with stalls" in {
     test(new TensorDotProductUnit(4, half = true))
       // .withAnnotations(Seq(VerilatorBackendAnnotation))
       // .withAnnotations(Seq(WriteVcdAnnotation))
@@ -93,7 +93,7 @@ class TensorDotProductUnitTest extends AnyFlatSpec with ChiselScalatestTester {
       }
   }
 
-  it should "pass 4-dim fp16 2" in {
+  it should "pass 4-dim fp16 without stalls" in {
     test(new TensorDotProductUnit(4, half = true))
       // .withAnnotations(Seq(VerilatorBackendAnnotation))
       // .withAnnotations(Seq(WriteVcdAnnotation))
@@ -129,7 +129,7 @@ class TensorDotProductUnitTest extends AnyFlatSpec with ChiselScalatestTester {
       }
   }
 
-  it should "pass 4-dim fp32" in {
+  it should "pass 4-dim fp32 with stalls" in {
     test(new TensorDotProductUnit(4, half = false))
       // .withAnnotations(Seq(VerilatorBackendAnnotation))
       // .withAnnotations(Seq(WriteVcdAnnotation))
@@ -175,5 +175,50 @@ class TensorDotProductUnitTest extends AnyFlatSpec with ChiselScalatestTester {
         c.io.out.valid.expect(false.B)
       }
   }
-}
 
+  it should "pass 8-dim fp16" in {
+    test(new TensorDotProductUnit(8, half = true))
+      // .withAnnotations(Seq(VerilatorBackendAnnotation))
+      // .withAnnotations(Seq(WriteVcdAnnotation))
+      { c =>
+        c.io.in.valid.poke(true.B)
+        c.io.stall.poke(false.B)
+        // (1,3,5,7,9,11,13,15)*(2,4,6,8,10,12,14,16) + 17 = 761
+        c.io.in.bits.a(0).poke(0x3c00.U(16.W))
+        c.io.in.bits.a(1).poke(0x4200.U(16.W))
+        c.io.in.bits.a(2).poke(0x4500.U(16.W))
+        c.io.in.bits.a(3).poke(0x4700.U(16.W))
+        c.io.in.bits.a(4).poke(0x4880.U(16.W))
+        c.io.in.bits.a(5).poke(0x4980.U(16.W))
+        c.io.in.bits.a(6).poke(0x4a80.U(16.W))
+        c.io.in.bits.a(7).poke(0x4b80.U(16.W))
+        c.io.in.bits.b(0).poke(0x4000.U(16.W))
+        c.io.in.bits.b(1).poke(0x4400.U(16.W))
+        c.io.in.bits.b(2).poke(0x4600.U(16.W))
+        c.io.in.bits.b(3).poke(0x4800.U(16.W))
+        c.io.in.bits.b(4).poke(0x4900.U(16.W))
+        c.io.in.bits.b(5).poke(0x4a00.U(16.W))
+        c.io.in.bits.b(6).poke(0x4b00.U(16.W))
+        c.io.in.bits.b(7).poke(0x4c00.U(16.W))
+        c.io.in.bits.c   .poke(0x41880000.U(32.W))
+
+        c.io.out.valid.expect(false.B)
+
+        c.clock.step()
+        c.io.in.valid.poke(false.B)
+        c.io.out.valid.expect(false.B)
+
+        c.clock.step()
+        c.clock.step()
+        c.clock.step()
+        c.clock.step()
+        // 5-cycle latency
+        c.io.out.valid.expect(true.B)
+        c.io.out.bits.data.expect(0x443e4000.U)
+
+        c.clock.step()
+
+        c.io.out.valid.expect(false.B)
+      }
+  }
+}
