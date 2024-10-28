@@ -851,26 +851,37 @@ class RadianceTileModuleImp(outer: RadianceTile)
   // synthesis runs, although these will likely be optimized-out if the inputs
   // are tied to low.
 
-  val tensorNumSourceIds = (1 << outer.tensorTagWidth)
-  val tensor = Module(new radiance.core.TensorCoreDecoupled(
-                      8, 8, half = true, tensorNumSourceIds))
-  tensor.io.initiate.valid := false.B
-  tensor.io.initiate.bits := DontCare
-  tensor.io.respA.valid := false.B
-  tensor.io.respA.bits := DontCare
-  tensor.io.respB.valid := false.B
-  tensor.io.respB.bits := DontCare
-  tensor.io.respC := DontCare
-  tensor.io.reqA.ready := false.B
-  tensor.io.reqB.ready := false.B
-  tensor.io.writeback.ready := false.B
-
-  val dpu = Module(new radiance.core.TensorDotProductUnit(8, half = true))
-  dpu.io.in.valid := false.B
-  dpu.io.in.bits.a := DontCare
-  dpu.io.in.bits.b := DontCare
-  dpu.io.in.bits.c := DontCare
-  dpu.io.stall := false.B
+  if (outer.radianceParams.core.tensorCoreDecoupled) {
+    val tensorNumSourceIds = (1 << outer.tensorTagWidth)
+    val tensor = Module(new radiance.core.TensorCoreDecoupled(
+      8, 8, half = true, tensorNumSourceIds))
+    tensor.io.initiate.valid := false.B
+    tensor.io.initiate.bits := DontCare
+    tensor.io.respA.valid := false.B
+    tensor.io.respA.bits := DontCare
+    tensor.io.respB.valid := false.B
+    tensor.io.respB.bits := DontCare
+    tensor.io.respC := DontCare
+    tensor.io.reqA.ready := false.B
+    tensor.io.reqB.ready := false.B
+    tensor.io.writeback.ready := false.B
+  } else {
+    if (outer.radianceParams.core.tensorCoreFP16) {
+      val dpu = Module(new radiance.core.TensorDotProductUnit(4, half = true))
+      dpu.io.in.valid := false.B
+      dpu.io.in.bits.a := DontCare
+      dpu.io.in.bits.b := DontCare
+      dpu.io.in.bits.c := DontCare
+      dpu.io.stall := false.B
+    } else {
+      val dpu = Module(new radiance.core.TensorDotProductUnit(2, half = false))
+      dpu.io.in.valid := false.B
+      dpu.io.in.bits.a := DontCare
+      dpu.io.in.bits.b := DontCare
+      dpu.io.in.bits.c := DontCare
+      dpu.io.stall := false.B
+    }
+  }
 
   // // RoCC
   // if (outer.roccs.size > 0) {
