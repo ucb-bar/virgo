@@ -60,6 +60,7 @@ class VirgoSharedMemComponents(
   }
   val tcNodeFanouts = radianceTiles.flatMap(_.tcSmemNodes)
     // .map(connectOne(_, () => TLBuffer(BufferParams(2, false, false), BufferParams(0))))
+    .map(connectOne(_, () => TLFIFOFixer()))
     .map(connectXbarName(_, Some("tc_fanout")))
   val clBusClients: Seq[TLNode] = radianceSmemFanout
 

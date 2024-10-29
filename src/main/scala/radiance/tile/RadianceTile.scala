@@ -287,7 +287,8 @@ class RadianceTile private (
         supports = TLSlaveToMasterTransferSizes(
           probe = TransferSizes(1, tcSmemSize),
           get = TransferSizes(1, tcSmemSize),
-        )
+        ),
+        requestFifo = true
       ))
     )))
   }
