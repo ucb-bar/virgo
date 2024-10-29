@@ -202,8 +202,9 @@ class TensorCoreDecoupled(
   // Address generation
   //
   def addressGen(base: UInt, set: UInt, index: UInt): UInt = {
-    // note that both A and B are K-major to facilitate bank conflict-free SMEM
-    // accesses, so that below code applies to both.
+    // A is assumed to be block-wise M-major, and B block-wise N-major, to
+    // facilitate bank conflict-free SMEM accesses.  With these layouts, the
+    // same code below works for both A and B.
     //
     // a "block" is the 4*8 byte-sized contiguous memory that can be read in
     // one SMEM request.  The A and B matrix is assumed to be stored in
@@ -211,8 +212,7 @@ class TensorCoreDecoupled(
     val blockRow = set
     val blockCol = index
     val blockIndex = (blockRow << indexBits) + blockCol
-    val blockSize = numLanes * laneWidth
-    require(blockSize == memWidth)
+    val blockSize = numLanes * (laneWidth / 8/*bits*/)
     val blockSizeBits = log2Ceil(blockSize)
     val byteOffset = blockIndex << blockSizeBits
     base + byteOffset
