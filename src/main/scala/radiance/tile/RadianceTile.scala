@@ -849,8 +849,8 @@ class RadianceTileModuleImp(outer: RadianceTile)
 
   // Instantiate a fake tensor core module to force unique-ification of module
   // names in the Chisel-generated Verilog.  These should be left out for
-  // synthesis runs, although these will likely be optimized-out if the inputs
-  // are tied to low.
+  // synthesis runs, although it's likely they will be optimized-out with all
+  // inputs tied to low.
 
   if (outer.radianceParams.core.tensorCoreDecoupled) {
     val tensorNumSourceIds = (1 << outer.tensorTagWidth)
