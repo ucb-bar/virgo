@@ -299,6 +299,10 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
     gemminiIO.ready && !ciscValid
   }
 
+  def gemminiBusyReg(_dReady: Bool): (Bool, UInt) = {
+    // (aReady, bits)
+    (!outer.gemmini.module.io.busy, outer.gemmini.module.io.busy.asUInt)
+  }
   outer.regNode.regmap(
     0x00 -> Seq(RegField.w(32, gemminiCommandReg(_, _))),
     0x10 -> Seq(
@@ -307,7 +311,7 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
     0x18 -> Seq(
       RegField.w(32, gemminiRs2RegLSB),
       RegField.w(32, gemminiRs2RegMSB)),
-    0x20 -> Seq(RegField.r(32, outer.gemmini.module.io.busy))
+    0x20 -> Seq(RegField.r(32, gemminiBusyReg(_)))
   )
 
   assert(!regValid || gemminiIO.ready)
