@@ -126,6 +126,7 @@ class WithRadianceGemmini(location: HierarchicalLocation, crossing: RocketCrossi
       case _ => 0
     }.sum
     val smKey = site(RadianceSharedMemKey).get
+    val skipRecoding = false
     val tileParams = GemminiTileParams(
       gemminiConfig = {
         implicit val arithmetic: Arithmetic[Float] =
@@ -135,7 +136,7 @@ class WithRadianceGemmini(location: HierarchicalLocation, crossing: RocketCrossi
         case FP16 => GemminiFPConfigs.FP16DefaultConfig.copy(
           acc_scale_args = Some(ScaleArguments(
             (t: Float, u: Float) => {t},
-            1, Float(8, 24), -1, identity = "1.0", c_str = "((x))"
+            1, Float(5, 11), -1, identity = "1.0", c_str = "((x))"
           )),
           mvin_scale_args = Some(ScaleArguments(
             (t: Float, u: Float) => t * u,
@@ -143,8 +144,18 @@ class WithRadianceGemmini(location: HierarchicalLocation, crossing: RocketCrossi
           )),
           mvin_scale_acc_args = None,
           has_training_convs = false,
+
+          // from sirius
+          spatialArrayInputType = Float(5, 11, isRecoded = skipRecoding),
+          spatialArrayWeightType = Float(5, 11, isRecoded = skipRecoding),
+          spatialArrayOutputType = Float(5, 11, isRecoded = skipRecoding),
+          accType = Float(5, 11),
           // hardcode_d_to_garbage_addr = true,
           acc_read_full_width = false, // set to true to output fp32
+
+          // acc_singleported = true,
+          // clock_gate = true,
+          num_counter = 0
         )
         case BF16 => GemminiFPConfigs.BF16DefaultConfig
         // TODO: Int8
