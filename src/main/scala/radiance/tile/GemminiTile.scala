@@ -214,7 +214,7 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
   println(f"boundsInst=${rectBoundsInst.litValue}%x, quartile=${spadQuartile}")
   when (ciscValid) {
     switch (ciscId(6, 0)) {
-      is (0.U) {
+      is (0.U) { // compute on given quadrants
         ciscInst := microcodeEntry(Seq(boundsInst,
           ciscInstT.Lit(_.inst -> 0x3020b07b.U, _.rs1 -> 0.U, _.rs2 -> (spadQuartile * 3).U),        // set A, B address
           ciscInstT.Lit(_.inst -> 0x1020b07b.U, _.rs1 -> 0.U, _.rs2 -> x"0_000002b8".U) // set skip, acc
@@ -301,7 +301,8 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
 
   def gemminiBusyReg(_dReady: Bool): (Bool, UInt) = {
     // (aReady, bits)
-    (!outer.gemmini.module.io.busy, outer.gemmini.module.io.busy.asUInt)
+    // (!outer.gemmini.module.io.busy, outer.gemmini.module.io.busy.asUInt)
+    (true.B, outer.gemmini.module.io.busy.asUInt)
   }
   outer.regNode.regmap(
     0x00 -> Seq(RegField.w(32, gemminiCommandReg(_, _))),
