@@ -235,6 +235,12 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
         val accSkipInst = genAccSkipInst(ciscArgs(16), 0x2b8.U)
         ciscInst := microcodeEntry(Seq(boundsInst, strideInst, accSkipInst))
       } // replaces opcode 0: (a, b, accum) = (0, 2, 0), op 1 = (0, 2, 1), op 2 = (1, 3, 1), op 3 = (1, 3, 0)
+      is (1.U) { // compute on given hexadeciles and mvout to spad
+        val strideInst = genStrideInst(ciscArgs(7, 0), ciscArgs(15, 8))
+        // note that accumulation is disabled
+        val accSkipInst = genAccSkipInst(0.U, ((ciscArgs(23, 16) * spadHexadecile.U) << 32).asUInt | 0x238.U)
+        ciscInst := microcodeEntry(Seq(boundsInst, strideInst, accSkipInst))
+      }
       is (8.U) { // set a, b stride
         val inst = Wire(ciscInstT)
         inst.inst := 0x1820b07b.U
