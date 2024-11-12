@@ -26,7 +26,7 @@ class RWSplitterNode(visibility: Option[AddressSet], override val name: String =
       val visibilities = seq.flatMap(_.masters.flatMap(_.visibility))
       val unified_vis = if (visibilities.map(_ == AddressSet.everything).reduce(_ || _)) Seq(AddressSet.everything)
         else AddressSet.unify(visibilities)
-      println(s"$name has input visibilities $visibilities, unified to $unified_vis")
+      // println(s"$name has input visibilities $visibilities, unified to $unified_vis")
 
       seq.head.v1copy(
         echoFields = BundleField.union(seq.flatMap(_.echoFields)),

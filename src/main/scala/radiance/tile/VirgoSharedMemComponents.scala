@@ -96,8 +96,12 @@ class VirgoSharedMemComponents(
         }
         Seq.fill(smemWidth / spWidthBytes)(fanout).flatten // smem wider than spad, duplicate masters
       }
-      // (gemmini, word) => (word, gemmini)
-      wordFanoutNodes.transpose
+      if (nodes.isEmpty) {
+        Seq.fill(smemSubbanks)(Seq())
+      } else {
+        // (gemmini, word) => (word, gemmini)
+        wordFanoutNodes.transpose
+      }
     }
 
     // (banks, subbanks, gemminis)

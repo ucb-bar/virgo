@@ -13,7 +13,7 @@ import org.chipsalliance.diplomacy.lazymodule._
 
 class DistributorNode(from: Int, to: Int)(implicit p: Parameters) extends LazyModule {
   require(isPow2(from) && isPow2(to) && (from >= to), "invalid distributor node parameters")
-  println(s"distributor node to segment from $from into $to")
+  // println(s"distributor node to segment from $from into $to")
   val numClients = from / to
 
   val node = TLNexusNode(clientFn = seq => {
@@ -54,13 +54,13 @@ class DistributorNode(from: Int, to: Int)(implicit p: Parameters) extends LazyMo
   lazy val module = new LazyModuleImp(this) {
     val cn = node.in.head._1
     val mn = node.out.map(_._1)
-    println(f"$name node in size ${node.in.size}, out size ${node.out.size}")
+    // println(f"$name node in size ${node.in.size}, out size ${node.out.size}")
     assert(node.out.size == numClients, s"got ${node.out.size} clients instead of $numClients")
 
     // A channel
     val ca = cn.a.bits
     mn.map(_.a.bits).zipWithIndex.foreach { case (m, i) =>
-      println(s"$i master source id width ${m.source.getWidth}, client source id width ${ca.source.getWidth}")
+      // println(s"$i master source id width ${m.source.getWidth}, client source id width ${ca.source.getWidth}")
       m.opcode := ca.opcode
       m.param := ca.param
       m.user := ca.user

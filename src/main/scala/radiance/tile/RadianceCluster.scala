@@ -98,8 +98,10 @@ class RadianceClusterModuleImp(outer: RadianceCluster) extends ClusterModuleImp(
     g.cmd.valid := VecInit(active).reduceTree(_ || _)
   }
 
-  // this might need some more tweaking (e.g. bitmask instead of or)
-  coreAccs.foreach(_.status := VecInit(gemminiAccs.map(_.status)).reduceTree(_ | _))
+  if (gemminiAccs.nonEmpty) {
+    // this might need some more tweaking (e.g. bitmask instead of or)
+    coreAccs.foreach(_.status := VecInit(gemminiAccs.map(_.status)).reduceTree(_ | _))
+  }
 
   (outer.traceTLNode.in.map(_._1) zip outer.traceTLNode.out.map(_._1)).foreach { case (i, o) =>
     o.a <> i.a

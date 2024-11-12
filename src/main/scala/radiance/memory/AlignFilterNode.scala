@@ -44,7 +44,7 @@ class AlignFilterNode(filters: Seq[AddressSet])(implicit p: Parameters) extends 
     val addresses = seq.flatMap(_.slaves.flatMap(_.address))
     val unifiedAddressRange = addresses.flatMap(_.toRanges).sorted.reduce(_.union(_).get)
     assert(isPow2(unifiedAddressRange.size))
-    println(s"$name address range ${unifiedAddressRange}")
+    // println(s"$name address range ${unifiedAddressRange}")
     seq.head.v1copy(
       responseFields = BundleField.union(seq.flatMap(_.responseFields)),
       requestKeys = seq.flatMap(_.requestKeys).distinct,
