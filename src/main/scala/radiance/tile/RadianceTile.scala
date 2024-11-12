@@ -279,7 +279,7 @@ class RadianceTile private (
   }
 
   val tcSmemSize = 32
-  val tcSmemNodes = Seq.tabulate(2) { i =>
+  val tcSmemNodes = Seq.tabulate(if (radianceParams.core.tensorCoreDecoupled) 2 else 0) { i =>
     TLClientNode(Seq(TLMasterPortParameters.v2(
       masters = Seq(TLMasterParameters.v2(
         name = s"rad_tc_${radianceParams.coreId}_$i",
@@ -738,50 +738,57 @@ class RadianceTileModuleImp(outer: RadianceTile)
     }
 
     def connectTensor = {
-      val tcb0 = new {
-        val addr = core.io.tc_a_bits_address(31, 0)
-        val tag = core.io.tc_a_bits_tag(outer.tensorTagWidth - 1, 0)
-        val aValid = core.io.tc_a_valid(0)
-        val dReady = core.io.tc_d_ready(0)
-      }
-      val tcb1 = new {
-        val addr = core.io.tc_a_bits_address(63, 32)
-        val tag = core.io.tc_a_bits_tag(4 + outer.tensorTagWidth - 1, 4)
-        val aValid = core.io.tc_a_valid(1)
-        val dReady = core.io.tc_d_ready(1)
-      }
-      val tcBundles = Seq(tcb0, tcb1)
-      val adapters = (outer.tcSmemNodes zip tcBundles).zipWithIndex.map { case ((node, bundle), i) =>
-        val client = node.out.head
-        val adapter = Module(
-          new VortexTLAdapter(
-            outer.smemSourceWidth,
-            new VortexBundleA(tagWidth = outer.tensorTagWidth, dataWidth = 32 * 8),
-            new VortexBundleD(tagWidth = outer.tensorTagWidth, dataWidth = 32 * 8),
-            client
+      if (outer.radianceParams.core.tensorCoreDecoupled) {
+        val tcb0 = new {
+          val addr = core.io.tc_a_bits_address(31, 0)
+          val tag = core.io.tc_a_bits_tag(outer.tensorTagWidth - 1, 0)
+          val aValid = core.io.tc_a_valid(0)
+          val dReady = core.io.tc_d_ready(0)
+        }
+        val tcb1 = new {
+          val addr = core.io.tc_a_bits_address(63, 32)
+          val tag = core.io.tc_a_bits_tag(4 + outer.tensorTagWidth - 1, 4)
+          val aValid = core.io.tc_a_valid(1)
+          val dReady = core.io.tc_d_ready(1)
+        }
+        val tcBundles = Seq(tcb0, tcb1)
+        val adapters = (outer.tcSmemNodes zip tcBundles).zipWithIndex.map { case ((node, bundle), i) =>
+          val client = node.out.head
+          val adapter = Module(
+            new VortexTLAdapter(
+              outer.smemSourceWidth,
+              new VortexBundleA(tagWidth = outer.tensorTagWidth, dataWidth = 32 * 8),
+              new VortexBundleD(tagWidth = outer.tensorTagWidth, dataWidth = 32 * 8),
+              client
+            )
           )
-        )
-        require(adapter.io.inReq.bits.source.widthOption.get == bundle.tag.widthOption.get)
-        require(adapter.io.inReq.bits.address.widthOption.get == bundle.addr.widthOption.get)
-        adapter.io.inReq.bits <> DontCare
-        adapter.io.inReq.valid := bundle.aValid
-        adapter.io.inReq.bits.address := bundle.addr
-        adapter.io.inReq.bits.source := bundle.tag
-        adapter.io.inReq.bits.size := 5.U // 256 bits
-        adapter.io.inReq.bits.opcode := TLMessages.Get
-        adapter.io.inReq.bits.mask := x"ffffffff".U
-        adapter.io.inResp.ready := bundle.dReady
+          require(adapter.io.inReq.bits.source.widthOption.get == bundle.tag.widthOption.get)
+          require(adapter.io.inReq.bits.address.widthOption.get == bundle.addr.widthOption.get)
+          adapter.io.inReq.bits <> DontCare
+          adapter.io.inReq.valid := bundle.aValid
+          adapter.io.inReq.bits.address := bundle.addr
+          adapter.io.inReq.bits.source := bundle.tag
+          adapter.io.inReq.bits.size := 5.U // 256 bits
+          adapter.io.inReq.bits.opcode := TLMessages.Get
+          adapter.io.inReq.bits.mask := x"ffffffff".U
+          adapter.io.inResp.ready := bundle.dReady
 
-        client._1.a <> adapter.io.outReq
-        adapter.io.outResp <> client._1.d
-        adapter
+          client._1.a <> adapter.io.outReq
+          adapter.io.outResp <> client._1.d
+          adapter
+        }
+        core.io.tc_a_ready := Cat(adapters.last.io.inReq.ready, adapters.head.io.inReq.ready)
+        core.io.tc_d_valid := Cat(adapters.last.io.inResp.valid, adapters.head.io.inResp.valid)
+        core.io.tc_d_bits_data := Cat(adapters.last.io.inResp.bits.data, adapters.head.io.inResp.bits.data)
+        core.io.tc_d_bits_tag := Cat(adapters.last.io.inResp.bits.source, adapters.head.io.inResp.bits.source)
+        require(core.io.tc_d_bits_data.widthOption.get == adapters.head.io.inResp.bits.data.widthOption.get * 2)
+        require(core.io.tc_d_bits_tag.widthOption.get == adapters.head.io.inResp.bits.source.widthOption.get * 2)
+      } else {
+        core.io.tc_a_ready := false.B
+        core.io.tc_d_valid := false.B
+        core.io.tc_d_bits_data := DontCare
+        core.io.tc_d_bits_tag := DontCare
       }
-      core.io.tc_a_ready := Cat(adapters.last.io.inReq.ready, adapters.head.io.inReq.ready)
-      core.io.tc_d_valid := Cat(adapters.last.io.inResp.valid, adapters.head.io.inResp.valid)
-      core.io.tc_d_bits_data := Cat(adapters.last.io.inResp.bits.data, adapters.head.io.inResp.bits.data)
-      core.io.tc_d_bits_tag := Cat(adapters.last.io.inResp.bits.source, adapters.head.io.inResp.bits.source)
-      require(core.io.tc_d_bits_data.widthOption.get == adapters.head.io.inResp.bits.data.widthOption.get * 2)
-      require(core.io.tc_d_bits_tag.widthOption.get == adapters.head.io.inResp.bits.source.widthOption.get * 2)
     }
 
     def connectBarrier = {
