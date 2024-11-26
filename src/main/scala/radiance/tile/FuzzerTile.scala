@@ -4,8 +4,9 @@
 package radiance.tile
 
 import chisel3._
-import org.chipsalliance.cde.config.{Parameters}
-import freechips.rocketchip.diplomacy.{SimpleDevice, LazyModule}
+import org.chipsalliance.cde.config.Parameters
+import org.chipsalliance.diplomacy.lazymodule.LazyModule
+import freechips.rocketchip.resources.SimpleDevice
 import freechips.rocketchip.prci.ClockCrossingType
 import freechips.rocketchip.rocket._
 import freechips.rocketchip.tile._
