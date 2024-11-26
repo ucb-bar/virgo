@@ -10,25 +10,10 @@ import org.chipsalliance.diplomacy.lazymodule.{LazyModule, LazyModuleImp}
 import freechips.rocketchip.util.{Code, MultiPortQueue, OnePortLanePositionedQueue}
 import freechips.rocketchip.unittest._
 import freechips.rocketchip.tilelink._
+import radiance.core.{SIMTCoreParams, SIMTCoreKey}
 
-// TODO: find better place for these
-
-case class SIMTCoreParams(
-    nWarps: Int = 4,     // # of warps in the core
-    nCoreLanes: Int = 4, // # of SIMT threads in the core
-    nMemLanes: Int = 4,  // # of memory lanes in the memory interface to the
-                         // cache; relates to the LSU lanes
-    nSrcIds: Int = 8     // # of source IDs allocated to each of the nMemLanes
-)
-case class MemtraceCoreParams(
-    tracefilename: String = "undefined",
-    traceHasSource: Boolean = false
-)
 case class CoalXbarParam()
 
-case object SIMTCoreKey extends Field[Option[SIMTCoreParams]](None /*default*/ )
-case object MemtraceCoreKey
-    extends Field[Option[MemtraceCoreParams]](None /*default*/ )
 case object CoalescerKey
     extends Field[Option[CoalescerConfig]](None /*default*/ )
 case object CoalXbarKey extends Field[Option[CoalXbarParam]](None /*default*/ )

@@ -19,6 +19,7 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
 import midas.targetutils.SynthesizePrintf
 import org.chipsalliance.cde.config._
+import radiance.core._
 import radiance.memory._
 import radiance.subsystem.{GPUMemParams, GPUMemory, RadianceSimArgs}
 
