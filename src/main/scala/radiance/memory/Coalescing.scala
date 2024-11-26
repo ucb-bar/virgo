@@ -2055,7 +2055,7 @@ class MemFuzzer(
   val laneNodes = Seq.tabulate(numLanes) { i =>
     val clientParam = Seq(
       TLMasterParameters.v1(
-        name = "MemTraceDriver" + i.toString,
+        name = "MemFuzzer" + i.toString,
         sourceId = IdRange(0, numSrcIds)
         // visibility = Seq(AddressSet(0x0000, 0xffffff))
       )

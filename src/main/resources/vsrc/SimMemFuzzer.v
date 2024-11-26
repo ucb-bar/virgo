@@ -47,7 +47,7 @@ module SimMemFuzzer #(parameter NUM_LANES = 4) (
   input                                        inflight,
   output                                       finished
 );
-  // "in": verilog->C, "out": C->verilog
+  // "in": C->verilog, "out": verilog->C
   // need to be in ascending order to match with C indexing
   // C array sizes are static, so need to use MAX_NUM_LANES
   bit     __out_a_ready [0:`MAX_NUM_LANES-1];
