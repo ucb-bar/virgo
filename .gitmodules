@@ -4,3 +4,8 @@
 [submodule "radpie"]
 	path = cyclotron
 	url = git@github.com:hansungk/radpie.git
+[submodule "cyclotron-main"]
+	path = cyclotron-main
+	url = https://github.com/hansungk/cyclotron-main.git
+[submodule "cyclotron"]
+	url = https://github.com/hansungk/cyclotron.git
