@@ -8,6 +8,14 @@ import "DPI-C" function void emulator_init(
 // (1) import "DPI-C" declaration
 // (2) C function declaration
 // (3) DPI function calls inside initial/always blocks
+import "DPI-C" function void emulator_tick
+(
+  output bit     vec_d_ready[`MAX_NUM_LANES],
+  input  bit     vec_d_valid[`MAX_NUM_LANES],
+  input  bit     vec_d_is_store[`MAX_NUM_LANES],
+  input  int     vec_d_size[`MAX_NUM_LANES]
+);
+
 import "DPI-C" function void emulator_generate
 (
   input  bit     vec_a_ready[`MAX_NUM_LANES],
@@ -16,11 +24,7 @@ import "DPI-C" function void emulator_generate
   output bit     vec_a_is_store[`MAX_NUM_LANES],
   output int     vec_a_size[`MAX_NUM_LANES],
   output longint vec_a_data[`MAX_NUM_LANES],
-
   output bit     vec_d_ready[`MAX_NUM_LANES],
-  input  bit     vec_d_valid[`MAX_NUM_LANES],
-  input  bit     vec_d_is_store[`MAX_NUM_LANES],
-  input  int     vec_d_size[`MAX_NUM_LANES],
 
   input  bit     inflight,
   output bit     finished
@@ -88,10 +92,7 @@ module SimEmulator #(parameter NUM_LANES = 4) (
     emulator_init(NUM_LANES);
   end
 
-  // negedge is important here; the DPI logic is essentially functioning as
-  // a combinational logic, so we want to reflect the signal change from DPI
-  // at the *current* cycle, not the next.
-  always @(negedge clock) begin
+  always @(posedge clock) begin
     if (reset) begin
       for (integer tid = 0; tid < NUM_LANES; tid = tid + 1) begin
         __in_a_valid[tid]    = 1'b0;
@@ -110,23 +111,29 @@ module SimEmulator #(parameter NUM_LANES = 4) (
         __in_a_is_store,
         __in_a_size,
         __in_a_data,
-
         __in_d_ready,
-        __out_d_valid,
-        __out_d_is_store,
-        __out_d_size,
 
         __out_inflight,
         __in_finished
       );
-      for (integer tid = 0; tid < NUM_LANES; tid = tid + 1) begin
-        $display("verilog: %04d a_valid[%d]=%d, a_address[%d]=0x%x, d_ready[%d]=%d",
-          $time, tid, __in_a_valid[tid], tid, __in_a_address[tid], tid, __in_d_ready[tid]);
-      end
+      // for (integer tid = 0; tid < NUM_LANES; tid = tid + 1) begin
+      //   $display("verilog: %04d a_valid[%d]=%d, a_address[%d]=0x%x, d_ready[%d]=%d",
+      //     $time, tid, __in_a_valid[tid], tid, __in_a_address[tid], tid, __in_d_ready[tid]);
+      // end
+    end
+  end
 
-      if (finished) begin
-        $finish;
-      end
+  // negedge is important here; the DPI logic is essentially functioning as
+  // a combinational logic, so we want to reflect the signal change from DPI
+  // at the *current* cycle, not the next.
+  always @(negedge clock) begin
+    if (!reset) begin
+      emulator_tick(
+        __in_d_ready,
+        __out_d_valid,
+        __out_d_is_store,
+        __out_d_size
+      );
     end
   end
 endmodule

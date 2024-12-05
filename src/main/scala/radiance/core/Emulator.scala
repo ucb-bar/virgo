@@ -61,6 +61,7 @@ class EmulatorImp(
     val finished = Output(Bool())
   })
   val sim = Module(new SimEmulator(numLanes))
+
   sim.io.clock := clock
   sim.io.reset := reset.asBool
 
