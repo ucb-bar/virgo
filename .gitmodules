@@ -2,5 +2,5 @@
 	path = src/main/resources/vsrc/vortex
 	url = git@github.com:hansungk/vortex-private.git
 [submodule "radpie"]
-	path = radpie
+	path = cyclotron
 	url = git@github.com:hansungk/radpie.git
