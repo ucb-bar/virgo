@@ -3,16 +3,17 @@
 ##############################################################
 
 VORTEX_SRC_DIR = $(base_dir)/generators/radiance/src/main/resources/vsrc/vortex
-RADPIE_SRC_DIR = $(base_dir)/generators/radiance/radpie
-RADPIE_BUILD_DIR = $(RADPIE_SRC_DIR)/target/release
+CYCLOTRON_SRC_DIR = $(base_dir)/generators/radiance/cyclotron
+CYCLOTRON_BUILD_DIR = $(CYCLOTRON_SRC_DIR)/target/release
 RADIANCE_CSRC_DIR = $(base_dir)/generators/radiance/src/main/resources/csrc
+RADIANCE_VSRC_DIR = $(base_dir)/generators/radiance/src/main/resources/vsrc
 
 ##################################################################
 # THE FOLLOWING MUST BE += operators
 ##################################################################
 
-EXTRA_SIM_REQS += radpie
-EXTRA_SIM_LDFLAGS += -L$(RADPIE_BUILD_DIR) -Wl,-rpath,$(RADPIE_BUILD_DIR) -lradpie
+EXTRA_SIM_REQS += cyclotron
+EXTRA_SIM_LDFLAGS += -L$(CYCLOTRON_BUILD_DIR) -Wl,-rpath,$(CYCLOTRON_BUILD_DIR) -lcyclotron
 ifeq ($(shell echo $(CONFIG) | grep -E "SynConfig$$"),$(CONFIG))
     EXTRA_SIM_PREPROC_DEFINES += +define+SYNTHESIS +define+NDEBUG +define+DPI_DISABLE
 endif
@@ -32,18 +33,20 @@ VCS_NONCC_OPTS += +vcs+initreg+random
 
 # cargo handles building of Rust files all on its own, so make this a PHONY
 # target to run cargo unconditionally
-.PHONY: radpie
-radpie:
-	cd $(RADPIE_SRC_DIR) && cargo build --release
+.PHONY: cyclotron
+cyclotron:
+	cd $(CYCLOTRON_SRC_DIR) && cargo build --release
 
 EXTRA_SIM_REQS += vortex_vsrc.$(CONFIG)
 # below manipulation of RADIANCE_EXTERNAL_SRCS doesn't work if we try to reuse
 # $(call lookup_srcs) from common.mk, the variable doesn't expand somehow
 ifeq ($(shell which fdfd 2> /dev/null),)
-	RADIANCE_EXTERNAL_SRCS := $(shell find -L $(VORTEX_SRC_DIR) -type f -iname "*.sv" -o -iname "*.vh" -o -iname "*.v")
+	# RADIANCE_EXTERNAL_SRCS := $(shell find -L $(VORTEX_SRC_DIR) -type f -iname "*.sv" -o -iname "*.vh" -o -iname "*.v")
+	RADIANCE_EXTERNAL_SRCS := $(shell find -L $(RADIANCE_VSRC_DIR) -type f -iname "*.sv" -o -iname "*.vh" -o -iname "*.v")
 	RADIANCE_EXTERNAL_SRCS += $(shell find -L $(RADIANCE_CSRC_DIR) -type f)
 else
-	RADIANCE_EXTERNAL_SRCS := $(shell fdfind -L -t f -e "sv" -e "vh" -e "v" . $(VORTEX_SRC_DIR))
+	# RADIANCE_EXTERNAL_SRCS := $(shell fdfind -L -t f -e "sv" -e "vh" -e "v" . $(VORTEX_SRC_DIR))
+	RADIANCE_EXTERNAL_SRCS := $(shell fdfind -L -t f -e "sv" -e "vh" -e "v" . $(RADIANCE_VSRC_DIR))
 	RADIANCE_EXTERNAL_SRCS += $(shell fdfind -L -t f . $(RADIANCE_CSRC_DIR))
 endif
 
