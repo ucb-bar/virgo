@@ -10,22 +10,18 @@ import "DPI-C" function void emulator_init(
 // (3) DPI function calls inside initial/always blocks
 import "DPI-C" function void emulator_tick
 (
-  output bit     vec_d_ready[`MAX_NUM_LANES],
-  input  bit     vec_d_valid[`MAX_NUM_LANES],
-  input  bit     vec_d_is_store[`MAX_NUM_LANES],
-  input  int     vec_d_size[`MAX_NUM_LANES],
-  input  longint vec_d_data[`MAX_NUM_LANES]
-);
-
-import "DPI-C" function void emulator_generate
-(
   input  bit     vec_a_ready[`MAX_NUM_LANES],
   output bit     vec_a_valid[`MAX_NUM_LANES],
   output longint vec_a_address[`MAX_NUM_LANES],
   output bit     vec_a_is_store[`MAX_NUM_LANES],
   output int     vec_a_size[`MAX_NUM_LANES],
   output longint vec_a_data[`MAX_NUM_LANES],
+
   output bit     vec_d_ready[`MAX_NUM_LANES],
+  input  bit     vec_d_valid[`MAX_NUM_LANES],
+  input  bit     vec_d_is_store[`MAX_NUM_LANES],
+  input  int     vec_d_size[`MAX_NUM_LANES],
+  input  longint vec_d_data[`MAX_NUM_LANES],
 
   input  bit     inflight,
   output bit     finished
@@ -95,6 +91,8 @@ module SimEmulator #(parameter NUM_LANES = 4) (
     emulator_init(NUM_LANES);
   end
 
+  // negedge might make it easier to view waveform since DPI changes are
+  // instant and make it look like they happen before the clockedge
   always @(posedge clock) begin
     if (reset) begin
       for (integer tid = 0; tid < NUM_LANES; tid = tid + 1) begin
@@ -107,14 +105,19 @@ module SimEmulator #(parameter NUM_LANES = 4) (
       end
       __in_finished = 1'b0;
     end else begin
-      emulator_generate(
+      emulator_tick(
         __out_a_ready,
         __in_a_valid,
         __in_a_address,
         __in_a_is_store,
         __in_a_size,
         __in_a_data,
+
         __in_d_ready,
+        __out_d_valid,
+        __out_d_is_store,
+        __out_d_size,
+        __out_d_data,
 
         __out_inflight,
         __in_finished
@@ -123,21 +126,6 @@ module SimEmulator #(parameter NUM_LANES = 4) (
       //   $display("verilog: %04d a_valid[%d]=%d, a_address[%d]=0x%x, d_ready[%d]=%d",
       //     $time, tid, __in_a_valid[tid], tid, __in_a_address[tid], tid, __in_d_ready[tid]);
       // end
-    end
-  end
-
-  // negedge is important here; the DPI logic is essentially functioning as
-  // a combinational logic, so we want to reflect the signal change from DPI
-  // at the *current* cycle, not the next.
-  always @(negedge clock) begin
-    if (!reset) begin
-      emulator_tick(
-        __in_d_ready,
-        __out_d_valid,
-        __out_d_is_store,
-        __out_d_size,
-        __out_d_data
-      );
     end
   end
 endmodule
