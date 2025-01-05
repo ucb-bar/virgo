@@ -4,7 +4,8 @@
 
 VORTEX_SRC_DIR = $(base_dir)/generators/radiance/src/main/resources/vsrc/vortex
 CYCLOTRON_SRC_DIR = $(base_dir)/generators/radiance/cyclotron
-CYCLOTRON_BUILD_DIR = $(CYCLOTRON_SRC_DIR)/target/release
+CYCLOTRON_BUILD_DIR = $(CYCLOTRON_SRC_DIR)/target/debug
+# CYCLOTRON_BUILD_DIR = $(CYCLOTRON_SRC_DIR)/target/release
 RADIANCE_CSRC_DIR = $(base_dir)/generators/radiance/src/main/resources/csrc
 RADIANCE_VSRC_DIR = $(base_dir)/generators/radiance/src/main/resources/vsrc
 
@@ -35,7 +36,7 @@ VCS_NONCC_OPTS += +vcs+initreg+random
 # target to run cargo unconditionally
 .PHONY: cyclotron
 cyclotron:
-	cd $(CYCLOTRON_SRC_DIR) && cargo build --release
+	cd $(CYCLOTRON_SRC_DIR) && cargo build # --release
 
 EXTRA_SIM_REQS += vortex_vsrc.$(CONFIG)
 # below manipulation of RADIANCE_EXTERNAL_SRCS doesn't work if we try to reuse
