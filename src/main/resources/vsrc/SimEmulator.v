@@ -13,7 +13,8 @@ import "DPI-C" function void emulator_tick
   output bit     vec_d_ready[`MAX_NUM_LANES],
   input  bit     vec_d_valid[`MAX_NUM_LANES],
   input  bit     vec_d_is_store[`MAX_NUM_LANES],
-  input  int     vec_d_size[`MAX_NUM_LANES]
+  input  int     vec_d_size[`MAX_NUM_LANES],
+  input  longint vec_d_data[`MAX_NUM_LANES]
 );
 
 import "DPI-C" function void emulator_generate
@@ -45,8 +46,8 @@ module SimEmulator #(parameter NUM_LANES = 4) (
   input  [NUM_LANES-1:0]                       d_valid,
   input  [NUM_LANES-1:0]                       d_is_store,
   input  [`SIMMEM_LOGSIZE_WIDTH*NUM_LANES-1:0] d_size,
+  input  [`SIMMEM_DATA_WIDTH*NUM_LANES-1:0]    d_data,
   // TODO: d_mask
-  // TODO: d_data
 
   input                                        inflight,
   output                                       finished
@@ -64,6 +65,7 @@ module SimEmulator #(parameter NUM_LANES = 4) (
   bit     __out_d_valid [0:`MAX_NUM_LANES-1];
   bit     __out_d_is_store [0:`MAX_NUM_LANES-1];
   int     __out_d_size [0:`MAX_NUM_LANES-1];
+  longint __out_d_data [0:`MAX_NUM_LANES-1];
   bit     __out_inflight;
   bit     __in_finished;
 
@@ -83,6 +85,7 @@ module SimEmulator #(parameter NUM_LANES = 4) (
       assign __out_d_valid[g] = d_valid[g];
       assign __out_d_is_store[g] = d_is_store[g];
       assign __out_d_size[g] = d_size[`SIMMEM_LOGSIZE_WIDTH*g +: `SIMMEM_LOGSIZE_WIDTH];
+      assign __out_d_data[g] = d_data[`SIMMEM_DATA_WIDTH*g +: `SIMMEM_DATA_WIDTH];
     end
     assign __out_inflight = inflight;
   endgenerate
@@ -132,7 +135,8 @@ module SimEmulator #(parameter NUM_LANES = 4) (
         __in_d_ready,
         __out_d_valid,
         __out_d_is_store,
-        __out_d_size
+        __out_d_size,
+        __out_d_data
       );
     end
   end

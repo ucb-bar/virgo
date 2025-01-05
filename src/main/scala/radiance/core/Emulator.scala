@@ -99,6 +99,7 @@ class EmulatorImp(
   sim.io.d.valid := VecInit(laneResps.map(_.valid)).asUInt
   sim.io.d.is_store := VecInit(laneResps.map(_.bits.is_store)).asUInt
   sim.io.d.size := VecInit(laneResps.map(_.bits.size)).asUInt
+  sim.io.d.data := VecInit(laneResps.map(_.bits.data)).asUInt
 
   val sourceGens = Seq.fill(numLanes)(
     Module(
@@ -234,6 +235,7 @@ class SimEmulator(numLanes: Int)
         val valid = Input(UInt(numLanes.W))
         val is_store = Input(UInt(numLanes.W))
         val size = Input(UInt((sizeW * numLanes).W))
+        val data = Input(UInt((dataW * numLanes).W))
       }
   })
 
