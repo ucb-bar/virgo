@@ -136,7 +136,7 @@ class WithRadianceGemmini(location: HierarchicalLocation, crossing: RocketCrossi
         case FP16 => GemminiFPConfigs.FP16DefaultConfig.copy(
           acc_scale_args = Some(ScaleArguments(
             (t: Float, u: Float) => {t},
-            1, Float(5, 11), -1, identity = "1.0", c_str = "((x))"
+            1, Float(8, 24), -1, identity = "1.0", c_str = "((x))"
           )),
           mvin_scale_args = Some(ScaleArguments(
             (t: Float, u: Float) => t * u,
@@ -148,8 +148,8 @@ class WithRadianceGemmini(location: HierarchicalLocation, crossing: RocketCrossi
           // from sirius
           spatialArrayInputType = Float(5, 11, isRecoded = skipRecoding),
           spatialArrayWeightType = Float(5, 11, isRecoded = skipRecoding),
-          spatialArrayOutputType = Float(5, 11, isRecoded = skipRecoding),
-          accType = Float(5, 11),
+          spatialArrayOutputType = Float(8, 24, isRecoded = skipRecoding),
+          accType = Float(8, 24),
           // hardcode_d_to_garbage_addr = true,
           acc_read_full_width = false, // set to true to output fp32
 
