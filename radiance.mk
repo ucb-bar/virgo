@@ -13,8 +13,8 @@ RADIANCE_VSRC_DIR = $(base_dir)/generators/radiance/src/main/resources/vsrc
 # THE FOLLOWING MUST BE += operators
 ##################################################################
 
-EXTRA_SIM_REQS += cyclotron
-EXTRA_SIM_LDFLAGS += -L$(CYCLOTRON_BUILD_DIR) -Wl,-rpath,$(CYCLOTRON_BUILD_DIR) -lcyclotron
+# EXTRA_SIM_REQS += cyclotron
+# EXTRA_SIM_LDFLAGS += -L$(CYCLOTRON_BUILD_DIR) -Wl,-rpath,$(CYCLOTRON_BUILD_DIR) -lcyclotron
 ifeq ($(shell echo $(CONFIG) | grep -E "SynConfig$$"),$(CONFIG))
     EXTRA_SIM_PREPROC_DEFINES += +define+SYNTHESIS +define+NDEBUG +define+DPI_DISABLE
 endif
