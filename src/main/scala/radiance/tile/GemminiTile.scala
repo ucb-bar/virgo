@@ -168,6 +168,8 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
     val rs2 = UInt(64.W)
   }
   val ciscInst = Wire(ciscInstT)
+  val startsLoop = WireInit(false.B)
+  val runningLoops = RegInit(0.U(4.W))
 
   val accCommandQueue = Module(new Queue(UInt(32.W), 4, false, true))
   accCommandQueue.io.enq.bits := accSlave.cmd.bits
@@ -175,10 +177,15 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
   accCommandQueue.io.deq.ready := !ciscValid
   assert(!accSlave.cmd.valid || accCommandQueue.io.enq.ready, "cisc command queue full")
 
+  when (accCommandQueue.io.enq.fire) {
+    val enqId = accSlave.cmd.bits(6, 0)
+    startsLoop := VecInit(Seq(0, 1, 2, 9, 10, 12).map { x => enqId === x.U }).asUInt.orR
+  }
+
   when (accCommandQueue.io.deq.fire) {
     ciscValid := true.B
-    ciscId := accSlave.cmd.bits(7, 0)
-    ciscArgs := accSlave.cmd.bits(31, 8)
+    ciscId := accCommandQueue.io.deq.bits(7, 0)
+    ciscArgs := accCommandQueue.io.deq.bits(31, 8)
     instCounter.reset()
   }
 
@@ -228,6 +235,7 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
 
   println(s"gemmini cisc initialized with DIM=${config.DIM}, tileSize=${tileSizeM},${tileSizeN},${tileSizeK}")
   println(f"boundsInst=${rectBoundsInst.litValue}%x, hexadecile=${spadHexadecile}")
+
   when (ciscValid) {
     switch (ciscId(6, 0)) {
       is (0.U) { // compute on given hexadeciles
@@ -241,6 +249,7 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
         val accSkipInst = genAccSkipInst(0.U, ((ciscArgs(23, 16) * spadHexadecile.U) << 32).asUInt | 0x238.U)
         ciscInst := microcodeEntry(Seq(boundsInst, strideInst, accSkipInst))
       }
+      is (2.U) {} // no actual invocation, fake job placeholder
       is (8.U) { // set a, b stride
         val inst = Wire(ciscInstT)
         inst.inst := 0x1820b07b.U
@@ -279,6 +288,11 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
     }
   }
 
+  val completionCount = PopCount(outer.gemmini.module.completion_io.completed)
+  val loopStarted = Mux(startsLoop, 1.U, 0.U)
+  runningLoops := runningLoops + loopStarted - completionCount
+  assert(runningLoops + loopStarted >= completionCount)
+
   val gemminiIO = outer.gemmini.module.io.cmd
 
   val regValid = Wire(Bool())
@@ -299,6 +313,11 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
     // (!outer.gemmini.module.io.busy, outer.gemmini.module.io.busy.asUInt)
     (true.B, outer.gemmini.module.io.busy.asUInt)
   }
+
+  def gemminiRunningLoopsReg(_dReady: Bool): (Bool, UInt) = {
+    (true.B, runningLoops)
+  }
+
   outer.regNode.regmap(
     0x00 -> Seq(RegField.w(32, gemminiCommandReg(_, _))),
     0x10 -> Seq(
@@ -307,7 +326,8 @@ class GemminiTileModuleImp(outer: GemminiTile) extends BaseTileModuleImp(outer) 
     0x18 -> Seq(
       RegField.w(32, gemminiRs2RegLSB),
       RegField.w(32, gemminiRs2RegMSB)),
-    0x20 -> Seq(RegField.r(32, gemminiBusyReg(_)))
+    0x20 -> Seq(RegField.r(32, gemminiBusyReg(_))),
+    0x28 -> Seq(RegField.r(32, gemminiRunningLoopsReg(_)))
   )
 
   assert(!regValid || gemminiIO.ready)

@@ -2,7 +2,6 @@
 #include <vpi_user.h>
 #include <svdpi.h>
 #endif
-#include <stdio.h>
 #include <stdint.h>
 
 extern "C" void memfuzz_init_rs(int num_lanes);

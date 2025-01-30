@@ -12,6 +12,7 @@ import freechips.rocketchip.subsystem._
 import gemmini._
 import gemmini.Arithmetic.FloatArithmetic._
 import radiance.tile._
+import radiance.core._
 import radiance.memory._
 import radiance.subsystem.RadianceGemminiDataType.{BF16, FP16, FP32, Int8}
 
@@ -106,6 +107,44 @@ class WithRadianceCores(
   ), tensorCoreFP16, tensorCoreDecoupled, useVxCache)
 }
 
+class WithEmulatorCores(
+  n: Int,
+  useVxCache: Boolean
+) extends Config((site, _, up) => {
+  case TilesLocated(InSubsystem) => {
+    val prev = up(TilesLocated(InSubsystem))
+    val idOffset = up(NumTiles)
+    val emulator = EmulatorTileParams(
+      core = VortexCoreParams(),
+      useVxCache = useVxCache)
+    List.tabulate(n)(i => EmulatorTileAttachParams(
+      emulator.copy(tileId = i + idOffset),
+      RocketCrossingParams()
+    )) ++ prev
+  }
+  case NumTiles => up(NumTiles) + 1
+  case NumRadianceCores => up(NumRadianceCores) + 1
+})
+
+class WithFuzzerCores(
+  n: Int,
+  useVxCache: Boolean
+) extends Config((site, _, up) => {
+  case TilesLocated(InSubsystem) => {
+    val prev = up(TilesLocated(InSubsystem))
+    val idOffset = up(NumTiles)
+    val fuzzer = FuzzerTileParams(
+      core = VortexCoreParams(),
+      useVxCache = useVxCache)
+    List.tabulate(n)(i => FuzzerTileAttachParams(
+      fuzzer.copy(tileId = i + idOffset),
+      RocketCrossingParams()
+    )) ++ prev
+  }
+  case NumTiles => up(NumTiles) + 1
+  case NumRadianceCores => up(NumRadianceCores) + 1
+})
+
 object RadianceGemminiDataType extends Enumeration {
   type Type = Value
   val FP32, FP16, BF16, Int8 = Value
@@ -136,7 +175,7 @@ class WithRadianceGemmini(location: HierarchicalLocation, crossing: RocketCrossi
         case FP16 => GemminiFPConfigs.FP16DefaultConfig.copy(
           acc_scale_args = Some(ScaleArguments(
             (t: Float, u: Float) => {t},
-            1, Float(5, 11), -1, identity = "1.0", c_str = "((x))"
+            1, Float(8, 24), -1, identity = "1.0", c_str = "((x))"
           )),
           mvin_scale_args = Some(ScaleArguments(
             (t: Float, u: Float) => t * u,
@@ -148,8 +187,8 @@ class WithRadianceGemmini(location: HierarchicalLocation, crossing: RocketCrossi
           // from sirius
           spatialArrayInputType = Float(5, 11, isRecoded = skipRecoding),
           spatialArrayWeightType = Float(5, 11, isRecoded = skipRecoding),
-          spatialArrayOutputType = Float(5, 11, isRecoded = skipRecoding),
-          accType = Float(5, 11),
+          spatialArrayOutputType = Float(8, 24, isRecoded = skipRecoding),
+          accType = Float(8, 24),
           // hardcode_d_to_garbage_addr = true,
           acc_read_full_width = false, // set to true to output fp32
 
@@ -242,25 +281,6 @@ class WithRadianceFrameBuffer(baseAddress: BigInt,
       RadianceFrameBufferKey(baseAddress, width, size, validAddress, fbName)
     )
   }
-})
-
-class WithFuzzerCores(
-  n: Int,
-  useVxCache: Boolean
-) extends Config((site, _, up) => {
-  case TilesLocated(InSubsystem) => {
-    val prev = up(TilesLocated(InSubsystem))
-    val idOffset = up(NumTiles)
-    val fuzzer = FuzzerTileParams(
-      core = VortexCoreParams(),
-      useVxCache = useVxCache)
-    List.tabulate(n)(i => FuzzerTileAttachParams(
-      fuzzer.copy(tileId = i + idOffset),
-      RocketCrossingParams()
-    )) ++ prev
-  }
-  case NumTiles => up(NumTiles) + 1
-  case NumRadianceCores => up(NumRadianceCores) + 1
 })
 
 class WithRadianceCluster(
