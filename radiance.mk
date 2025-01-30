@@ -15,6 +15,12 @@ RADPIE_BUILD_DIR = $(RADPIE_SRC_DIR)/target/release
 ifeq ($(shell echo $(CONFIG) | grep -E "SynConfig$$"),$(CONFIG))
     EXTRA_SIM_PREPROC_DEFINES += +define+SYNTHESIS +define+NDEBUG +define+DPI_DISABLE
 endif
+ifeq ($(shell echo $(CONFIG) | grep -E "FP16Config$$"),$(CONFIG))
+    EXTRA_SIM_PREPROC_DEFINES += +define+NUM_CORES=8
+endif
+ifeq ($(shell echo $(CONFIG) | grep -E "HopperConfig$$"),$(CONFIG))
+    EXTRA_SIM_PREPROC_DEFINES += +define+NUM_CORES=4 +define+EXT_T_HOPPER
+endif
 EXTRA_SIM_PREPROC_DEFINES += \
 	+define+SIMULATION \
 	+define+GPR_RESET \
