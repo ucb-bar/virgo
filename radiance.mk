@@ -2,8 +2,7 @@
 # extra variables/targets ingested by the chipyard make system
 ##############################################################
 
-VORTEX_SRC_DIR = $(base_dir)/generators/radiance/src/main/resources/vsrc/vortex
-CYCLOTRON_SRC_DIR = $(base_dir)/generators/radiance/cyclotron
+VORTEX_SRC_DIR = $(base_dir)/generators/radiance/src/main/resources/vsrc/vortex CYCLOTRON_SRC_DIR = $(base_dir)/generators/radiance/cyclotron
 CYCLOTRON_BUILD_DIR = $(CYCLOTRON_SRC_DIR)/target/debug
 # CYCLOTRON_BUILD_DIR = $(CYCLOTRON_SRC_DIR)/target/release
 RADIANCE_CSRC_DIR = $(base_dir)/generators/radiance/src/main/resources/csrc
@@ -23,6 +22,9 @@ ifeq ($(shell echo $(CONFIG) | grep -E "FP16Config$$"),$(CONFIG))
 endif
 ifeq ($(shell echo $(CONFIG) | grep -E "HopperConfig$$"),$(CONFIG))
     EXTRA_SIM_PREPROC_DEFINES += +define+NUM_CORES=4 +define+EXT_T_HOPPER
+endif
+ifeq ($(shell echo $(CONFIG) | grep -E "FlashConfig$$"),$(CONFIG))
+    EXTRA_SIM_PREPROC_DEFINES += +define+NUM_CORES=4
 endif
 EXTRA_SIM_PREPROC_DEFINES += \
 	+define+SIMULATION \
