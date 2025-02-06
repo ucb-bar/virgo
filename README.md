@@ -10,4 +10,9 @@ memory coalescer, and Vortex SIMT core integration.
 
 The entire Virgo GPU design is implemented within the Chipyard SoC environment.
 To evaluate the full design, please follow the instructions in
-[Chipyard](https://github.com/ucb-bar/chipyard/commits/virgo/) (TODO).
+[Chipyard](https://github.com/ucb-bar/chipyard/commits/virgo/).
+
+The GPU kernel software written and evaluated for Virgo can be found in
+[virgo-kernels](https://github.com/ucb-bar/virgo-kernels).
+
+More details to follow.
