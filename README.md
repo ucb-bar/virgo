@@ -4,15 +4,19 @@ Virgo
 Virgo is a GPU microarchitecture that integrates dedicated matrix units at the
 cluster (SM)-level, achieving better FLOPS scalability and energy efficiency.
 
-This repository includes the essential IPs for Virgo's implementation and
-baseline evaluation, including the shared memory, Hopper-style Tensor Core,
-memory coalescer, and Vortex SIMT core integration.
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ucb-bar/virgo/refs/heads/main/img/fig-cluster-overview.svg" alt="Virgo cluster microarchitecture overview" width="600">
+</p>
+
+This repository includes the essential RTL logic for Virgo's implementation,
+including the Gemmini matrix unit integration, shared memory, baseline Tensor
+Core models, memory coalescer, and Vortex SIMT core integration.
 
 The entire Virgo GPU design is implemented within the Chipyard SoC environment.
 To evaluate the full design, please follow the instructions in
 [Chipyard](https://github.com/ucb-bar/chipyard/commits/virgo/).
 
-The GPU kernel software written and evaluated for Virgo can be found in
+The GPU kernel written and evaluated for Virgo can be found in
 [virgo-kernels](https://github.com/ucb-bar/virgo-kernels).
 
 
@@ -41,9 +45,9 @@ The Chisel RTL code for the main Virgo hardware modules can be found in
   * [`SyncMem.scala`](src/main/scala/radiance/memory/SyncMem.scala): SRAM implementation for the shared memory
   * `*Node.scala`: Arbiter and multiplexer nodes used in the shared memory interconnect
 * [`core`](src/main/scala/radiance/core)
-  * [`TensorCoreDecoupled.scala`](src/main/scala/radiance/memory/TensorCoreDecoupled.scala):
+  * [`TensorCoreDecoupled.scala`](src/main/scala/radiance/core/TensorCoreDecoupled.scala):
     **Hopper-style Tensor Core** implementation
-  * [`TensorDPU.scala`](src/main/scala/radiance/memory/TensorDPU.scala):
+  * [`TensorDPU.scala`](src/main/scala/radiance/core/TensorDPU.scala):
     Four-element **dot-product units** used in Tensor Core implementations
 * [`subsystem`](src/main/scala/radiance/subsystem): Chipyard Config definitions for parameterizing clusters
 
