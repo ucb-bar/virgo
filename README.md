@@ -52,3 +52,18 @@ The Chisel RTL code for the main Virgo hardware modules can be found in
 * [`subsystem`](src/main/scala/radiance/subsystem): Chipyard Config definitions for parameterizing clusters
 
 More details to follow.
+
+Publications
+------------
+
+[Virgo: Cluster-level Matrix Unit Integration in GPUs for Scalability and Energy Efficiency (ASPLOS'25)](https://dl.acm.org/doi/abs/10.1145/3676641.3716281)
+
+```
+@inproceedings{kim2025virgo,
+  title={Virgo: Cluster-level Matrix Unit Integration in GPUs for Scalability and Energy Efficiency},
+  author={Kim, Hansung and Yan, Ruohan Richard and You, Joshua and Yang, Tieliang Vamber and Shao, Yakun Sophia},
+  booktitle={Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2},
+  pages={1382--1399},
+  year={2025}
+}
+```
